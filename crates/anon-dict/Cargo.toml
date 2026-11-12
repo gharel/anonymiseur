@@ -16,3 +16,7 @@ unicode-normalization = "0.1.26"
 
 [build-dependencies]
 fst = "0.4.7"
+
+[dev-dependencies]
+anon-detect = { path = "../anon-detect" }
+serde_json = "1.0.154"

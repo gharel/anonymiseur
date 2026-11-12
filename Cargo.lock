@@ -345,6 +345,11 @@ name = "anonymiseur"
 version = "0.1.0"
 dependencies = [
  "anon-core",
+ "anon-engine",
+ "anon-ner",
+ "anon-pdf",
+ "anon-replace",
+ "anon-vault",
  "eframe",
  "egui",
  "egui_extras",

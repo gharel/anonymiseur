@@ -9,8 +9,19 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["ia"]
+# IA de noms embarquée (ONNX Runtime + modèles de assets/ner/). À désactiver pour
+# l'édition Lite et pour macOS Intel : `--no-default-features`.
+ia = ["dep:anon-ner", "anon-ner/ia", "anon-ner/embed"]
+
 [dependencies]
 anon-core = { version = "0.1.0", path = "../crates/anon-core" }
+anon-engine = { version = "0.1.0", path = "../crates/anon-engine" }
+anon-ner = { version = "0.1.0", path = "../crates/anon-ner", default-features = false, optional = true }
+anon-pdf = { version = "0.1.0", path = "../crates/anon-pdf" }
+anon-replace = { version = "0.1.0", path = "../crates/anon-replace" }
+anon-vault = { version = "0.1.0", path = "../crates/anon-vault" }
 eframe = { version = "0.37", features = ["glow"] }
 egui = "0.37"
 egui_extras = { version = "0.37", features = ["image", "svg"] }

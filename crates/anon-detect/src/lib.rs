@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Règles de détection à clé, fusion des détections.
+//!
+//! - [`checksums`] : contrôles de clé (Luhn, IBAN, NIR, SIREN/SIRET, DNI…).
+//! - [`rules`] : [`rules::RuleDetector`], expressions régulières et contrôles de clé.
+//! - [`pipeline`] : lancement des détecteurs et résolution des chevauchements.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod checksums;
+pub mod pipeline;
+pub mod rules;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use pipeline::{Pipeline, merge};
+pub use rules::RuleDetector;

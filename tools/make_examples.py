@@ -204,6 +204,16 @@ class Fiche:
 # ---------------------------------------------------------------------------
 
 
+def _normaliser_octets(data: bytes) -> bytes:
+    tmp = SORTIE / ".norm.tmp"
+    tmp.write_bytes(data)
+    try:
+        normaliser_zip(tmp)
+        return tmp.read_bytes()
+    finally:
+        tmp.unlink()
+
+
 def normaliser_zip(chemin: Path, modifs: dict | None = None) -> None:
     """Réécrit un zip avec des dates fixes (déterminisme) et des modifications ciblées."""
     modifs = modifs or {}
@@ -215,6 +225,15 @@ def normaliser_zip(chemin: Path, modifs: dict | None = None) -> None:
             if zi.filename in modifs:
                 data = modifs[zi.filename](data)
                 vus.add(zi.filename)
+            if zi.filename == "docProps/core.xml":
+                # openpyxl et XlsxWriter horodatent à l'enregistrement : dates fixes.
+                data = re.sub(
+                    rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:)",
+                    rb"\g<1>2026-03-02T09:00:00Z\g<2>",
+                    data,
+                )
+            if zi.filename.endswith(".xlsx"):  # classeur embarqué (graphique pptx)
+                data = _normaliser_octets(data)
             ni = zipfile.ZipInfo(zi.filename, DATE_ZIP)
             ni.compress_type = zi.compress_type
             ni.external_attr = zi.external_attr

@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Seuil de couverture (lignes, en %) pour la tâche coverage.
+  COVERAGE_MIN: "80"
+
+jobs:
+  lint:
+    name: Lint
+    # anon-pdf compile MuPDF (bindgen) : le lint complet exige les mêmes outils que les tests.
+    runs-on: windows-latest
+    env:
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+    steps:
+      - uses: actions/checkout@v4
+      # La version de la chaîne d'outils vient de rust-toolchain.toml.
+      - name: Installer la chaîne d'outils
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer la chaîne d'outils
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Définir LIBCLANG_PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+      - name: Tests
+        run: cargo test --workspace
+        env:
+          # Un instantané non accepté doit faire échouer, pas créer un .snap.new silencieux.
+          INSTA_UPDATE: no
+      - name: Arbre de travail propre
+        shell: bash
+        run: |
+          status="$(git status --porcelain)"
+          if [ -n "$status" ]; then
+            echo "::error::Fichiers modifiés ou non versionnés après les tests (instantanés non acceptés, fichiers générés) :"
+            echo "$status"
+            exit 1
+          fi
+
+  deny:
+    name: Cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  coverage:
+    name: Couverture
+    runs-on: windows-latest
+    env:
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer la chaîne d'outils
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Ajouter llvm-tools
+        run: rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Couverture
+        shell: bash
+        run: |
+          cargo llvm-cov \
+            -p anon-core -p anon-replace -p anon-vault -p anon-detect -p anon-dict \
+            --summary-only --fail-under-lines "$COVERAGE_MIN" | tee coverage.txt
+        env:
+          INSTA_UPDATE: no
+      - name: Résumé de la tâche
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Couverture (seuil ${COVERAGE_MIN} % lignes)"
+            echo '```'
+            cat coverage.txt 2>/dev/null || echo "Aucun rapport."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Arbre de travail propre
+        shell: bash
+        run: |
+          status="$(git status --porcelain | grep -v '^?? coverage.txt$' || true)"
+          if [ -n "$status" ]; then
+            echo "::error::Fichiers modifiés ou non versionnés après les tests :"
+            echo "$status"
+            exit 1
+          fi

@@ -1,0 +1,81 @@
+# Configuration cargo-deny. Invariant 1 (AGENTS.md) : aucune dépendance réseau à l'exécution.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# Toute vulnérabilité connue fait échouer la vérification.
+yanked = "deny"
+ignore = [
+    # Exemple : "RUSTSEC-0000-0000",  # raison écrite ici
+]
+
+[licenses]
+version = 2
+# Licences compatibles avec une distribution sous AGPL-3.0.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+    "OFL-1.1",
+    "AGPL-3.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+    # Modèles ou données sous LGPL, à activer si nécessaire :
+    # "LGPL-3.0",
+    # "LGPL-3.0-or-later",
+]
+confidence-threshold = 0.8
+# Les avertissements « license-not-encountered » sont attendus : la liste anticipe les futures dépendances.
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Les dépendances de chemin de l'espace de travail n'ont pas de version : autorisé.
+allow-wildcard-paths = true
+
+# Crates réseau interdits à l'exécution.
+deny = [
+    { name = "reqwest" },
+    { name = "hyper" },
+    { name = "h2" },
+    { name = "ureq" },
+    { name = "isahc" },
+    { name = "curl" },
+    { name = "curl-sys" },
+    { name = "attohttpc" },
+    { name = "tokio" },
+    { name = "async-std" },
+    { name = "mio" },
+    { name = "socket2" },
+    { name = "native-tls" },
+    { name = "rustls" },
+    { name = "openssl" },
+    { name = "openssl-sys" },
+    { name = "tungstenite" },
+    { name = "surf" },
+    { name = "minreq" },
+    { name = "trust-dns-resolver" },
+    { name = "hickory-resolver" },
+
+    # Exception à activer à l'arrivée d'`ort-sys` : son script de build télécharge
+    # les binaires ONNX Runtime à la compilation (pas à l'exécution) via `ureq`.
+    # Remplacer la ligne `{ name = "ureq" },` ci-dessus par :
+    # { name = "ureq", wrappers = ["ort-sys"] },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Dépendance git éventuelle (à justifier dans le commit) :
+# allow-git = ["https://github.com/exemple/depot"]

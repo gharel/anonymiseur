@@ -270,6 +270,28 @@ mod tests {
         assert_eq!(merge(v).len(), 1);
     }
 
+    #[test]
+    fn column_beats_dictionary_and_ner_on_equal_interval() {
+        // À intervalle et confiance égaux, la source Column l'emporte, quel que soit l'ordre.
+        let mk = |s| det(EntityKind::Nom, 0, 6, s, 0.9);
+        for order in [
+            [Source::Dictionary, Source::Ner, Source::Column],
+            [Source::Ner, Source::Column, Source::Dictionary],
+            [Source::Column, Source::Dictionary, Source::Ner],
+        ] {
+            let out = merge(order.iter().map(|s| mk(*s)).collect());
+            assert_eq!(out.len(), 1);
+            assert_eq!(out[0].source, Source::Column, "{order:?}");
+        }
+        // Une source plus fiable (confiance supérieure) garde la priorité : la confiance
+        // précède la source dans l'ordre de préférence.
+        let v = vec![
+            det(EntityKind::Nom, 0, 6, Source::Column, 0.9),
+            det(EntityKind::Prenom, 0, 6, Source::Dictionary, 0.95),
+        ];
+        assert_eq!(merge(v)[0].source, Source::Dictionary);
+    }
+
     struct Fixed(Vec<Detection>);
 
     impl Detector for Fixed {

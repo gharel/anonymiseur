@@ -2,7 +2,7 @@
 //! terrain `exemples/attendu.json`. Garde-fou : le rappel par type ne doit pas baisser.
 
 use anon_core::{BlockContext, BlockRole, DetectOptions, EntityKind, TextBlock};
-use anon_detect::{Pipeline, RuleDetector};
+use anon_detect::{Pipeline, QuasiDetector, RuleDetector};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -144,6 +144,126 @@ fn rappel_des_regles_sur_les_exemples_texte() {
         false_positives.len() <= MAX_FALSE_POSITIVES,
         "{} faux positifs",
         false_positives.len()
+    );
+    assert!(trap_hits.is_empty(), "pièges détectés : {trap_hits:?}");
+}
+
+/// Quasi-identifiants que `QuasiDetector` doit trouver en profil Renforcé.
+const QUASI_KINDS: &[EntityKind] = &[
+    EntityKind::Date,
+    EntityKind::Age,
+    EntityKind::Montant,
+    EntityKind::Fonction,
+    EntityKind::Matricule,
+];
+/// Rappel global minimal sur les quasi-identifiants.
+const MIN_QUASI_RECALL: f64 = 0.85;
+
+#[test]
+fn rappel_des_quasi_identifiants_sur_les_exemples_texte() {
+    let dir = exemples_dir();
+    let attendu: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("attendu.json")).unwrap()).unwrap();
+    let pipeline = Pipeline::new(vec![
+        Box::new(RuleDetector::new()),
+        Box::new(QuasiDetector::new()),
+    ]);
+    let opts = DetectOptions {
+        profile: anon_core::Profile::Renforce,
+        ..Default::default()
+    };
+
+    let mut found: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut expected: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut misses = Vec::new();
+    let mut false_positives = Vec::new();
+    let mut trap_hits = Vec::new();
+
+    for f in attendu["fichiers"].as_array().unwrap() {
+        let name = f["fichier"].as_str().unwrap();
+        if !["txt", "md"]
+            .iter()
+            .any(|e| name.ends_with(&format!(".{e}")))
+            || name == "reponse-ia-exemple.md"
+        {
+            continue;
+        }
+        let text = std::fs::read_to_string(dir.join(name)).unwrap();
+        let mut detected: Vec<(EntityKind, String)> = Vec::new();
+        for line in text.lines() {
+            let block = TextBlock {
+                text: line.to_string(),
+                ctx: BlockContext::new(name, BlockRole::Body),
+            };
+            for d in pipeline.detect(&block, &opts) {
+                assert!(line.is_char_boundary(d.start) && line.is_char_boundary(d.end));
+                detected.push((d.kind, squash(&line[d.start..d.end])));
+            }
+        }
+
+        let entites = f["entites"].as_array().unwrap();
+        for kind in QUASI_KINDS {
+            let values: Vec<String> = entites
+                .iter()
+                .filter(|e| e["type"].as_str() == Some(kind.prefix()))
+                .map(|e| squash(e["valeur"].as_str().unwrap()))
+                .collect();
+            for v in &values {
+                *expected.entry(kind.prefix()).or_default() += 1;
+                let hit = detected
+                    .iter()
+                    .any(|(k, s)| k == kind && (s == v || s.contains(v.as_str())));
+                if hit {
+                    *found.entry(kind.prefix()).or_default() += 1;
+                } else {
+                    misses.push(format!("{name}: {} « {v} »", kind.prefix()));
+                }
+            }
+            for (k, s) in &detected {
+                if k == kind
+                    && !values
+                        .iter()
+                        .any(|v| s == v || s.contains(v.as_str()) || v.contains(s.as_str()))
+                {
+                    false_positives.push(format!("{name}: {} « {s} »", k.prefix()));
+                }
+            }
+        }
+
+        for piege in f["ne_pas_detecter"].as_array().into_iter().flatten() {
+            let p = squash(piege.as_str().unwrap());
+            if detected
+                .iter()
+                .any(|(_, s)| s.contains(&p) || p.contains(s.as_str()))
+            {
+                trap_hits.push(format!("{name}: piège « {p} » détecté"));
+            }
+        }
+    }
+
+    let total_expected: usize = expected.values().sum();
+    let total_found: usize = found.values().sum();
+    let recall = total_found as f64 / total_expected.max(1) as f64;
+    println!(
+        "\nQuasi-identifiants (Renforcé) : rappel {total_found}/{total_expected} = {recall:.2}"
+    );
+    for (k, e) in &expected {
+        println!("  {k:<12} {}/{e}", found.get(k).copied().unwrap_or(0));
+    }
+    println!("Manqués ({}) :", misses.len());
+    misses.iter().for_each(|m| println!("  - {m}"));
+    println!("Faux positifs ({}) :", false_positives.len());
+    false_positives.iter().for_each(|m| println!("  - {m}"));
+    println!("Pièges touchés ({}) :", trap_hits.len());
+    trap_hits.iter().for_each(|m| println!("  - {m}"));
+
+    assert!(
+        total_expected >= 10,
+        "vérité terrain trop pauvre : {total_expected}"
+    );
+    assert!(
+        recall >= MIN_QUASI_RECALL,
+        "rappel {recall:.2} < {MIN_QUASI_RECALL}"
     );
     assert!(trap_hits.is_empty(), "pièges détectés : {trap_hits:?}");
 }

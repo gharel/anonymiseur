@@ -63,12 +63,12 @@ const MAX_POSTAL_GAP: usize = 4;
 // Expressions régulières (compilées une seule fois)
 // ---------------------------------------------------------------------------
 
-type Re = LazyLock<Option<Regex>>;
+pub(crate) type Re = LazyLock<Option<Regex>>;
 
 /// Remplace les jetons `<S>` (espaces, y compris insécables), `<T>` (séparateurs
 /// de téléphone), `<C>` (séparateurs de carte) et `<N>` (caractères d'un numéro
 /// international).
-fn pat(s: &str) -> String {
+pub(crate) fn pat(s: &str) -> String {
     s.replace("<S>", r"[ \x{a0}\x{202f}]")
         .replace("<T>", r"[ .\-\x{a0}\x{202f}]")
         .replace("<C>", r"[ \-\x{a0}\x{202f}]")
@@ -80,6 +80,7 @@ macro_rules! re {
         static $name: Re = LazyLock::new(|| Regex::new(&pat($pat)).ok());
     };
 }
+pub(crate) use re;
 
 re!(
     EMAIL,
@@ -187,33 +188,40 @@ re!(
 // Outils
 // ---------------------------------------------------------------------------
 
-type Out = Vec<Detection>;
+pub(crate) type Out = Vec<Detection>;
 
 /// Glu entre chiffres : un chiffre collé via ces signes fait partie d'un autre nombre.
-const GLUE: &[char] = &['.', '-', '/'];
+pub(crate) const GLUE: &[char] = &['.', '-', '/'];
 
-fn is_space(c: char) -> bool {
+pub(crate) fn is_space(c: char) -> bool {
     matches!(c, ' ' | '\u{a0}' | '\u{202f}')
 }
 
-fn is_word(c: char) -> bool {
+pub(crate) fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-fn char_before(text: &str, i: usize) -> Option<char> {
+pub(crate) fn char_before(text: &str, i: usize) -> Option<char> {
     text.get(..i)?.chars().next_back()
 }
 
-fn char_after(text: &str, i: usize) -> Option<char> {
+pub(crate) fn char_after(text: &str, i: usize) -> Option<char> {
     text.get(i..)?.chars().next()
 }
 
-fn char_len_at(text: &str, i: usize) -> usize {
+pub(crate) fn char_len_at(text: &str, i: usize) -> usize {
     char_after(text, i).map_or(1, char::len_utf8)
 }
 
 /// Ajoute une détection si les offsets sont valides.
-fn push(out: &mut Out, text: &str, kind: EntityKind, start: usize, end: usize, confidence: f32) {
+pub(crate) fn push(
+    out: &mut Out,
+    text: &str,
+    kind: EntityKind,
+    start: usize,
+    end: usize,
+    confidence: f32,
+) {
     if start < end && text.is_char_boundary(start) && text.is_char_boundary(end) {
         out.push(Detection {
             kind,
@@ -226,7 +234,7 @@ fn push(out: &mut Out, text: &str, kind: EntityKind, start: usize, end: usize, c
 }
 
 /// Bordure gauche : pas de lettre/chiffre collé, ni de chiffre relié par un signe de `glue`.
-fn left_ok(text: &str, start: usize, glue: &[char]) -> bool {
+pub(crate) fn left_ok(text: &str, start: usize, glue: &[char]) -> bool {
     match char_before(text, start) {
         None => true,
         Some(c) if is_word(c) => false,
@@ -237,7 +245,7 @@ fn left_ok(text: &str, start: usize, glue: &[char]) -> bool {
 }
 
 /// Bordure droite, symétrique de [`left_ok`].
-fn right_ok(text: &str, end: usize, glue: &[char]) -> bool {
+pub(crate) fn right_ok(text: &str, end: usize, glue: &[char]) -> bool {
     match char_after(text, end) {
         None => true,
         Some(c) if is_word(c) => false,
@@ -248,12 +256,12 @@ fn right_ok(text: &str, end: usize, glue: &[char]) -> bool {
     }
 }
 
-fn edges_ok(text: &str, start: usize, end: usize, glue: &[char]) -> bool {
+pub(crate) fn edges_ok(text: &str, start: usize, end: usize, glue: &[char]) -> bool {
     left_ok(text, start, glue) && right_ok(text, end, glue)
 }
 
 /// Bordure droite stricte : refuse aussi un chiffre séparé par une espace.
-fn strict_right_ok(text: &str, end: usize) -> bool {
+pub(crate) fn strict_right_ok(text: &str, end: usize) -> bool {
     if !right_ok(text, end, GLUE) {
         return false;
     }
@@ -266,7 +274,7 @@ fn strict_right_ok(text: &str, end: usize) -> bool {
 }
 
 /// Bordure gauche stricte : refuse aussi un chiffre séparé par une espace.
-fn strict_left_ok(text: &str, start: usize) -> bool {
+pub(crate) fn strict_left_ok(text: &str, start: usize) -> bool {
     if !left_ok(text, start, GLUE) {
         return false;
     }
@@ -280,7 +288,7 @@ fn strict_left_ok(text: &str, start: usize) -> bool {
 /// Parcourt les candidats de `re` ; `accept(start, end)` renvoie vrai si le
 /// candidat est retenu (la recherche reprend après lui), sinon la recherche
 /// reprend un caractère après son début.
-fn scan(re: &Re, text: &str, mut accept: impl FnMut(usize, usize) -> bool) {
+pub(crate) fn scan(re: &Re, text: &str, mut accept: impl FnMut(usize, usize) -> bool) {
     let Some(re) = LazyLock::force(re).as_ref() else {
         return;
     };
@@ -300,7 +308,7 @@ fn scan(re: &Re, text: &str, mut accept: impl FnMut(usize, usize) -> bool) {
 
 /// Vrai si un mot de contexte de `re` se termine dans les `max_chars`
 /// caractères qui précèdent `start`.
-fn context_before(text: &str, start: usize, max_chars: usize, re: &Re) -> bool {
+pub(crate) fn context_before(text: &str, start: usize, max_chars: usize, re: &Re) -> bool {
     let Some(re) = LazyLock::force(re).as_ref() else {
         return false;
     };
@@ -327,7 +335,7 @@ fn context_before(text: &str, start: usize, max_chars: usize, re: &Re) -> bool {
     })
 }
 
-fn overlaps(spans: &[(usize, usize)], s: usize, e: usize) -> bool {
+pub(crate) fn overlaps(spans: &[(usize, usize)], s: usize, e: usize) -> bool {
     spans.iter().any(|&(a, b)| s < b && a < e)
 }
 
@@ -465,7 +473,7 @@ fn version_cue(text: &str, start: usize) -> bool {
 
 /// Vrai si `re` trouve un mot dans les `max_chars` caractères qui précèdent
 /// `start`, sur la même ligne.
-fn line_window_matches(text: &str, start: usize, max_chars: usize, re: &Re) -> bool {
+pub(crate) fn line_window_matches(text: &str, start: usize, max_chars: usize, re: &Re) -> bool {
     let Some(re) = LazyLock::force(re).as_ref() else {
         return false;
     };
@@ -1023,7 +1031,7 @@ fn city_word(text: &str, pos: usize) -> Option<usize> {
     Some(pos + len)
 }
 
-fn skip_spaces(text: &str, pos: usize) -> usize {
+pub(crate) fn skip_spaces(text: &str, pos: usize) -> usize {
     pos + text
         .get(pos..)
         .unwrap_or("")

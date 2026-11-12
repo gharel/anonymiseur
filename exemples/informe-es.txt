@@ -1,0 +1,15 @@
+DONNÉES FICTIVES — exemple de test
+
+Informe de situación del 14 de marzo de 2026
+
+Redactado por Carlos Fernández Ruiz, director financiero, de Nautilus Pacifique SARL.
+Revisado por María José Ortega Vidal (52 años).
+
+Dirección de la oficina: Calle de las Acacias 12, 28013 Madrid.
+Contacto: carlos.fernandez@example.com y maria.ortega@example.org.
+Teléfonos: +34 612 34 56 78 (España), +52 55 1234 5678 (México),
++687 12 34 56 (Jean Dupont, Nueva Caledonia).
+
+Importe facturado: 48.500,00 EUR, a pagar en la cuenta ES60 0049 1500 0512 3456 7892.
+Próxima reunión en Valencia el 2 de abril de 2026.
+Versión del informe: 1.2.3.4.

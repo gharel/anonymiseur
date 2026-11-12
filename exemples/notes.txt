@@ -1,0 +1,25 @@
+DONNÉES FICTIVES — exemple de test
+
+Notes de réunion du 14 mars 2026 - Dumbéa
+
+Présents : DUPONT Jean (gérant de Nautilus Pacifique SARL),
+Pierre Garnier (62 ans, responsable technique) et Hélène Kaloï.
+Le dossier sera repris ensuite par J. Dupont.
+
+Coordonnées :
+- Jean Dupont : jean.dupont@example.com, 06 12 34 56 78 ou +687 12 34 56
+- Marie-Claire de La Fontaine : mc.delafontaine@example.org, +33 6 12 34 56 78
+- Standard Nautilus - Tél : 28 12 34
+
+Données administratives (fictives) :
+- NIR de DUPONT Jean : 1 85 03 69 123 045 32
+- Carte de paiement de test : 4111 1111 1111 1111
+- Véhicule de service : 123 456 NC ; matricule agent MAT-004517
+- Serveur de test : 192.0.2.45 - portail : https://portail.example.com/clients/nautilus
+- Budget : 12 500 000 XPF, livraison à Koné avant le 31 décembre 2026.
+
+Pièges à faux positifs :
+- Une antenne est prévue en Martinique.
+- Cette règle est la pierre angulaire de la méthode.
+- Le module est en version 1.2.3.4.
+- La référence 123456789 n'est pas un SIREN valide.

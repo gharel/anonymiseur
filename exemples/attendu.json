@@ -1,0 +1,3127 @@
+{
+  "version": 1,
+  "fichiers": [
+    {
+      "fichier": "contrat-prestation.docx",
+      "langue": "fr",
+      "notes": "Nom coupé entre deux runs, en-tête, pied, commentaire, révision suivie, lien mailto, propriétés, RIDET, IBAN, SIRET, BP.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee",
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Martin Lefèvre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee",
+            "corps",
+            "revision"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee",
+            "en-tete",
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "BP 1234, 98845 Nouméa Cedex",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "en-tete",
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "28 12 34",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "en-tete"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "J. Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "pied"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "jean.dupont@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "pied"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 12 34 56",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "pied"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "1 234 567.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "14 rue des Frangipaniers, 98800 Nouméa",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Atelier Bougainville SAS",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SIRET",
+          "valeur": "412 345 670 00019",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "8 allée des Tilleuls, 69003 Lyon",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "directrice financière",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE_NAISS",
+          "valeur": "12 mai 1981",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "44 ans",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Païta",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "1er septembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "31 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "105 000,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "31 500,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2 mars 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "IBAN",
+          "valeur": "FR76 3000 4001 2312 3456 7890 186",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "commentaire",
+            "revision"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 98 76 54 32",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "commentaire"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "20 février 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "commentaire"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "commentaire"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "juriste d'entreprise",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "07 11 22 33 44",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "martin.lefevre@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "lien"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Olivier Nguyen",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "revision"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Nouméa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "DUPONT Jean",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "pierre angulaire",
+        "Martinique",
+        "1.2.3.4",
+        "123456789"
+      ]
+    },
+    {
+      "fichier": "fichier-clients.xlsx",
+      "langue": "fr",
+      "notes": "Objet Table, téléphones et montants numériques, formule avec littéral nominatif, commentaire de cellule, graphique, feuille libre ; pas de TCD.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Anaïs Vaitiare",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee",
+            "commentaire"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Jean",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "jean.dupont@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "14 rue des Frangipaniers, 98800 Nouméa",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "1 234 567.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "1250000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Marie-Claire",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "mc.delafontaine@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "8 allée des Tilleuls, 69003 Lyon",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "2 345 678.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "33612345678",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "840000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Hélène",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "helene.kaloi@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "22 avenue des Flamboyants, 98835 Dumbéa",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "3 456 789.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "687781234",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "2310000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Lefèvre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Martin",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "martin.lefevre@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "5 rue du Lagon, 98890 Païta",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "4 567 890.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "07 11 22 33 44",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "475000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Pierre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "pierre.garnier@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "31 route de la Baie, 98860 Koné",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "5 678 901.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "281234",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "1980000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Vaitiare",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Anaïs",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "anais.vaitiare@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "3 impasse des Orchidées, 98800 Nouméa",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "6 789 012.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 82 45 67",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "620000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Nguyen",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Olivier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "olivier.nguyen@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "17 rue des Lilas, 75011 Paris",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "7 890 123.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+33 6 98 12 34 56",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "3150000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "formule"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "30 novembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "commentaire"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "commentaire"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "14 mars 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Dumbéa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "directrice financière",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Olivier Nguyen",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "1.2.3.4",
+        "Martinique",
+        "pierre angulaire"
+      ]
+    },
+    {
+      "fichier": "presentation-projet.pptx",
+      "langue": "fr",
+      "notes": "Noms d'équipe, notes du présentateur, graphique avec noms en catégories (emplacement corps), image contenant du texte (OCR).",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Anaïs Vaitiare",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee",
+            "corps",
+            "note"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "3 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "directrice financière",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "chargée de projet",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "105 000,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 98 76 54 32",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "note"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Païta",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "note"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "J. Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Olivier Nguyen",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+33 6 98 12 34 56",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "olivier.nguyen@example.org",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "1.2.3.4",
+        "pierre angulaire",
+        "Martinique"
+      ]
+    },
+    {
+      "fichier": "facture.pdf",
+      "langue": "fr",
+      "notes": "PDF texte : émetteur, client, SIRET, IBAN, carte bancaire, email, auteur en métadonnée, pièges Martinique et pierre angulaire.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Anaïs Vaitiare",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "12 novembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "12 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Atelier Bougainville SAS",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "8 allée des Tilleuls, 69003 Lyon",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SIRET",
+          "valeur": "412 345 670 00019",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "mc.delafontaine@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+33 6 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "14 rue des Frangipaniers, 98800 Nouméa",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "RIDET",
+          "valeur": "1 234 567.001",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "jean.dupont@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Païta",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "87 500,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "17 500,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "105 000,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "IBAN",
+          "valeur": "FR76 3000 4001 2312 3456 7890 186",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "CB",
+          "valeur": "4111 1111 1111 1111",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "123456789",
+        "1.2.3.4",
+        "Martinique",
+        "pierre angulaire"
+      ]
+    },
+    {
+      "fichier": "courrier-scanne.pdf",
+      "langue": "fr",
+      "notes": "PDF image seule sans texte extractible : toutes les valeurs ne sont trouvables que par OCR.",
+      "entites": [
+        {
+          "type": "DATE",
+          "valeur": "14 mars 2026",
+          "profil": "renforce",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Païta",
+          "profil": "renforce",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "105 000,00 EUR",
+          "profil": "renforce",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "IBAN",
+          "valeur": "FR76 3000 4001 2312 3456 7890 186",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 98 76 54 32",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Atelier Bougainville SAS",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "8 allée des Tilleuls, 69003 Lyon",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+33 6 12 34 56 78",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "mc.delafontaine@example.org",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "BP 1234, 98845 Nouméa Cedex",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Lyon",
+          "profil": "renforce",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "12 novembre 2026",
+          "profil": "renforce",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "directrice financière",
+          "profil": "renforce",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "123456789",
+        "Martinique"
+      ]
+    },
+    {
+      "fichier": "carte-visite.png",
+      "langue": "fr",
+      "notes": "Image seule : nom, fonction, société, téléphone, email (OCR).",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Anaïs Vaitiare",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "responsable commerciale",
+          "profil": "renforce",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Atelier Bougainville SAS",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 82 45 67",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "anais.vaitiare@example.com",
+          "profil": "standard",
+          "ocr": true,
+          "emplacements": [
+            "image"
+          ]
+        }
+      ],
+      "ne_pas_detecter": []
+    },
+    {
+      "fichier": "compte-rendu.odt",
+      "langue": "fr",
+      "notes": "Texte ODF avec noms, emails, téléphones, auteur en métadonnée.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "14 mars 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Païta",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "responsable technique",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Olivier Nguyen",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "38 ans",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "jean.dupont@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "pierre.garnier@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 98 76 54 32",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "olivier.nguyen@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "87 500,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "18 avril 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "Martinique",
+        "pierre angulaire",
+        "1.2.3.4"
+      ]
+    },
+    {
+      "fichier": "planning.ods",
+      "langue": "fr",
+      "notes": "Tableur ODF avec colonnes nominatives, montants numériques, auteur en métadonnée.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Martin Lefèvre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "DUPONT",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Jean",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "jean.dupont@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "3 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "1250000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Pierre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "responsable technique",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "pierre.garnier@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 98 76 54 32",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "4 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "1980000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Marie-Claire",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "directrice financière",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "mc.delafontaine@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+33 6 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "7 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "840000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Hélène",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "chargée de projet",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "helene.kaloi@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 78 12 34",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "8 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "2310000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Koné",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "Martinique",
+        "1.2.3.4"
+      ]
+    },
+    {
+      "fichier": "support.odp",
+      "langue": "fr",
+      "notes": "Présentation ODF avec noms, notes du présentateur, auteur en métadonnée.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Anaïs Vaitiare",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Atelier Bougainville SAS",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "9 février 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "directrice financière",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "mc.delafontaine@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "DUPONT Jean",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 12 34 56",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 78 12 34",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Dumbéa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "note"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 98 76 54 32",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "note"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "Martinique",
+        "1.2.3.4"
+      ]
+    },
+    {
+      "fichier": "notes.txt",
+      "langue": "fr",
+      "notes": "Texte brut : NIR, carte, plaque, matricule, IP, URL, formes DUPONT Jean et J. Dupont, pièges.",
+      "entites": [
+        {
+          "type": "DATE",
+          "valeur": "14 mars 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Dumbéa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "DUPONT Jean",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "62 ans",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "responsable technique",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "J. Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "jean.dupont@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 12 34 56",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "mc.delafontaine@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+33 6 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "28 12 34",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "NIR",
+          "valeur": "1 85 03 69 123 045 32",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "CB",
+          "valeur": "4111 1111 1111 1111",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PLAQUE",
+          "valeur": "123 456 NC",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MATRICULE",
+          "valeur": "MAT-004517",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "IP",
+          "valeur": "192.0.2.45",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "URL",
+          "valeur": "https://portail.example.com/clients/nautilus",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "12 500 000 XPF",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Koné",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "31 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "Martinique",
+        "pierre angulaire",
+        "1.2.3.4",
+        "123456789"
+      ]
+    },
+    {
+      "fichier": "export.csv",
+      "langue": "fr",
+      "notes": "CSV UTF-8 séparateur point-virgule : noms en majuscules, à particule, accentués.",
+      "entites": [
+        {
+          "type": "NOM",
+          "valeur": "DUPONT",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Jean",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "jean.dupont@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Nouméa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2024-03-14",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "1250000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Marie-Claire",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "mc.delafontaine@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+33 6 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Lyon",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2023-11-02",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "840000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "KALOÏ",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Hélène",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "helene.kaloi@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 78 12 34",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Dumbéa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2025-01-20",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "2310000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Lefèvre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Martin",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "martin.lefevre@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "07 11 22 33 44",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Païta",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2022-06-09",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "475000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Pierre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "pierre.garnier@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 98 76 54 32",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Koné",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2024-09-30",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "1980000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Vaitiare",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "PRENOM",
+          "valeur": "Anaïs",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "anais.vaitiare@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 82 45 67",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2025-05-12",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "620000",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        }
+      ],
+      "ne_pas_detecter": []
+    },
+    {
+      "fichier": "brief.md",
+      "langue": "fr",
+      "notes": "Markdown avec tableau, lien mailto, URL, IP, pièges.",
+      "entites": [
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "14 rue des Frangipaniers, 98800 Nouméa",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "gérant",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "06 12 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "pierre.garnier@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps",
+            "lien"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 78 12 34",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "3 décembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Koné",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "105 000,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "URL",
+          "valeur": "https://portail.example.com/clients/nautilus",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "lien"
+          ]
+        },
+        {
+          "type": "IP",
+          "valeur": "192.0.2.45",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "Martinique",
+        "pierre angulaire",
+        "1.2.3.4"
+      ]
+    },
+    {
+      "fichier": "report-en.docx",
+      "langue": "en",
+      "notes": "Document anglais : noms, emails, téléphones UK et US, IBAN GB.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Emily Carter",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee",
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "Chief Financial Officer",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Harbour Analytics Pty Ltd",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "221 Harbour Street, Sydney NSW 2000",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "41 years old",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "emily.carter@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+44 20 7946 0958",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+1 202 555 0143",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "March 14, 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "USD 48,500.00",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "IBAN",
+          "valeur": "GB74 BARC 2000 0012 3456 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 12 34 56",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "1.2.3.4"
+      ]
+    },
+    {
+      "fichier": "informe-es.txt",
+      "langue": "es",
+      "notes": "Texte espagnol : noms, emails, téléphones ES et MX, IBAN ES.",
+      "entites": [
+        {
+          "type": "DATE",
+          "valeur": "14 de marzo de 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Carlos Fernández Ruiz",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "director financiero",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "María José Ortega Vidal",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "52 años",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "ADRESSE",
+          "valeur": "Calle de las Acacias 12, 28013 Madrid",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "carlos.fernandez@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "maria.ortega@example.org",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+34 612 34 56 78",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+52 55 1234 5678",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "+687 12 34 56",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Jean Dupont",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "48.500,00 EUR",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "IBAN",
+          "valeur": "ES60 0049 1500 0512 3456 7892",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Valencia",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2 de abril de 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "1.2.3.4"
+      ]
+    },
+    {
+      "fichier": "reponse-ia-exemple.md",
+      "langue": "fr",
+      "notes": "Aucune donnée sensible : sert à tester la restauration (balises correctes, altérées [Personne 1], [PERSONNE\\_1], **[SOCIETE_1]**, [personne_2], inventée [PERSONNE_99]).",
+      "entites": [],
+      "ne_pas_detecter": [
+        "[PERSONNE_1]",
+        "[SOCIETE_1]",
+        "[PERSONNE_99]"
+      ]
+    }
+  ]
+}

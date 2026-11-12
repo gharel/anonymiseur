@@ -42,6 +42,9 @@ allow = [
     # Polices par défaut d'egui (repli pour les glyphes absents de Georama) :
     # la licence autorise l'embarquement et la redistribution.
     "Ubuntu-font-1.0",
+    # Liste des autorités de certification (webpki-root-certs), tirée par ureq
+    # dans le script de build d'ort-sys : utilisée à la compilation seulement.
+    "CDLA-Permissive-2.0",
     "AGPL-3.0",
     "AGPL-3.0-only",
     "AGPL-3.0-or-later",

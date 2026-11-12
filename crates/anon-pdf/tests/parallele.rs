@@ -33,7 +33,8 @@ fn run(job: usize) -> String {
         }
         1 => {
             let h = handler_for("pdf").unwrap();
-            joined(&h.extract(&exemple("courrier-scanne.pdf")).unwrap().blocks)
+            // deep_scan : OCR de la page scannée.
+            joined(&h.deep_scan(&exemple("courrier-scanne.pdf")).unwrap())
         }
         2 => {
             let page = MupdfImageProcessor

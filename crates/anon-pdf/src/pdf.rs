@@ -5,13 +5,14 @@
 use std::borrow::Cow;
 
 use anon_core::{
-    BlockContext, BlockRole, Extraction, FormatError, Handler, Output, TextBlock, TextTransform,
-    TransformOptions, Warning, WarningCode,
+    BlockContext, BlockRole, Extraction, FormatError, Handler, MediaItem, Output, TextBlock,
+    TextTransform, TransformOptions, Warning, WarningCode,
 };
-use image::GrayImage;
+use image::{DynamicImage, ImageFormat, RgbImage};
 use mupdf::pdf::{
-    PdfAnnotationType, PdfDocument, PdfObject, PdfPage, PdfRedactImageMethod,
-    PdfRedactLineArtMethod, PdfRedactOptions, PdfRedactTextMethod, PdfWriteOptions,
+    InsertImageOptions, PageImageSource, PdfAnnotationType, PdfDocument, PdfObject, PdfPage,
+    PdfRedactImageMethod, PdfRedactLineArtMethod, PdfRedactOptions, PdfRedactTextMethod,
+    PdfWriteOptions,
 };
 use mupdf::shape::{FinishOptions, PdfColor, Shape, TextOptions};
 use mupdf::{
@@ -19,6 +20,7 @@ use mupdf::{
 };
 
 use crate::image_handler::{OcrHit, ocr_blocks, ocr_hits};
+use crate::image_proc::{decode, encode};
 use crate::ocr::{LOW_OCR_CONFIDENCE, OcrResult, OcrSession};
 
 /// Nombre maximal de pages traitées.
@@ -55,6 +57,17 @@ const REDACT: PdfRedactOptions = PdfRedactOptions {
     line_art: PdfRedactLineArtMethod::None,
     text: PdfRedactTextMethod::Remove,
 };
+
+/// Remplacement d'une image : celles qui touchent la zone sont retirées du fichier.
+const REPLACE_IMAGE: PdfRedactOptions = PdfRedactOptions {
+    black_boxes: false,
+    image_method: PdfRedactImageMethod::Remove,
+    line_art: PdfRedactLineArtMethod::None,
+    text: PdfRedactTextMethod::Remove,
+};
+
+/// Écart minimal (pt) entre une balise qui déborde et le texte suivant.
+pub const TAG_OVERFLOW_GAP_PT: f32 = 1.5;
 
 fn page_part(index: i32) -> String {
     format!("page {}", index + 1)
@@ -98,6 +111,8 @@ fn open(input: &[u8]) -> Result<PdfDocument, FormatError> {
 #[derive(Debug, Clone, Copy)]
 struct Glyph {
     rect: Rect,
+    /// Espace : n'occupe pas la place libre à droite d'une balise.
+    blank: bool,
     baseline: f32,
     size: f32,
     line: usize,
@@ -305,6 +320,7 @@ fn layout(page: &Page, part: &str, with_annotations: bool) -> Result<PageLayout,
                         let idx = unit.glyphs.len();
                         unit.glyphs.push(Glyph {
                             rect: quad_rect(&c.quad),
+                            blank: c.ch.is_whitespace(),
                             baseline: c.origin.y,
                             size: c.size,
                             line: line_id,
@@ -332,11 +348,52 @@ fn layout(page: &Page, part: &str, with_annotations: bool) -> Result<PageLayout,
 // OCR d'une page rendue
 // ---------------------------------------------------------------------------
 
-/// Page rendue pour l'OCR.
-type Rendered = (GrayImage, f32, (i32, i32));
+/// Page rendue en couleurs : image, échelle (px/pt), origine du pixmap (px).
+struct Rendered {
+    rgb: RgbImage,
+    scale: f32,
+    origin: (i32, i32),
+}
 
-/// Rendu en niveaux de gris : image, échelle (px/pt), origine du pixmap (px).
-fn render_gray(page: &Page, bounds: &Rect, part: &str) -> Result<Option<Rendered>, FormatError> {
+impl Rendered {
+    fn dpi(&self) -> u32 {
+        (72.0 * self.scale).round().max(1.0) as u32
+    }
+
+    /// Rectangle en pixels (x, y, l, h) d'une zone en pt, `None` si trop petit.
+    fn crop_box(&self, z: &Rect) -> Option<(u32, u32, u32, u32)> {
+        let (ox, oy) = (i64::from(self.origin.0), i64::from(self.origin.1));
+        let (w, h) = (i64::from(self.rgb.width()), i64::from(self.rgb.height()));
+        let x0 = ((z.x0 * self.scale).floor() as i64 - ox).clamp(0, w);
+        let y0 = ((z.y0 * self.scale).floor() as i64 - oy).clamp(0, h);
+        let x1 = ((z.x1 * self.scale).ceil() as i64 - ox).clamp(0, w);
+        let y1 = ((z.y1 * self.scale).ceil() as i64 - oy).clamp(0, h);
+        if x1 - x0 < 8 || y1 - y0 < 8 {
+            return None;
+        }
+        Some((x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32))
+    }
+
+    fn crop(&self, z: &Rect) -> Option<(RgbImage, u32, u32)> {
+        let (cx, cy, cw, ch) = self.crop_box(z)?;
+        Some((
+            image::imageops::crop_imm(&self.rgb, cx, cy, cw, ch).to_image(),
+            cx,
+            cy,
+        ))
+    }
+
+    /// Zone en PNG, à la résolution de l'OCR.
+    fn png(&self, z: &Rect) -> Result<Option<Vec<u8>>, FormatError> {
+        let Some((img, _, _)) = self.crop(z) else {
+            return Ok(None);
+        };
+        encode(&DynamicImage::ImageRgb8(img), ImageFormat::Png).map(Some)
+    }
+}
+
+/// Rendu de la page à la résolution de l'OCR (réduite pour les pages énormes).
+fn render_page(page: &Page, bounds: &Rect, part: &str) -> Result<Option<Rendered>, FormatError> {
     let (w, h) = (bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
     if !(w.is_finite() && h.is_finite()) || w < 1.0 || h < 1.0 {
         return Ok(None);
@@ -349,32 +406,60 @@ fn render_gray(page: &Page, bounds: &Rect, part: &str) -> Result<Option<Rendered
     let pix = page
         .to_pixmap(
             &Matrix::new_scale(scale, scale),
-            &Colorspace::device_gray(),
+            &Colorspace::device_rgb(),
             false,
             true,
         )
         .map_err(mu(part))?;
     let (pw, ph) = (pix.width(), pix.height());
-    if pix.n() != 1 || pw == 0 || ph == 0 {
+    if pix.n() != 3 || pw == 0 || ph == 0 {
         return Ok(None);
     }
     let stride =
         usize::try_from(pix.stride()).map_err(|_| FormatError::corrupt(part, "rendu invalide"))?;
+    let row_len = pw as usize * 3;
     let samples = pix.samples();
-    let mut img = GrayImage::new(pw, ph);
-    for (y, row) in img.rows_mut().enumerate() {
+    let mut rgb = RgbImage::new(pw, ph);
+    for (y, row) in rgb.chunks_exact_mut(row_len).enumerate() {
         let start = y * stride;
-        let Some(src) = samples.get(start..start + pw as usize) else {
+        let Some(src) = samples.get(start..start + row_len) else {
             return Err(FormatError::corrupt(part, "rendu invalide"));
         };
-        for (p, s) in row.zip(src) {
-            p.0[0] = *s;
-        }
+        row.copy_from_slice(src);
     }
-    Ok(Some((img, scale, pix.origin())))
+    Ok(Some(Rendered {
+        rgb,
+        scale,
+        origin: pix.origin(),
+    }))
 }
 
-/// OCR des zones (en pt) d'une page ; résultats en coordonnées de page (pt).
+/// OCR de zones (en pt) d'une page rendue ; résultats en coordonnées de page (pt).
+fn ocr_rendered(
+    session: &OcrSession,
+    r: &Rendered,
+    zones: &[Rect],
+) -> Result<Vec<OcrResult>, FormatError> {
+    let mut out = Vec::new();
+    for z in zones {
+        let Some((crop, cx, cy)) = r.crop(z) else {
+            continue;
+        };
+        let gray = DynamicImage::ImageRgb8(crop).to_luma8();
+        let mut res = session.recognize(&gray, r.dpi())?;
+        let (ox, oy, scale) = (r.origin.0 as f32, r.origin.1 as f32, r.scale);
+        for it in &mut res.items {
+            it.x0 = (it.x0 + cx as f32 + ox) / scale;
+            it.x1 = (it.x1 + cx as f32 + ox) / scale;
+            it.y0 = (it.y0 + cy as f32 + oy) / scale;
+            it.y1 = (it.y1 + cy as f32 + oy) / scale;
+        }
+        out.push(res);
+    }
+    Ok(out)
+}
+
+/// OCR des zones (en pt) d'une page.
 fn ocr_page_zones(
     session: &OcrSession,
     page: &Page,
@@ -385,33 +470,72 @@ fn ocr_page_zones(
     if zones.is_empty() {
         return Ok(Vec::new());
     }
-    let Some((img, scale, (ox, oy))) = render_gray(page, bounds, part)? else {
-        return Ok(Vec::new());
-    };
-    let dpi = (72.0 * scale).round().max(1.0) as u32;
-    let mut out = Vec::new();
-    for z in zones {
-        let x0 = ((z.x0 * scale).floor() as i64 - i64::from(ox)).clamp(0, i64::from(img.width()));
-        let y0 = ((z.y0 * scale).floor() as i64 - i64::from(oy)).clamp(0, i64::from(img.height()));
-        let x1 = ((z.x1 * scale).ceil() as i64 - i64::from(ox)).clamp(0, i64::from(img.width()));
-        let y1 = ((z.y1 * scale).ceil() as i64 - i64::from(oy)).clamp(0, i64::from(img.height()));
-        if x1 - x0 < 8 || y1 - y0 < 8 {
-            continue;
-        }
-        let (cx, cy, cw, ch) = (x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
-        let crop = image::imageops::crop_imm(&img, cx, cy, cw, ch).to_image();
-        let mut res = session.recognize(&crop, dpi)?;
-        let to_pt_x = |v: f32| (v + cx as f32 + ox as f32) / scale;
-        let to_pt_y = |v: f32| (v + cy as f32 + oy as f32) / scale;
-        for it in &mut res.items {
-            it.x0 = to_pt_x(it.x0);
-            it.x1 = to_pt_x(it.x1);
-            it.y0 = to_pt_y(it.y0);
-            it.y1 = to_pt_y(it.y1);
-        }
-        out.push(res);
+    match render_page(page, bounds, part)? {
+        Some(r) => ocr_rendered(session, &r, zones),
+        None => Ok(Vec::new()),
     }
-    Ok(out)
+}
+
+/// Images exposées d'une page, avec leur nom stable : la page entière si elle
+/// est scannée (`page 3`), sinon chaque grande image (`page 3 image 2`).
+fn named_zones(lay: &PageLayout, index: i32) -> Vec<(String, Rect)> {
+    let part = page_part(index);
+    if lay.is_scanned() {
+        return vec![(part, lay.bounds)];
+    }
+    lay.ocr_zones(false)
+        .into_iter()
+        .enumerate()
+        .map(|(k, z)| (format!("{part} image {}", k + 1), z))
+        .collect()
+}
+
+/// Remplace des zones de la page par des images fournies : les images
+/// d'origine qui les touchent sont retirées (pas seulement masquées), le texte
+/// de la zone aussi, puis la nouvelle image est posée au même endroit.
+fn replace_zones(
+    doc: &mut PdfDocument,
+    page: &mut PdfPage,
+    zones: &[(Rect, Vec<u8>)],
+    part: &str,
+) -> Result<(), FormatError> {
+    let mut pngs = Vec::with_capacity(zones.len());
+    for (_, bytes) in zones {
+        // Décodage borné, puis PNG propre (sans métadonnées).
+        let decoded = decode(bytes)?;
+        pngs.push(encode(&decoded.image, ImageFormat::Png)?);
+    }
+    for (z, _) in zones {
+        page.add_redact_annotation(*z).map_err(mu(part))?;
+    }
+    page.apply_redactions_with_options(REPLACE_IMAGE)
+        .map_err(mu(part))?;
+    // Rectangles MuPDF (origine en haut) → espace utilisateur PDF.
+    let to_pdf = page
+        .ctm()
+        .ok()
+        .and_then(|m| m.invert())
+        .ok_or_else(|| FormatError::corrupt(part, "matrice de page invalide"))?;
+    for ((z, _), png) in zones.iter().zip(&pngs) {
+        page.insert_image(
+            doc,
+            z.transform(&to_pdf),
+            PageImageSource::Bytes {
+                data: png,
+                format_hint: Some("png"),
+            },
+            InsertImageOptions::default(),
+        )
+        .map_err(mu(part))?;
+    }
+    Ok(())
+}
+
+fn center_in(r: &Rect, zones: &[Rect]) -> bool {
+    let (cx, cy) = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0);
+    zones
+        .iter()
+        .any(|z| cx >= z.x0 && cx <= z.x1 && cy >= z.y0 && cy <= z.y1)
 }
 
 fn low_confidence(part: &str) -> Warning {
@@ -469,7 +593,7 @@ fn info_strings(doc: &PdfDocument) -> Vec<(Vec<u8>, String)> {
 
 fn xmp_text(doc: &PdfDocument) -> Option<String> {
     let md = doc.catalog().ok()?.get_dict("Metadata").ok()??;
-    let md = md.resolve().ok()??;
+    // `is_stream` ne vaut que sur la référence indirecte, pas sur l'objet résolu.
     if !md.is_stream().ok()? {
         return None;
     }
@@ -666,11 +790,13 @@ fn object_blocks(doc: &PdfDocument) -> Vec<TextBlock> {
             });
         }
         // Flux XML (XMP) et fichiers joints : texte brut.
-        if obj.is_stream().unwrap_or(false)
+        let stream = doc.new_indirect(num, 0).ok();
+        if let Some(stream) = stream
+            && stream.is_stream().unwrap_or(false)
             && (is_name(&obj, "Type", b"Metadata")
                 || is_name(&obj, "Subtype", b"XML")
                 || is_name(&obj, "Type", b"EmbeddedFile"))
-            && let Ok(bytes) = obj.read_stream()
+            && let Ok(bytes) = stream.read_stream()
         {
             let s = String::from_utf8_lossy(&bytes).into_owned();
             if !s.trim().is_empty() {
@@ -743,17 +869,60 @@ fn ocr_placements(results: &[OcrResult], tr: &dyn TextTransform, part: &str) -> 
     out
 }
 
+/// Morceau où écrire la balise d'une occurrence : le plus large.
+fn tag_segment(p: &Placement) -> Option<&Segment> {
+    p.segments
+        .iter()
+        .max_by(|a, b| (a.rect.x1 - a.rect.x0).total_cmp(&(b.rect.x1 - b.rect.x0)))
+}
+
+/// Abscisse jusqu'où une balise posée sur `seg` peut déborder à droite sans
+/// recouvrir de texte : premier glyphe conservé (ou balise voisine) sur la même
+/// ligne, sinon le bord de la page.
+fn free_right(seg: &Segment, others: &[Rect], glyphs: &[Rect], page_right: f32) -> f32 {
+    let h = (seg.rect.y1 - seg.rect.y0).max(0.1);
+    let same_line = |r: &Rect| {
+        let overlap = seg.rect.y1.min(r.y1) - seg.rect.y0.max(r.y0);
+        overlap > 0.5 * h.min((r.y1 - r.y0).max(0.1))
+    };
+    let mut limit = page_right;
+    for r in glyphs.iter().chain(others) {
+        if r.x0 >= seg.rect.x1 - 0.5 && same_line(r) {
+            limit = limit.min(r.x0);
+        }
+    }
+    limit
+}
+
 /// Pose les zones de caviardage, les applique, puis écrit les balises.
-/// Renvoie le nombre de balises écrites sous la taille minimale.
+/// `glyphs` : glyphes visibles de la page (avant caviardage), pour savoir si
+/// une balise peut déborder. Renvoie le nombre de balises écrites à la taille minimale.
 fn redact_and_tag(
     doc: &mut PdfDocument,
     page: &mut PdfPage,
     plan: &[Placement],
+    glyphs: &[Rect],
+    page_right: f32,
     part: &str,
 ) -> Result<usize, FormatError> {
     if plan.is_empty() {
         return Ok(0);
     }
+    // Glyphes conservés : ceux qui ne sont pas sous une zone caviardée.
+    let redacted: Vec<Rect> = plan
+        .iter()
+        .flat_map(|p| p.segments.iter().map(|s| s.rect))
+        .collect();
+    let kept: Vec<Rect> = glyphs
+        .iter()
+        .filter(|g| !center_in(g, &redacted))
+        .copied()
+        .collect();
+    let starts: Vec<Rect> = plan
+        .iter()
+        .filter_map(tag_segment)
+        .map(|s| s.rect)
+        .collect();
     for p in plan {
         for s in &p.segments {
             page.add_redact_annotation(s.rect).map_err(mu(part))?;
@@ -780,18 +949,19 @@ fn redact_and_tag(
                     .map_err(mu(part))?;
             }
         }
-        let Some(seg) = p
-            .segments
-            .iter()
-            .max_by(|a, b| (a.rect.x1 - a.rect.x0).total_cmp(&(b.rect.x1 - b.rect.x0)))
-        else {
+        let Some(seg) = tag_segment(p) else {
             continue;
         };
         if p.tag.is_empty() {
             continue;
         }
         let w1 = width_1pt(&font, &p.tag);
-        let avail = seg.rect.x1 - seg.rect.x0;
+        let mut avail = seg.rect.x1 - seg.rect.x0;
+        if !p.white_box {
+            // Texte natif : la balise peut déborder sur la place libre à droite.
+            let limit = free_right(seg, &starts, &kept, page_right);
+            avail = avail.max(limit - seg.rect.x0 - TAG_OVERFLOW_GAP_PT);
+        }
         let orig = if seg.size.is_finite() && seg.size > 0.0 {
             seg.size
         } else {
@@ -866,7 +1036,7 @@ impl PdfHandler {
         ocr: &mut Option<OcrSession>,
         deep: bool,
         blocks: &mut Vec<TextBlock>,
-        warnings: &mut Vec<Warning>,
+        media: &mut Vec<MediaItem>,
     ) -> Result<(), FormatError> {
         let part = page_part(index);
         let page = doc.load_pdf_page(index).map_err(mu(&part))?;
@@ -884,22 +1054,30 @@ impl PdfHandler {
                 ctx: BlockContext::new(part.clone(), BlockRole::Body),
             });
         }
-        let zones = lay.ocr_zones(deep);
-        if !zones.is_empty() {
-            let s = session(ocr)?;
-            let results = ocr_page_zones(s, &page, &lay.bounds, &zones, &part)?;
-            let mut low = false;
-            for r in &results {
-                blocks.extend(ocr_blocks(r, &part));
-                low |= !r.items.is_empty() && r.mean_confidence() < LOW_OCR_CONFIDENCE;
+        if deep {
+            // Contrôle de fuite : OCR de toutes les images.
+            let zones = lay.ocr_zones(true);
+            if !zones.is_empty() {
+                let s = session(ocr)?;
+                for r in ocr_page_zones(s, &page, &lay.bounds, &zones, &part)? {
+                    blocks.extend(ocr_blocks(&r, &part));
+                }
             }
-            if low && !deep {
-                warnings.push(low_confidence(&part));
+            return Ok(());
+        }
+        // Extraction : pages scannées et grandes images exposées comme images
+        // (le moteur les lit par OCR et l'utilisateur peut y tracer des zones).
+        let named = named_zones(&lay, index);
+        if !named.is_empty()
+            && let Some(r) = render_page(&page, &lay.bounds, &part)?
+        {
+            for (name, z) in named {
+                if let Some(bytes) = r.png(&z)? {
+                    media.push(MediaItem { name, bytes });
+                }
             }
         }
-        if !deep {
-            page_side_blocks(&page, &part, blocks);
-        }
+        page_side_blocks(&page, &part, blocks);
         Ok(())
     }
 }
@@ -936,8 +1114,9 @@ impl Handler for PdfHandler {
         }
         let n = doc.page_count().map_err(mu(DOCUMENT_PART))?;
         let mut ocr = None;
+        let mut media = Vec::new();
         for i in 0..n {
-            Self::page_blocks(&doc, i, &mut ocr, false, &mut blocks, &mut warnings)?;
+            Self::page_blocks(&doc, i, &mut ocr, false, &mut blocks, &mut media)?;
         }
         if !embedded_file_names(&doc).is_empty() {
             warnings.push(Warning::new(
@@ -948,7 +1127,7 @@ impl Handler for PdfHandler {
         }
         Ok(Extraction {
             blocks,
-            media: Vec::new(),
+            media,
             warnings,
         })
     }
@@ -956,11 +1135,11 @@ impl Handler for PdfHandler {
     fn deep_scan(&self, input: &[u8]) -> Result<Vec<TextBlock>, FormatError> {
         let doc = open(input)?;
         let mut blocks = Vec::new();
-        let mut warnings = Vec::new();
+        let mut media = Vec::new();
         let n = doc.page_count().map_err(mu(DOCUMENT_PART))?;
         let mut ocr = None;
         for i in 0..n {
-            Self::page_blocks(&doc, i, &mut ocr, true, &mut blocks, &mut warnings)?;
+            Self::page_blocks(&doc, i, &mut ocr, true, &mut blocks, &mut media)?;
             let part = page_part(i);
             if let Ok(page) = doc.load_pdf_page(i) {
                 page_side_blocks(&page, &part, &mut blocks);
@@ -1016,23 +1195,52 @@ impl Handler for PdfHandler {
                     });
                 }
             }
-            // 2. Pages scannées et grandes images : mots de l'OCR.
-            let zones = lay.ocr_zones(false);
-            if !zones.is_empty() {
-                let s = session(&mut ocr)?;
-                let results = ocr_page_zones(s, &page, &lay.bounds, &zones, &part)?;
-                if results
-                    .iter()
-                    .any(|r| !r.items.is_empty() && r.mean_confidence() < LOW_OCR_CONFIDENCE)
-                {
-                    warnings.push(low_confidence(&part));
+            // 2. Pages scannées et grandes images : image fournie par
+            //    `opts.media` (masquée par le moteur), sinon mots de l'OCR.
+            let named = named_zones(&lay, i);
+            let mut replaced: Vec<(Rect, Vec<u8>)> = Vec::new();
+            if !named.is_empty()
+                && let Some(r) = render_page(&page, &lay.bounds, &part)?
+            {
+                let mut internal = Vec::new();
+                for (name, z) in named {
+                    let new = match opts.media {
+                        Some(m) => r.png(&z)?.and_then(|png| m.apply(&name, &png)),
+                        None => None,
+                    };
+                    match new {
+                        Some(bytes) => replaced.push((z, bytes)),
+                        None => internal.push(z),
+                    }
                 }
-                let more = ocr_placements(&results, tr, &part);
-                count += more.len();
-                plan.extend(more);
+                if !internal.is_empty() {
+                    let s = session(&mut ocr)?;
+                    let results = ocr_rendered(s, &r, &internal)?;
+                    if results
+                        .iter()
+                        .any(|r| !r.items.is_empty() && r.mean_confidence() < LOW_OCR_CONFIDENCE)
+                    {
+                        warnings.push(low_confidence(&part));
+                    }
+                    let more = ocr_placements(&results, tr, &part);
+                    count += more.len();
+                    plan.extend(more);
+                }
+            }
+            if !replaced.is_empty() {
+                // Le texte natif sous une image remplacée part avec la zone :
+                // pas de balise par-dessus l'image déjà masquée.
+                let zones: Vec<Rect> = replaced.iter().map(|(z, _)| *z).collect();
+                plan.retain(|p| !p.segments.iter().all(|s| center_in(&s.rect, &zones)));
+                replace_zones(&mut doc, &mut page, &replaced, &part)?;
             }
             // 3. Caviardage réel puis balises.
-            let small = redact_and_tag(&mut doc, &mut page, &plan, &part)?;
+            let glyphs: Vec<Rect> = lay
+                .units
+                .iter()
+                .flat_map(|u| u.glyphs.iter().filter(|g| !g.blank).map(|g| g.rect))
+                .collect();
+            let small = redact_and_tag(&mut doc, &mut page, &plan, &glyphs, lay.bounds.x1, &part)?;
             if small > 0 {
                 warnings.push(Warning::new(
                     WarningCode::TagDidNotFit,
@@ -1230,6 +1438,7 @@ mod tests {
                 let y = (l + line_offset) as f32 * 20.0;
                 u.glyphs.push(Glyph {
                     rect: Rect::new(x, y, x + 10.0, y + 12.0),
+                    blank: c.is_whitespace(),
                     baseline: y + 10.0,
                     size: 12.0,
                     line: l,

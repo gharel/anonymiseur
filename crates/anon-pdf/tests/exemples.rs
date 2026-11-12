@@ -14,10 +14,15 @@ use common::*;
 use mupdf::pdf::PdfDocument;
 use mupdf::{Quad, Rect};
 
+/// Début de la balise (bord gauche) et milieu vertical : une balise peut
+/// déborder à droite sur la place libre, mais commence là où était la valeur.
 fn quad_center(q: &Quad) -> (f32, f32) {
     let xs = [q.ul.x, q.ur.x, q.ll.x, q.lr.x];
     let ys = [q.ul.y, q.ur.y, q.ll.y, q.lr.y];
-    (xs.iter().sum::<f32>() / 4.0, ys.iter().sum::<f32>() / 4.0)
+    (
+        xs.iter().copied().fold(f32::MAX, f32::min),
+        ys.iter().sum::<f32>() / 4.0,
+    )
 }
 
 fn quad_rect(q: &Quad) -> Rect {
@@ -186,13 +191,13 @@ fn courrier_scanne_ocr() {
     let values = expected("courrier-scanne.pdf");
     let h = PdfHandler;
 
+    // La page scannée est exposée comme image : l'OCR est celui du moteur
+    // (`MupdfImageProcessor`), pas des blocs `Ocr` de l'extraction.
     let ex = h.extract(&input).expect("extract");
-    assert!(
-        ex.blocks
-            .iter()
-            .any(|b| b.ctx.role == anon_core::BlockRole::Ocr)
-    );
-    let (read, missed) = found(&values, &joined(&ex.blocks));
+    assert_eq!(ex.media.len(), 1);
+    let page = anon_core::ImageProcessor::ocr(&anon_pdf::MupdfImageProcessor, &ex.media[0].bytes)
+        .expect("OCR de la page");
+    let (read, missed) = found(&values, &norm(&page.text_with_spans().0));
     let rate = read.len() as f32 / values.len() as f32;
     println!(
         "courrier-scanne.pdf : OCR {}/{} = {:.1} % ; manquées : {missed:?}",

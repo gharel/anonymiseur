@@ -7,6 +7,8 @@ __pycache__/
 
 # Tables de correspondance et sorties : jamais versionnées (données réelles possibles)
 *.anonmap
+# Exception : fichier de référence fictif qui fige le format v1
+!crates/anon-vault/tests/fixtures/*.anonmap
 /sorties/
 *_anonymise.*
 *_restaure.*

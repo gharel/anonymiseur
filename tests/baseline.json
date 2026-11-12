@@ -1,0 +1,209 @@
+{
+  "profils": {
+    "renforce": {
+      "ADRESSE": {
+        "attendus": 13,
+        "precision": 1.0,
+        "rappel": 0.923
+      },
+      "AGE": {
+        "attendus": 5,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "CB": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "DATE": {
+        "attendus": 26,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "DATE_NAISS": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "EMAIL": {
+        "attendus": 29,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "FONCTION": {
+        "attendus": 20,
+        "precision": 0.85,
+        "rappel": 0.85
+      },
+      "IBAN": {
+        "attendus": 3,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "IP": {
+        "attendus": 2,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "LIEU": {
+        "attendus": 16,
+        "precision": 1.0,
+        "rappel": 0.938
+      },
+      "MATRICULE": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "MONTANT": {
+        "attendus": 25,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "NIR": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "NOM": {
+        "attendus": 17,
+        "precision": 0.864,
+        "rappel": 1.0
+      },
+      "PERSONNE": {
+        "attendus": 44,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "PLAQUE": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "PRENOM": {
+        "attendus": 17,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "RIDET": {
+        "attendus": 8,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "SIRET": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "SOCIETE": {
+        "attendus": 9,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "TEL": {
+        "attendus": 39,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "URL": {
+        "attendus": 2,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "_GLOBAL": {
+        "attendus": 281,
+        "precision": 0.979,
+        "rappel": 0.982
+      }
+    },
+    "standard": {
+      "ADRESSE": {
+        "attendus": 13,
+        "precision": 1.0,
+        "rappel": 0.923
+      },
+      "CB": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "DATE_NAISS": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "EMAIL": {
+        "attendus": 29,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "IBAN": {
+        "attendus": 3,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "IP": {
+        "attendus": 2,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "NIR": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "NOM": {
+        "attendus": 17,
+        "precision": 0.864,
+        "rappel": 1.0
+      },
+      "PERSONNE": {
+        "attendus": 44,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "PLAQUE": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "PRENOM": {
+        "attendus": 17,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "RIDET": {
+        "attendus": 8,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "SIRET": {
+        "attendus": 1,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "SOCIETE": {
+        "attendus": 9,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "TEL": {
+        "attendus": 39,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "URL": {
+        "attendus": 2,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "_GLOBAL": {
+        "attendus": 188,
+        "precision": 0.984,
+        "rappel": 0.995
+      }
+    }
+  },
+  "tolerance": 0.02
+}

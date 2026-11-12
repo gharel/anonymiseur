@@ -1,0 +1,19 @@
+[package]
+name = "anon-replace"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aho-corasick = "1.1.5"
+anon-core = { version = "0.1.0", path = "../anon-core" }
+regex = "1.13.1"
+unicode-normalization = "0.1.26"
+
+[dev-dependencies]
+proptest = "1.12.0"

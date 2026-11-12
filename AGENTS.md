@@ -29,8 +29,13 @@ Espace de travail Cargo. Les dépendances ne vont que vers le bas de cette liste
 | `crates/anon-office` | Gestionnaires Word/Excel/PowerPoint (OOXML), ODF, texte brut. Pur Rust. |
 | `crates/anon-pdf` | PDF, images, OCR (MuPDF + Tesseract). Seul crate autorisé à utiliser `unsafe` (FFI). |
 | `crates/anon-ner` | Détection de noms par modèle ONNX. Optionnel (fonctionnalité `ia`). |
-| `crates/anon-detect` | Règles, dictionnaires, colonnes de tableur, quasi-identifiants, fusion. |
-| `crates/anon-core` | **Contrats** partagés + remplacement, restauration, table chiffrée. |
+| `crates/anon-detect` | Règles à clé, colonnes de tableur, quasi-identifiants, listes, fusion des détections. |
+| `crates/anon-dict` | Dictionnaires embarqués (prénoms, noms, communes) et leur détecteur. |
+| `crates/anon-replace` | Normalisation, `Replacer`, `Restorer`, enregistrement des valeurs dans la session. |
+| `crates/anon-vault` | Fichier `.anonmap` : session sérialisée et chiffrée par mot de passe. |
+| `crates/anon-core` | **Contrats** partagés, rien d'autre. |
+
+`spikes/` contient des prototypes jetables, hors espace de travail.
 
 ### Contrats (`anon-core`)
 

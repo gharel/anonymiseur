@@ -11,3 +11,5 @@ workspace = true
 
 [dependencies]
 anon-core = { version = "0.1.0", path = "../anon-core" }
+regex = "1.13.1"
+unicode-normalization = "0.1.26"

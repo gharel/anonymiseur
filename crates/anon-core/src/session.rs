@@ -55,6 +55,7 @@ impl fmt::Debug for Entity {
 pub struct MediaOriginal {
     /// SHA-256 (hexadécimal minuscule) de l'image **masquée** écrite dans le fichier anonymisé.
     pub masked_sha256: String,
+    #[serde(with = "serde_bytes")]
     pub original: Vec<u8>,
 }
 
@@ -106,6 +107,5 @@ impl Session {
     }
 }
 
-// Les méthodes d'enregistrement des valeurs (`intern`, liaison PERSONNE/NOM/PRENOM,
-// variantes, liste « jamais ») sont implémentées dans ce fichier par le lot
-// « moteur de remplacement ». Voir AGENTS.md.
+// L'enregistrement des valeurs (`intern`, liaison PERSONNE/NOM/PRENOM, variantes,
+// liste « jamais ») est dans le crate `anon-replace` (trait `SessionExt`).

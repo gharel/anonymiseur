@@ -1,0 +1,5 @@
+/target
+/target-crt
+/out
+/tessdata
+*.log

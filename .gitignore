@@ -13,9 +13,8 @@ __pycache__/
 *_anonymise.*
 *_restaure.*
 
-# Modèles et données volumineuses, téléchargés par tools/
+# Modèles volumineux, téléchargés par tools/
 /assets/ner/*.onnx
-/assets/tessdata/*.traineddata
 
 .DS_Store
 Thumbs.db

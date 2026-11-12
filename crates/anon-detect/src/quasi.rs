@@ -80,11 +80,7 @@ const MONTH_NAMES: &[(&str, u32)] = &[
 const TITLES_SOLO: &[&str] = &[
     r"g[ée]rant(?:e|\(e\))?",
     r"(?:vice[- ])?pr[ée]sident(?:e|\(e\))?",
-    r"pdg",
-    r"dg",
-    r"daf",
-    r"drh",
-    r"dsi",
+    r"(?:pdg|dg|daf|drh|dsi)\b",
     r"comptable",
     r"notaire",
     r"m[ée]decin",
@@ -93,9 +89,22 @@ const TITLES_SOLO: &[&str] = &[
     r"ing[ée]nieur(?:e|\(e\))?",
     r"assistant(?:e|\(e\))?<S>+de<S>+direction",
     r"secr[ée]taire<S>+g[ée]n[ée]ral(?:e)?",
-    r"ceo|cfo|cto|coo|cio",
+    r"(?:ceo|cfo|cto|coo|cio)\b",
     r"(?:(?:project|product|sales|general|account|marketing|program)<S>+)?manager",
     r"gerente",
+    r"secr[ée]taire",
+    r"juriste",
+    r"technicien(?:ne)?",
+    r"stagiaire",
+    r"apprenti(?:e|\(e\))?",
+    r"analyste?",
+    r"d[ée]velopp(?:eur|euse)",
+    r"developer",
+    r"format(?:eur|rice)",
+    r"coordinat(?:eur|rice)",
+    r"conseill(?:er|[èe]re)",
+    r"chief<S>+(?:\p{L}+<S>+){1,3}officer",
+    r"managing<S>+director",
 ];
 
 /// Intitulés qui exigent un complément (« directeur financier », « chef de projet »).
@@ -107,6 +116,11 @@ const TITLES_NEEDS: &[&str] = &[
     r"director(?:/a|a)?",
     r"responsable",
     r"chef(?:fe)?",
+    r"charg[ée](?:e|\(e\))?",
+    r"agent(?:e)?",
+    r"adjoint(?:e|\(e\))?",
+    r"associ[ée](?:e|\(e\))?",
+    r"commercial(?:e)?",
 ];
 
 /// Adjectifs de complément, pliés (minuscules, sans accents).
@@ -170,7 +184,10 @@ fn month_alternation() -> String {
 const YEAR: &str = r"(?:19|20)\d{2}";
 
 fn titles_pattern(titles: &[&str]) -> String {
-    format!(r"(?i)\b(?:{})", titles.join("|"))
+    format!(
+        r"(?i)\b(?:(?:senior|junior|lead)<S>+)?(?:{})",
+        titles.join("|")
+    )
 }
 
 re!(
@@ -409,7 +426,9 @@ enum Complement {
 }
 
 /// Fin de l'intitulé : `title_end` si aucun complément ne suit.
-fn function_end(text: &str, title_end: usize, of_title: bool) -> usize {
+/// `cap_after_of` : un nom en majuscule après « of »/« for » fait partie de
+/// l'intitulé (« Head of Finance », « Vice President of Sales »).
+fn function_end(text: &str, title_end: usize, of_title: bool, cap_after_of: bool) -> usize {
     let mut state = if of_title {
         Complement::AfterConnector
     } else {
@@ -447,6 +466,9 @@ fn function_end(text: &str, title_end: usize, of_title: bool) -> usize {
             .is_some_and(|a| FUNCTION_ADJECTIVES.contains(&a));
         let stop = FUNCTION_STOPWORDS.contains(&lower.as_str());
         let capital = token.chars().next().is_some_and(char::is_uppercase);
+        if cap_after_of && (lower == "of" || lower == "for") {
+            first_after_of = true;
+        }
         match state {
             Complement::Start | Complement::Adjectives => {
                 if adjective {
@@ -494,7 +516,11 @@ fn fonction(text: &str, out: &mut Out) {
             let of_title = text
                 .get(s..e)
                 .is_some_and(|t| t.to_lowercase().ends_with("of"));
-            let end = function_end(text, e, of_title);
+            let cap_after_of = needs
+                || text
+                    .get(s..e)
+                    .is_some_and(|t| t.to_lowercase().contains("vice"));
+            let end = function_end(text, e, of_title, cap_after_of);
             if (needs && end == e) || overlaps(&taken, s, end) {
                 return false;
             }
@@ -833,6 +859,63 @@ mod tests {
         ] {
             assert_none(t, k);
         }
+    }
+
+    #[test]
+    fn fonction_lexique_etendu() {
+        let k = EntityKind::Fonction;
+        assert_found("juriste d'entreprise", k, "juriste d'entreprise");
+        assert_found("Marie, chargée de projet.", k, "chargée de projet");
+        assert_found("chargé de mission", k, "chargé de mission");
+        assert_found("technicienne", k, "technicienne");
+        assert_found("commercial en immobilier", k, "commercial en immobilier");
+        assert_found("secrétaire", k, "secrétaire");
+        assert_found("stagiaire", k, "stagiaire");
+        assert_found("apprenti(e)", k, "apprenti(e)");
+        assert_found("analyste", k, "analyste");
+        assert_found("développeuse", k, "développeuse");
+        assert_found("formatrice", k, "formatrice");
+        assert_found("coordinateur", k, "coordinateur");
+        assert_found("conseillère en gestion", k, "conseillère en gestion");
+        assert_found("agent de maîtrise", k, "agent de maîtrise");
+        assert_found("adjoint(e) de direction", k, "adjoint(e) de direction");
+        assert_found("associée gérante", k, "gérante");
+        assert_found("associé de l'étude", k, "associé de l'étude");
+        assert_found("développeur senior", k, "développeur senior");
+        assert_none("chargé", k);
+        assert_none("chargé.", k);
+        assert_none("agent", k);
+        assert_none("adjoint", k);
+        assert_none("un accord commercial", k);
+        assert_none("le responsable", k);
+        assert_none("le responsable est parti", k);
+    }
+
+    #[test]
+    fn fonction_anglais() {
+        let k = EntityKind::Fonction;
+        assert_found("Chief Financial Officer", k, "Chief Financial Officer");
+        assert_found(
+            "our Chief Executive Officer, Jane",
+            k,
+            "Chief Executive Officer",
+        );
+        assert_found("Chief Technology Officer.", k, "Chief Technology Officer");
+        assert_found("Vice President", k, "Vice President");
+        assert_found("Vice President of Sales", k, "Vice President of Sales");
+        assert_found("Managing Director", k, "Managing Director");
+        assert_found("General Manager", k, "General Manager");
+        assert_found("Project Manager", k, "Project Manager");
+        assert_found("Account Manager", k, "Account Manager");
+        assert_found("Head of Marketing and Sales", k, "Head of Marketing");
+        assert_found("Senior Consultant", k, "Senior Consultant");
+        assert_found("junior analyst", k, "junior analyst");
+        assert_found("Lead Developer", k, "Lead Developer");
+        assert_none("Chief Officer", k);
+        assert_none("chief", k);
+        assert_none("Head of", k);
+        assert_none("Senior", k);
+        assert_none("the vice", k);
     }
 
     #[test]

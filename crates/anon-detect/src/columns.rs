@@ -140,6 +140,17 @@ pub fn kind_for_header(header: &str) -> Option<EntityKind> {
     best.map(|(_, kind)| kind)
 }
 
+/// Mots maximum d'une cellule de nom (au-delà, c'est une phrase ou un bandeau).
+const MAX_NAME_WORDS: usize = 5;
+
+/// Une cellule de colonne de nom ne contient ni tiret long, ni deux-points, ni
+/// point final, et reste courte.
+fn plausible_name(cell: &str) -> bool {
+    cell.split_whitespace().count() <= MAX_NAME_WORDS
+        && !cell.contains(['—', '–', ':'])
+        && !cell.ends_with('.')
+}
+
 /// Détecteur de colonnes (`name() == "columns"`).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ColumnDetector;
@@ -171,6 +182,13 @@ impl Detector for ColumnDetector {
         let text = block.text.as_str();
         let trimmed = text.trim();
         if trimmed.is_empty() || tokens(trimmed) == tokens(header) {
+            return Vec::new();
+        }
+        let is_name_kind = matches!(
+            kind,
+            EntityKind::Nom | EntityKind::Prenom | EntityKind::Personne
+        );
+        if is_name_kind && !plausible_name(trimmed) {
             return Vec::new();
         }
         let start = text.len() - text.trim_start().len();
@@ -341,6 +359,32 @@ mod tests {
         }
         let b = cell("Jean", None, BlockRole::Cell);
         assert!(ColumnDetector.detect(&b, &renforce()).is_empty());
+    }
+
+    #[test]
+    fn banner_cells_are_not_names() {
+        for header in ["Nom", "Prénom", "Personne", "Nom complet", "Client"] {
+            assert_eq!(
+                one("DONNÉES FICTIVES — exemple de test", header),
+                None,
+                "{header}"
+            );
+            assert_eq!(one("Note : à vérifier", header), None);
+            assert_eq!(one("Jean Dupont est parti.", header), None);
+            assert_eq!(one("un deux trois quatre cinq six", header), None);
+            assert_eq!(one("a – b", header), None);
+        }
+        assert_eq!(one("Jean Marie Pierre de la Fontaine", "Nom"), None);
+        assert_eq!(
+            one("Jean-Marie Dupont", "Nom complet"),
+            Some((EntityKind::Personne, "Jean-Marie Dupont".to_string()))
+        );
+        assert_eq!(
+            one("Marie de la Fontaine Bois", "Nom"),
+            Some((EntityKind::Nom, "Marie de la Fontaine Bois".to_string()))
+        );
+        // les autres types ne sont pas concernés
+        assert!(one("Note : voir annexe — 2 pages.", "Adresse").is_some());
     }
 
     #[test]

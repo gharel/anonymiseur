@@ -169,7 +169,7 @@ re!(
 );
 re!(
     ADDR_EN_TAIL,
-    r"^(?:,<S>*\p{Lu}[\p{L}'\-]{2,}(?:<S>\p{Lu}[\p{L}'\-]{2,}){0,2}(?:,?<S>*(?:[A-Z]{1,2}\d[A-Z\d]?<S>?\d[A-Z]{2}|[A-Z]{2}<S>\d{5}(?:-\d{4})?))?|,?<S>*(?:[A-Z]{1,2}\d[A-Z\d]?<S>?\d[A-Z]{2}|[A-Z]{2}<S>\d{5}(?:-\d{4})?))"
+    r"^(?:,<S>*\p{Lu}[\p{L}'\-]{2,}(?:<S>\p{Lu}[\p{L}'\-]{2,}){0,2}(?:<S>[A-Z]{2}\b)?(?:,?<S>*(?:[A-Z]{1,2}\d[A-Z\d]?<S>?\d[A-Z]{2}|(?:[A-Z]{2,3}<S>)?\d{4,5}(?:-\d{4})?))?|,?<S>*(?:[A-Z]{1,2}\d[A-Z\d]?<S>?\d[A-Z]{2}|[A-Z]{2,3}<S>\d{4,5}(?:-\d{4})?))"
 );
 re!(
     ADDR_START,
@@ -1845,6 +1845,45 @@ mod tests {
             k,
             "Calle\u{a0}Mayor\u{a0}5, 28013\u{a0}Madrid",
         );
+    }
+
+    #[test]
+    fn adresse_anglaise_ville_etat_code_postal() {
+        let k = EntityKind::Adresse;
+        assert_found(
+            "221 Harbour Street, Sydney NSW 2000",
+            k,
+            "221 Harbour Street, Sydney NSW 2000",
+        );
+        assert_found(
+            "à 221 Harbour Street, Sydney NSW 2000.",
+            k,
+            "221 Harbour Street, Sydney NSW 2000",
+        );
+        assert_found(
+            "10 Baker Street, London NW1 6XE",
+            k,
+            "10 Baker Street, London NW1 6XE",
+        );
+        assert_found(
+            "5 Main St, New York, NY 10001",
+            k,
+            "5 Main St, New York, NY 10001",
+        );
+        assert_found(
+            "(5 Main St, New York, NY 10001)",
+            k,
+            "5 Main St, New York, NY 10001",
+        );
+        assert_found("7 Elm Road, Auckland 1010", k, "7 Elm Road, Auckland 1010");
+        assert_found("7 Elm Road, Perth WA", k, "7 Elm Road, Perth WA");
+        assert_found("221 Harbour Street", k, "221 Harbour Street");
+        assert_found("12 Oak Rd, NSW 2000", k, "12 Oak Rd, NSW 2000");
+        // un nombre isolé après la voie n'est pas un code postal
+        assert_found("12 Oak Rd, 1234 pieces", k, "12 Oak Rd");
+        assert_none("Street Art", k);
+        assert_none("Mur Street Art festival", k);
+        assert_none("5 Street Art", k);
     }
 
     #[test]

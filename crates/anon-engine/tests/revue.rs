@@ -25,6 +25,19 @@ fn exemples() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../exemples")
 }
 
+/// Vrai si `valeur` apparaît dans `texte` comme un mot entier : « 620000 » dans
+/// « 16200000 » (un angle du thème du classeur) n'est pas une fuite.
+fn lisible(texte: &str, valeur: &str) -> bool {
+    texte.match_indices(valeur).any(|(i, m)| {
+        let avant = texte[..i].chars().next_back();
+        let apres = texte[i + m.len()..].chars().next();
+        let colle = |c: Option<char>, bord: Option<char>| {
+            matches!((c, bord), (Some(c), Some(b)) if c.is_alphanumeric() && b.is_alphanumeric())
+        };
+        !colle(avant, valeur.chars().next()) && !colle(apres, valeur.chars().next_back())
+    })
+}
+
 fn mesure(profile: Profile) -> (usize, usize) {
     let dir = exemples();
     let attendu: Value =
@@ -103,7 +116,7 @@ fn mesure(profile: Profile) -> (usize, usize) {
             }
             n += 1;
             let v = e["valeur"].as_str().unwrap();
-            if texte.contains(&v.to_lowercase()) {
+            if lisible(&texte, &v.to_lowercase()) {
                 manquees.push(format!("{} « {v} »", e["type"].as_str().unwrap()));
             }
         }

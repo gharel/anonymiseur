@@ -4,7 +4,7 @@
       "ADRESSE": {
         "attendus": 13,
         "precision": 1.0,
-        "rappel": 0.923
+        "rappel": 1.0
       },
       "AGE": {
         "attendus": 5,
@@ -33,8 +33,8 @@
       },
       "FONCTION": {
         "attendus": 20,
-        "precision": 0.85,
-        "rappel": 0.85
+        "precision": 0.833,
+        "rappel": 1.0
       },
       "IBAN": {
         "attendus": 3,
@@ -68,7 +68,7 @@
       },
       "NOM": {
         "attendus": 17,
-        "precision": 0.864,
+        "precision": 1.0,
         "rappel": 1.0
       },
       "PERSONNE": {
@@ -113,15 +113,15 @@
       },
       "_GLOBAL": {
         "attendus": 281,
-        "precision": 0.979,
-        "rappel": 0.982
+        "precision": 0.986,
+        "rappel": 0.996
       }
     },
     "standard": {
       "ADRESSE": {
         "attendus": 13,
         "precision": 1.0,
-        "rappel": 0.923
+        "rappel": 1.0
       },
       "CB": {
         "attendus": 1,
@@ -155,7 +155,7 @@
       },
       "NOM": {
         "attendus": 17,
-        "precision": 0.864,
+        "precision": 1.0,
         "rappel": 1.0
       },
       "PERSONNE": {
@@ -200,8 +200,8 @@
       },
       "_GLOBAL": {
         "attendus": 188,
-        "precision": 0.984,
-        "rappel": 0.995
+        "precision": 1.0,
+        "rappel": 1.0
       }
     }
   },

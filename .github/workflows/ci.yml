@@ -74,6 +74,29 @@ jobs:
         with:
           command: check
 
+  no-network:
+    name: Aucun réseau à l'exécution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer la chaîne d'outils
+        run: rustup show active-toolchain || rustup toolchain install
+      # cargo-deny tolère ureq dans le script de build d'ort-sys. Ici on vérifie
+      # que rien de tel n'est lié dans l'application : arêtes normales seulement.
+      - name: Arbre des dépendances normales sans crate réseau
+        run: |
+          interdits='^(reqwest|hyper|h2|ureq|isahc|curl|curl-sys|attohttpc|tokio|async-std|mio|socket2|native-tls|rustls|openssl|openssl-sys|tungstenite|surf|minreq|trust-dns-resolver|hickory-resolver) v'
+          echec=0
+          for cible in x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin; do
+            trouves="$(cargo tree --workspace --all-features -e normal --target "$cible" --prefix none | sort -u | grep -E "$interdits" || true)"
+            if [ -n "$trouves" ]; then
+              echo "::error::Crates réseau liés pour $cible :"
+              echo "$trouves"
+              echec=1
+            fi
+          done
+          exit "$echec"
+
   coverage:
     name: Couverture
     runs-on: windows-latest

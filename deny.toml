@@ -2,11 +2,23 @@
 
 [graph]
 all-features = true
+# Seules les plateformes livrées comptent : sans cette liste, des dépendances
+# propres à wasm ou à Linux (tokio via wasm-bindgen-futures, openssl) seraient
+# signalées alors qu'elles ne sont jamais compilées dans l'application.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
 
 [advisories]
 version = 2
 # Toute vulnérabilité connue fait échouer la vérification.
 yanked = "deny"
+# Un crate « non maintenu » n'est bloquant que s'il est une dépendance directe :
+# on ne peut pas remplacer ceux que tirent egui, wgpu ou tokenizers (paste,
+# ttf-parser), et ce ne sont pas des vulnérabilités.
+unmaintained = "workspace"
 ignore = [
     # Exemple : "RUSTSEC-0000-0000",  # raison écrite ici
 ]
@@ -27,6 +39,9 @@ allow = [
     "CC0-1.0",
     "BSL-1.0",
     "OFL-1.1",
+    # Polices par défaut d'egui (repli pour les glyphes absents de Georama) :
+    # la licence autorise l'embarquement et la redistribution.
+    "Ubuntu-font-1.0",
     "AGPL-3.0",
     "AGPL-3.0-only",
     "AGPL-3.0-or-later",
@@ -48,7 +63,12 @@ deny = [
     { name = "reqwest" },
     { name = "hyper" },
     { name = "h2" },
-    { name = "ureq" },
+    # `ureq` et `native-tls` ne sont admis que pour le script de build d'`ort-sys`,
+    # qui télécharge ONNX Runtime à la compilation. Ils ne sont pas liés dans
+    # l'application : la tâche CI « aucun réseau à l'exécution » le vérifie sur
+    # l'arbre des dépendances normales.
+    { name = "ureq", wrappers = ["ort-sys"] },
+    { name = "native-tls", wrappers = ["ureq"] },
     { name = "isahc" },
     { name = "curl" },
     { name = "curl-sys" },
@@ -57,7 +77,6 @@ deny = [
     { name = "async-std" },
     { name = "mio" },
     { name = "socket2" },
-    { name = "native-tls" },
     { name = "rustls" },
     { name = "openssl" },
     { name = "openssl-sys" },
@@ -66,11 +85,6 @@ deny = [
     { name = "minreq" },
     { name = "trust-dns-resolver" },
     { name = "hickory-resolver" },
-
-    # Exception à activer à l'arrivée d'`ort-sys` : son script de build télécharge
-    # les binaires ONNX Runtime à la compilation (pas à l'exécution) via `ureq`.
-    # Remplacer la ligne `{ name = "ureq" },` ci-dessus par :
-    # { name = "ureq", wrappers = ["ort-sys"] },
 ]
 
 [sources]

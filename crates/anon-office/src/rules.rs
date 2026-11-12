@@ -142,6 +142,65 @@ pub const TEXT_ELEMENTS: &[(&str, Option<&str>, ElementRule)] = &[
     ("p:text", None, ElementRule::Text(BlockRole::Comment)),
     // Graphiques : nom de série littéral.
     ("c:v", Some("c:tx"), ElementRule::Text(BlockRole::Body)),
+    // OpenDocument : `meta.xml`.
+    ("meta:initial-creator", None, ElementRule::Scrub),
+    ("meta:printed-by", None, ElementRule::Scrub),
+    ("meta:user-defined", None, ElementRule::Scrub),
+    ("meta:editing-cycles", None, ElementRule::Scrub),
+    ("meta:editing-duration", None, ElementRule::Scrub),
+    ("meta:keyword", None, ElementRule::Text(BlockRole::Metadata)),
+    // OpenDocument : champs d'auteur (les champs `text:sender-*` sont traités
+    // de même, voir `ODF_SENDER_PREFIX`).
+    ("text:author-name", None, ElementRule::Scrub),
+    ("text:author-initials", None, ElementRule::Scrub),
+    // OpenDocument : textes alternatifs des cadres.
+    ("svg:title", None, ElementRule::Text(BlockRole::Other)),
+    ("svg:desc", None, ElementRule::Text(BlockRole::Other)),
+];
+
+/// Préfixe des champs OpenDocument « expéditeur » (nom, adresse, téléphone…),
+/// vidés quand `scrub_metadata`.
+pub const ODF_SENDER_PREFIX: &str = "text:sender-";
+
+/// Paragraphes OpenDocument : tout texte situé dans le paragraphe ou dans un
+/// de ses éléments `text:` (`text:span`, `text:a`…) en fait partie.
+pub const ODF_PARAGRAPH_ELEMENTS: &[&str] = &["text:p", "text:h"];
+
+/// Éléments OpenDocument rendus par un caractère (`text:s` : autant d'espaces
+/// que `text:c`).
+pub const ODF_VIRTUAL_ELEMENTS: &[(&str, &str)] = &[
+    ("text:tab", " "),
+    ("text:line-break", "\n"),
+    ("text:s", " "),
+];
+
+/// Zones de texte VML (commentaires et zones de texte anciens) : tout leur
+/// texte forme un bloc.
+pub const VML_TEXT_ELEMENTS: &[&str] = &["v:textbox"];
+
+/// Caches numériques : si `tr` y trouve une valeur, elle est remplacée par
+/// `0` et un avertissement `UntouchedLocation` est émis. Éléments `c:pt` des
+/// caches de graphiques (parent exigé), et attribut `v` des éléments `n` des
+/// caches de tableaux croisés dynamiques.
+pub const NUMERIC_CACHE_POINTS: &[&str] = &["c:numCache", "c:numLit"];
+/// Voir [`NUMERIC_CACHE_POINTS`].
+pub const NUMERIC_CACHE_ATTRIBUTES: &[(&str, &str)] = &[("x:n", "v")];
+
+/// Attributs d'instruction de champ : seuls les littéraux entre guillemets
+/// passent par `tr` (par `apply_uri` pour un champ `HYPERLINK`).
+pub const FIELD_INSTRUCTION_ATTRIBUTES: &[(&str, &str)] = &[("w:fldSimple", "w:instr")];
+
+/// Attributs de lien OpenDocument : passent par `apply_uri` s'ils portent un
+/// schéma (`mailto:`, `https:`…), jamais s'ils désignent une partie du paquet.
+pub const ODF_LINK_ATTRIBUTES: &[&str] = &["xlink:href"];
+
+/// Attributs de valeur d'une cellule OpenDocument, retirés quand la cellule
+/// devient une chaîne.
+pub const ODF_VALUE_ATTRIBUTES: &[&str] = &[
+    "office:value",
+    "office:date-value",
+    "office:time-value",
+    "office:boolean-value",
 ];
 
 /// Éléments paragraphes (texte réparti sur des runs) : nom, parent exigé.
@@ -149,6 +208,7 @@ pub const PARAGRAPH_ELEMENTS: &[(&str, Option<&str>)] = &[
     ("w:p", None),
     ("a:p", None),
     ("x:si", None),
+    ("x:rPh", None),
     ("x:is", None),
     ("x:text", Some("x:comment")),
     ("c:pt", Some("c:strCache")),
@@ -167,6 +227,7 @@ pub const RUN_TEXT_ELEMENTS: &[(&str, Option<&str>, bool)] = &[
     ("x:t", Some("x:r"), true),
     ("x:t", Some("x:is"), true),
     ("x:t", Some("x:text"), true),
+    ("x:t", Some("x:rPh"), true),
     ("c:v", Some("c:pt"), false),
 ];
 

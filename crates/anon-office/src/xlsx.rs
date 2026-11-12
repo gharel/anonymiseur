@@ -154,6 +154,73 @@ pub(crate) fn serial_to_date(raw: &str, date1904: bool) -> Option<String> {
     Some(format!("{d:02}/{m:02}/{y:04}"))
 }
 
+/// Date `JJ/MM/AAAA` valide : (année, mois, jour).
+pub(crate) fn parse_fr_date(s: &str) -> Option<(i64, i64, i64)> {
+    let mut it = s.split('/');
+    let (d, m, y) = (it.next()?, it.next()?, it.next()?);
+    if it.next().is_some() || d.len() != 2 || m.len() != 2 || y.len() != 4 {
+        return None;
+    }
+    let all_digits = |x: &str| x.bytes().all(|b| b.is_ascii_digit());
+    if !all_digits(d) || !all_digits(m) || !all_digits(y) {
+        return None;
+    }
+    let (d, m, y): (i64, i64, i64) = (d.parse().ok()?, m.parse().ok()?, y.parse().ok()?);
+    if !(1..=12).contains(&m) || d < 1 {
+        return None;
+    }
+    // Contrôle : la date existe (aller-retour par le calendrier).
+    let leap_1900 = y == 1900 && m == 2 && d == 29;
+    if !leap_1900 && civil_from_days(days_from_civil(y, m, d)) != (y, m, d) {
+        return None;
+    }
+    Some((y, m, d))
+}
+
+/// `JJ/MM/AAAA` → numéro de série Excel (inverse de [`serial_to_date`]).
+pub(crate) fn date_to_serial(s: &str, date1904: bool) -> Option<String> {
+    let (y, m, d) = parse_fr_date(s)?;
+    let serial = if date1904 {
+        days_from_civil(y, m, d) - days_from_civil(1904, 1, 1)
+    } else if (y, m, d) == (1900, 2, 29) {
+        60
+    } else {
+        let z = days_from_civil(y, m, d);
+        let s = z - days_from_civil(1899, 12, 30);
+        if s < 61 {
+            z - days_from_civil(1899, 12, 31)
+        } else {
+            s
+        }
+    };
+    (serial >= 0 && serial as f64 <= MAX_SERIAL).then(|| serial.to_string())
+}
+
+/// Nombre écrit sous forme canonique : `^-?(0|[1-9]\d*)(\.\d+)?$`.
+pub(crate) fn is_canonical_number(s: &str) -> bool {
+    let s = s.strip_prefix('-').unwrap_or(s);
+    let (int, frac) = match s.split_once('.') {
+        Some((i, f)) => (i, Some(f)),
+        None => (s, None),
+    };
+    let digits = |x: &str| !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit());
+    digits(int) && (int == "0" || !int.starts_with('0')) && frac.is_none_or(digits)
+}
+
+/// Lettres de colonne (0 → `A`, 26 → `AA`).
+pub(crate) fn col_letters(mut n: u64) -> String {
+    let mut out = Vec::new();
+    loop {
+        out.push(b'A' + (n % 26) as u8);
+        if n < 26 {
+            break;
+        }
+        n = n / 26 - 1;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap_or_default()
+}
+
 /// Pour chaque style de cellule (`cellXfs`), vrai s'il s'agit d'un format de date.
 pub(crate) fn date_styles(styles_xml: &str) -> Result<Vec<bool>, FormatError> {
     let mut custom: HashMap<u32, String> = HashMap::new();
@@ -432,6 +499,38 @@ mod tests {
         assert!(!custom_is_date("0.00\" jours\""));
         assert!(!custom_is_date("h:mm"));
         assert!(!custom_is_date("#,##0"));
+        for s in [
+            "14/03/2025",
+            "01/01/1900",
+            "29/02/1900",
+            "01/03/1900",
+            "31/12/9999",
+        ] {
+            let n = date_to_serial(s, false).unwrap();
+            assert_eq!(serial_to_date(&n, false).unwrap(), s);
+            let n = date_to_serial(s, true);
+            if let Some(n) = n {
+                assert_eq!(serial_to_date(&n, true).unwrap(), s);
+            }
+        }
+        assert_eq!(date_to_serial("14/03/2025", false).unwrap(), "45730");
+        assert!(date_to_serial("31/02/2025", false).is_none());
+        assert!(date_to_serial("3 mars", false).is_none());
+    }
+
+    #[test]
+    fn canonical_numbers_and_columns() {
+        for ok in ["0", "-12", "1250000", "3.5", "0.25"] {
+            assert!(is_canonical_number(ok), "{ok}");
+        }
+        for ko in ["", "012", "1.", ".5", "1e5", "06 12", "+3", "1,5"] {
+            assert!(!is_canonical_number(ko), "{ko}");
+        }
+        assert_eq!(col_letters(0), "A");
+        assert_eq!(col_letters(25), "Z");
+        assert_eq!(col_letters(26), "AA");
+        assert_eq!(col_letters(701), "ZZ");
+        assert_eq!(col_letters(702), "AAA");
     }
 
     #[test]

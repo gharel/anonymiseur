@@ -1,5 +1,5 @@
-//! Gestionnaires des formats bureautiques : texte brut, Word, Excel et
-//! PowerPoint (Office Open XML).
+//! Gestionnaires des formats bureautiques : texte brut, CSV, Word, Excel,
+//! PowerPoint (Office Open XML) et OpenDocument.
 //!
 //! Organisation, pensée pour accueillir les formats OpenDocument :
 //! - `package` : lecture bornée et réécriture d'un paquet zip (entrées non
@@ -29,10 +29,17 @@ pub use limits::{
     DEEP_SCAN_CHUNK, MAX_EMBED_DEPTH, MAX_ENTRIES, MAX_ENTRY_UNCOMPRESSED, MAX_TOTAL_UNCOMPRESSED,
     MAX_XML_DEPTH,
 };
-pub use ooxml::{DocxHandler, PptxHandler, XlsxHandler};
-pub use textfile::TextHandler;
+pub use ooxml::{DocxHandler, OdfHandler, PptxHandler, XlsxHandler};
+pub use textfile::{CsvHandler, TextHandler};
 
-static HANDLERS: &[&dyn Handler] = &[&TextHandler, &DocxHandler, &XlsxHandler, &PptxHandler];
+static HANDLERS: &[&dyn Handler] = &[
+    &TextHandler,
+    &CsvHandler,
+    &DocxHandler,
+    &XlsxHandler,
+    &PptxHandler,
+    &OdfHandler,
+];
 
 /// Gestionnaire d'une extension (`"docx"`, `".XLSX"`…), `None` si non gérée.
 pub fn handler_for(extension: &str) -> Option<&'static dyn Handler> {
@@ -57,6 +64,8 @@ mod tests {
         assert!(handler_for("potx").is_some());
         assert!(handler_for("csv").is_some());
         assert!(handler_for("pdf").is_none());
+        assert_eq!(handler_for("tsv").unwrap().extensions(), &["csv", "tsv"]);
+        assert!(handler_for("ODS").is_some() && handler_for("otp").is_some());
         assert_eq!(handler_for("pptx").unwrap().extensions()[0], "pptx");
     }
 }

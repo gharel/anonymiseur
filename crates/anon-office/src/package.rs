@@ -52,11 +52,95 @@ pub(crate) fn label(name: &str, index: usize) -> String {
     let plain = name.len() <= 160
         && name
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "/._-[]".contains(c));
+            .all(|c| c.is_ascii_alphanumeric() || "/._-[] ".contains(c));
     if plain {
         name.to_string()
     } else {
         format!("entrée n° {}", index.saturating_add(1))
+    }
+}
+
+/// Nom du flux qui contient un paquet OOXML chiffré dans un conteneur OLE.
+const ENCRYPTED_STREAM: &str = "EncryptedPackage";
+/// Nombre maximal de secteurs de répertoire parcourus dans un conteneur OLE.
+const MAX_OLE_DIR_SECTORS: usize = 4096;
+
+fn le_u32(b: &[u8], at: usize) -> Option<u32> {
+    let s = b.get(at..at.checked_add(4)?)?;
+    Some(u32::from_le_bytes([
+        *s.first()?,
+        *s.get(1)?,
+        *s.get(2)?,
+        *s.get(3)?,
+    ]))
+}
+
+fn le_u16(b: &[u8], at: usize) -> Option<u16> {
+    let s = b.get(at..at.checked_add(2)?)?;
+    Some(u16::from_le_bytes([*s.first()?, *s.get(1)?]))
+}
+
+/// Noms des entrées du répertoire d'un conteneur OLE (CFB). `None` si la
+/// structure est illisible.
+fn ole_directory_names(b: &[u8]) -> Option<Vec<String>> {
+    let shift = le_u16(b, 0x1E)?;
+    if shift != 9 && shift != 12 {
+        return None;
+    }
+    let size = 1usize << shift;
+    let per_fat = size / 4;
+    let sector = |sid: u32| -> Option<usize> { (sid as usize).checked_add(1)?.checked_mul(size) };
+    let next = |sid: u32| -> Option<u32> {
+        let idx = sid as usize / per_fat;
+        if idx >= 109 {
+            return None;
+        }
+        let fat_sid = le_u32(b, 0x4C + idx * 4)?;
+        le_u32(b, sector(fat_sid)? + (sid as usize % per_fat) * 4)
+    };
+    let mut names = Vec::new();
+    let mut sid = le_u32(b, 0x30)?;
+    let mut seen = HashSet::new();
+    while sid < 0xFFFF_FFFA {
+        if !seen.insert(sid) || seen.len() > MAX_OLE_DIR_SECTORS {
+            return None;
+        }
+        let base = sector(sid)?;
+        for e in 0..size / 128 {
+            let at = base + e * 128;
+            let len = usize::from(le_u16(b, at + 0x40)?).min(64);
+            let units: Vec<u16> = (0..len / 2)
+                .filter_map(|i| le_u16(b, at + i * 2))
+                .take_while(|u| *u != 0)
+                .collect();
+            names.push(String::from_utf16_lossy(&units));
+        }
+        sid = next(sid)?;
+    }
+    Some(names)
+}
+
+/// Erreur pour un conteneur OLE : OOXML chiffré, ou ancien format binaire.
+fn ole_error(b: &[u8]) -> FormatError {
+    let encrypted = match ole_directory_names(b) {
+        Some(names) => names.iter().any(|n| n == ENCRYPTED_STREAM),
+        None => {
+            // Structure illisible : recherche du nom en UTF-16 dans les octets.
+            let pat: Vec<u8> = ENCRYPTED_STREAM
+                .encode_utf16()
+                .flat_map(|u| u.to_le_bytes())
+                .collect();
+            b.windows(pat.len()).any(|w| w == pat.as_slice())
+        }
+    };
+    if encrypted {
+        FormatError::Encrypted
+    } else {
+        FormatError::Unsupported(
+            "ancien format binaire Office (.doc, .xls, .ppt) : réenregistrez le fichier \
+             au format moderne (.docx, .xlsx, .pptx) puis recommencez"
+                .into(),
+        )
     }
 }
 
@@ -78,7 +162,7 @@ fn safe_name(name: &str) -> bool {
 impl<'a> Package<'a> {
     pub fn open(input: &'a [u8]) -> Result<Self, FormatError> {
         if input.starts_with(&OLE_SIGNATURE) {
-            return Err(FormatError::Encrypted);
+            return Err(ole_error(input));
         }
         let mut archive = ZipArchive::new(Cursor::new(input)).map_err(zip_err)?;
         if archive.len() > MAX_ENTRIES {
@@ -214,11 +298,55 @@ mod tests {
         }
     }
 
+    /// Conteneur OLE minimal : en-tête, un secteur de FAT, un secteur de répertoire.
+    pub(crate) fn ole(stream: &str) -> Vec<u8> {
+        let mut b = vec![0u8; 512 * 3];
+        b[..8].copy_from_slice(&OLE_SIGNATURE);
+        b[0x1A] = 3;
+        b[0x1C..0x1E].copy_from_slice(&[0xFE, 0xFF]);
+        b[0x1E] = 9;
+        b[0x20] = 6;
+        b[0x2C] = 1;
+        b[0x30..0x34].copy_from_slice(&1u32.to_le_bytes());
+        for i in 0..109 {
+            let v: u32 = if i == 0 { 0 } else { 0xFFFF_FFFF };
+            b[0x4C + i * 4..0x50 + i * 4].copy_from_slice(&v.to_le_bytes());
+        }
+        // FAT : secteur 0 = FAT, secteur 1 = fin de chaîne.
+        b[512..516].copy_from_slice(&0xFFFF_FFFDu32.to_le_bytes());
+        b[516..520].copy_from_slice(&0xFFFF_FFFEu32.to_le_bytes());
+        for (i, name) in ["Root Entry", stream].iter().enumerate() {
+            let at = 1024 + i * 128;
+            let units: Vec<u16> = name.encode_utf16().collect();
+            for (k, u) in units.iter().enumerate() {
+                b[at + k * 2..at + k * 2 + 2].copy_from_slice(&u.to_le_bytes());
+            }
+            let len = (units.len() as u16 + 1) * 2;
+            b[at + 0x40..at + 0x42].copy_from_slice(&len.to_le_bytes());
+        }
+        b
+    }
+
     #[test]
-    fn ole_is_encrypted() {
-        let mut b = OLE_SIGNATURE.to_vec();
-        b.extend_from_slice(&[0; 600]);
-        assert!(matches!(Package::open(&b), Err(FormatError::Encrypted)));
+    fn ole_encrypted_or_legacy() {
+        assert_eq!(
+            ole_directory_names(&ole("EncryptedPackage")).unwrap()[1],
+            "EncryptedPackage"
+        );
+        assert!(matches!(
+            Package::open(&ole("EncryptedPackage")),
+            Err(FormatError::Encrypted)
+        ));
+        assert!(matches!(
+            Package::open(&ole("WordDocument")),
+            Err(FormatError::Unsupported(_))
+        ));
+        let mut junk = OLE_SIGNATURE.to_vec();
+        junk.extend_from_slice(&[0; 600]);
+        assert!(matches!(
+            Package::open(&junk),
+            Err(FormatError::Unsupported(_))
+        ));
     }
 
     #[test]

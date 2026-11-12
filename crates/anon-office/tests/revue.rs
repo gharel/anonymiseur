@@ -26,6 +26,9 @@ const FICHIERS: &[&str] = &[
     "brief.md",
     "export.csv",
     "informe-es.txt",
+    "compte-rendu.odt",
+    "planning.ods",
+    "support.odp",
 ];
 
 fn exemples() -> PathBuf {

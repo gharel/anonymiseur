@@ -118,6 +118,32 @@ const KNOWN_NAMESPACES: &[(&str, &str)] = &[
         "p188",
     ),
     ("http://www.w3.org/XML/1998/namespace", "xml"),
+    ("urn:schemas-microsoft-com:vml", "v"),
+    ("urn:schemas-microsoft-com:office:office", "o"),
+    ("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "office"),
+    ("urn:oasis:names:tc:opendocument:xmlns:text:1.0", "text"),
+    ("urn:oasis:names:tc:opendocument:xmlns:table:1.0", "table"),
+    ("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "draw"),
+    (
+        "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0",
+        "presentation",
+    ),
+    ("urn:oasis:names:tc:opendocument:xmlns:meta:1.0", "meta"),
+    ("urn:oasis:names:tc:opendocument:xmlns:style:1.0", "style"),
+    ("urn:oasis:names:tc:opendocument:xmlns:chart:1.0", "chart"),
+    (
+        "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0",
+        "svg",
+    ),
+    (
+        "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0",
+        "manifest",
+    ),
+    (
+        "urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0",
+        "calcext",
+    ),
+    ("http://www.w3.org/1999/xlink", "xlink"),
 ];
 
 /// Attribut d'une balise ouvrante.
@@ -129,6 +155,10 @@ pub(crate) struct Attr {
     pub value: String,
     /// Intervalle de la valeur brute (sans guillemets) dans la source.
     pub raw: Range<usize>,
+    /// Intervalle de l'attribut entier, espace qui le précède comprise.
+    pub span: Range<usize>,
+    /// Nom qualifié tel qu'écrit dans le fichier.
+    pub qname: String,
 }
 
 /// Balise ouvrante ou vide.
@@ -266,7 +296,7 @@ impl<'a> Walker<'a> {
         let raw = self.src.get(span.clone()).ok_or_else(|| self.bad())?;
         let (qname, raw_attrs) = scan_tag(raw, span.start).ok_or_else(|| self.bad())?;
         let mut scope = Vec::new();
-        for (k, _, v) in &raw_attrs {
+        for (k, _, _, v) in &raw_attrs {
             if *k == "xmlns" {
                 scope.push((String::new(), decode_entities(v)));
             } else if let Some(p) = k.strip_prefix("xmlns:") {
@@ -280,7 +310,7 @@ impl<'a> Walker<'a> {
             None => String::new(),
         };
         let mut attrs = Vec::with_capacity(raw_attrs.len());
-        for (k, start, v) in raw_attrs {
+        for (k, key_start, start, v) in raw_attrs {
             if k == "xmlns" || k.starts_with("xmlns:") {
                 continue;
             }
@@ -288,6 +318,8 @@ impl<'a> Walker<'a> {
                 name: self.canonical(k, false),
                 value: normalize_attr(&decode_entities(v)),
                 raw: start..start.saturating_add(v.len()),
+                span: key_start.saturating_sub(1)..start.saturating_add(v.len()).saturating_add(1),
+                qname: k.to_string(),
             });
         }
         Ok(Tag {
@@ -328,8 +360,9 @@ impl<'a> Walker<'a> {
     }
 }
 
-/// Attribut brut : nom qualifié, position absolue de la valeur, valeur brute.
-type RawAttr<'r> = (&'r str, usize, &'r str);
+/// Attribut brut : nom qualifié, positions absolues du nom et de la valeur,
+/// valeur brute.
+type RawAttr<'r> = (&'r str, usize, usize, &'r str);
 
 /// Découpe une balise brute (`<nom a="v" …>` ou `<nom …/>`) : nom qualifié et,
 /// pour chaque attribut, nom qualifié, position absolue de la valeur brute et
@@ -391,7 +424,7 @@ fn scan_tag(raw: &str, base: usize) -> Option<(&str, Vec<RawAttr<'_>>)> {
         }
         let val = raw.get(vs..i)?;
         i += 1;
-        attrs.push((key, base.saturating_add(vs), val));
+        attrs.push((key, base.saturating_add(ks), base.saturating_add(vs), val));
     }
     Some((name, attrs))
 }
@@ -673,6 +706,8 @@ mod tests {
         assert_eq!(&src[t.attrs[0].raw.clone()], "x&amp;y");
         assert_eq!(t.attrs[0].value, "x&y");
         assert_eq!(&src[t.attrs[1].raw.clone()], "z");
+        assert_eq!(&src[t.attrs[1].span.clone()], " c = 'z'");
+        assert_eq!(t.attrs[1].qname, "c");
         assert_eq!(t.insert_pos(), src.len() - 2);
     }
 

@@ -5,7 +5,8 @@ mod common;
 
 use anon_core::{FormatError, Handler, TransformOptions};
 use anon_office::{
-    DocxHandler, MAX_ENTRY_UNCOMPRESSED, PptxHandler, TextHandler, XlsxHandler, handler_for,
+    CsvHandler, DocxHandler, MAX_ENTRY_UNCOMPRESSED, OdfHandler, PptxHandler, TextHandler,
+    XlsxHandler, handler_for,
 };
 use anon_replace::Replacer;
 use common::*;
@@ -20,8 +21,15 @@ fn exercise(h: &dyn Handler, bytes: &[u8]) {
     let _ = h.transform(bytes, &r, &TransformOptions::anonymize());
 }
 
-fn all_handlers() -> [&'static dyn Handler; 4] {
-    [&TextHandler, &DocxHandler, &XlsxHandler, &PptxHandler]
+fn all_handlers() -> [&'static dyn Handler; 6] {
+    [
+        &TextHandler,
+        &CsvHandler,
+        &DocxHandler,
+        &XlsxHandler,
+        &PptxHandler,
+        &OdfHandler,
+    ]
 }
 
 const SAMPLES: &[&str] = &[
@@ -29,6 +37,9 @@ const SAMPLES: &[&str] = &[
     "fichier-clients.xlsx",
     "presentation-projet.pptx",
     "notes.txt",
+    "export.csv",
+    "planning.ods",
+    "compte-rendu.odt",
 ];
 
 proptest! {
@@ -104,16 +115,47 @@ fn dangerous_entry_name_is_rejected() {
     ));
 }
 
+/// Conteneur OLE minimal contenant un flux du nom donné.
+fn ole(stream: &str) -> Vec<u8> {
+    let mut b = vec![0u8; 512 * 3];
+    b[..8].copy_from_slice(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+    b[0x1A] = 3;
+    b[0x1C..0x1E].copy_from_slice(&[0xFE, 0xFF]);
+    b[0x1E] = 9;
+    b[0x2C] = 1;
+    b[0x30..0x34].copy_from_slice(&1u32.to_le_bytes());
+    for i in 1..109 {
+        b[0x4C + i * 4..0x50 + i * 4].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+    }
+    b[512..516].copy_from_slice(&0xFFFF_FFFDu32.to_le_bytes());
+    b[516..520].copy_from_slice(&0xFFFF_FFFEu32.to_le_bytes());
+    for (i, name) in ["Root Entry", stream].iter().enumerate() {
+        let at = 1024 + i * 128;
+        let units: Vec<u16> = name.encode_utf16().collect();
+        for (k, u) in units.iter().enumerate() {
+            b[at + k * 2..at + k * 2 + 2].copy_from_slice(&u.to_le_bytes());
+        }
+        b[at + 0x40..at + 0x42].copy_from_slice(&((units.len() as u16 + 1) * 2).to_le_bytes());
+    }
+    b
+}
+
 #[test]
 fn encrypted_container_is_reported() {
-    let mut ole = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-    ole.resize(4096, 0);
     for h in [
         &DocxHandler as &dyn Handler,
         &XlsxHandler as &dyn Handler,
         &PptxHandler as &dyn Handler,
+        &OdfHandler as &dyn Handler,
     ] {
-        assert!(matches!(h.extract(&ole), Err(FormatError::Encrypted)));
+        assert!(matches!(
+            h.extract(&ole("EncryptedPackage")),
+            Err(FormatError::Encrypted)
+        ));
+        match h.extract(&ole("WordDocument")) {
+            Err(FormatError::Unsupported(m)) => assert!(m.contains("réenregistrez")),
+            other => panic!("{other:?}"),
+        }
     }
 }
 

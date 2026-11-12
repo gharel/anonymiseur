@@ -21,6 +21,9 @@ const OFFICE_FILES: &[&str] = &[
     "report-en.docx",
     "fichier-clients.xlsx",
     "presentation-projet.pptx",
+    "compte-rendu.odt",
+    "planning.ods",
+    "support.odp",
 ];
 
 fn handler(file: &str) -> &'static dyn Handler {

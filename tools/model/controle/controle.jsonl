@@ -1,0 +1,109 @@
+{"id":"fr01","lang":"fr","text":"Madame Hinatea Teriitahi est convoquée le 3 mars à la mairie de Papeete.","entites":[{"type":"PERSONNE","valeur":"Hinatea Teriitahi"},{"type":"LIEU","valeur":"Papeete"}]}
+{"id":"fr02","lang":"fr","text":"Le dossier de M. Wakaine Poiwi a été transmis au service instructeur.","entites":[{"type":"PERSONNE","valeur":"Wakaine Poiwi"}]}
+{"id":"fr03","lang":"fr","text":"Veuillez trouver ci-joint la facture n° 2026-118 relative à la prestation de nettoyage.","entites":[]}
+{"id":"fr04","lang":"fr","text":"Mme Nguyễn Thị Lan, née le 12/04/1981, réside à Dumbéa depuis 2015.","entites":[{"type":"PERSONNE","valeur":"Nguyễn Thị Lan"},{"type":"LIEU","valeur":"Dumbéa"}]}
+{"id":"fr05","lang":"fr","text":"Le contrat est signé entre la société Lagon Bleu Logistique SAS et M. Karim Benali.","entites":[{"type":"SOCIETE","valeur":"Lagon Bleu Logistique SAS"},{"type":"PERSONNE","valeur":"Karim Benali"}]}
+{"id":"fr06","lang":"fr","text":"Jean-Baptiste Morel-Duval, directeur administratif, a validé le budget prévisionnel.","entites":[{"type":"PERSONNE","valeur":"Jean-Baptiste Morel-Duval"}]}
+{"id":"fr07","lang":"fr","text":"Anne de Villeneuve représentera le conseil d'administration lors de l'assemblée.","entites":[{"type":"PERSONNE","valeur":"Anne de Villeneuve"}]}
+{"id":"fr08","lang":"fr","text":"Le paiement doit intervenir sous trente jours à compter de la réception de la facture.","entites":[]}
+{"id":"fr09","lang":"fr","text":"Suite à notre entretien téléphonique, Mme Fatima-Zahra El Idrissi confirme sa candidature.","entites":[{"type":"PERSONNE","valeur":"Fatima-Zahra El Idrissi"}]}
+{"id":"fr10","lang":"fr","text":"Le chantier situé à Koné sera réceptionné par M. Trần Văn Minh, conducteur de travaux.","entites":[{"type":"LIEU","valeur":"Koné"},{"type":"PERSONNE","valeur":"Trần Văn Minh"}]}
+{"id":"fr11","lang":"fr","text":"Objet : demande de congé annuel de Teva Tehaamatai pour la période du 1er au 15 août.","entites":[{"type":"PERSONNE","valeur":"Teva Tehaamatai"}]}
+{"id":"fr12","lang":"fr","text":"La réunion du comité de pilotage est reportée à une date ultérieure.","entites":[]}
+{"id":"fr13","lang":"fr","text":"Louis d'Harcourt du Plessis a été nommé commissaire aux comptes de la société Ferronnerie Tavernier SARL.","entites":[{"type":"PERSONNE","valeur":"Louis d'Harcourt du Plessis"},{"type":"SOCIETE","valeur":"Ferronnerie Tavernier SARL"}]}
+{"id":"fr14","lang":"fr","text":"Je soussigné Youssef Ait Lahcen certifie l'exactitude des informations ci-dessus.","entites":[{"type":"PERSONNE","valeur":"Youssef Ait Lahcen"}]}
+{"id":"fr15","lang":"fr","text":"Bonjour Moana, merci pour ton retour rapide sur le devis.","entites":[{"type":"PERSONNE","valeur":"Moana"}]}
+{"id":"fr16","lang":"fr","text":"L'agent Iabe Hnawia est affecté au bureau de Lifou à compter du 1er janvier.","entites":[{"type":"PERSONNE","valeur":"Iabe Hnawia"},{"type":"LIEU","valeur":"Lifou"}]}
+{"id":"fr17","lang":"fr","text":"Le montant total s'élève à 12 450 000 XPF hors taxes.","entites":[]}
+{"id":"fr18","lang":"fr","text":"Mme Sylvie Lebreton-Caillaud, assistante de direction, gère les agendas de l'équipe.","entites":[{"type":"PERSONNE","valeur":"Sylvie Lebreton-Caillaud"}]}
+{"id":"fr19","lang":"fr","text":"Le fournisseur Pacific Froid Services a livré les équipements à Bourail.","entites":[{"type":"SOCIETE","valeur":"Pacific Froid Services"},{"type":"LIEU","valeur":"Bourail"}]}
+{"id":"fr20","lang":"fr","text":"Pour toute question, contactez Phạm Quốc Bảo au service comptabilité.","entites":[{"type":"PERSONNE","valeur":"Phạm Quốc Bảo"}]}
+{"id":"fr21","lang":"fr","text":"Le salarié M. KAMOUDA Éloi a présenté un arrêt de travail.","entites":[{"type":"PERSONNE","valeur":"KAMOUDA Éloi"}]}
+{"id":"fr22","lang":"fr","text":"Les pièces justificatives doivent être déposées avant le vendredi 17 heures.","entites":[]}
+{"id":"fr23","lang":"fr","text":"Mohamed Cherif et Nadia Bouzidi ont co-signé le procès-verbal de livraison.","entites":[{"type":"PERSONNE","valeur":"Mohamed Cherif"},{"type":"PERSONNE","valeur":"Nadia Bouzidi"}]}
+{"id":"fr24","lang":"fr","text":"La société Boulangerie Tamarii Rau a ouvert une deuxième boutique à Faa'a.","entites":[{"type":"SOCIETE","valeur":"Boulangerie Tamarii Rau"},{"type":"LIEU","valeur":"Faa'a"}]}
+{"id":"fr25","lang":"fr","text":"Mlle Rose-Marie Wenisso est inscrite en première année de BTS comptabilité.","entites":[{"type":"PERSONNE","valeur":"Rose-Marie Wenisso"}]}
+{"id":"fr26","lang":"fr","text":"Conformément à l'article 4 du règlement intérieur, l'accès au site est réservé au personnel.","entites":[]}
+{"id":"fr27","lang":"fr","text":"Le docteur Philippe Ounou a établi le certificat médical le 2 février.","entites":[{"type":"PERSONNE","valeur":"Philippe Ounou"}]}
+{"id":"fr28","lang":"fr","text":"Adresse de livraison : 27 avenue du Maréchal Foch, 98800 Nouméa, à l'attention de Claire Vasseur.","entites":[{"type":"ADRESSE","valeur":"27 avenue du Maréchal Foch, 98800 Nouméa"},{"type":"PERSONNE","valeur":"Claire Vasseur"}]}
+{"id":"fr29","lang":"fr","text":"Le comptable Thierry Nakamura a relevé une erreur dans le grand livre.","entites":[{"type":"PERSONNE","valeur":"Thierry Nakamura"}]}
+{"id":"fr30","lang":"fr","text":"Le stagiaire Hoàng Đức Anh rejoindra l'équipe informatique lundi prochain.","entites":[{"type":"PERSONNE","valeur":"Hoàng Đức Anh"}]}
+{"id":"fr31","lang":"fr","text":"Nous accusons réception de votre courrier et vous prions d'agréer nos salutations distinguées.","entites":[]}
+{"id":"fr32","lang":"fr","text":"Marie-Thérèse Gope-Iwate, présidente de l'association, ouvrira la séance.","entites":[{"type":"PERSONNE","valeur":"Marie-Thérèse Gope-Iwate"}]}
+{"id":"fr33","lang":"fr","text":"La société Électricité Moderne du Nord et son gérant Rachid Haddad sont mis en demeure.","entites":[{"type":"SOCIETE","valeur":"Électricité Moderne du Nord"},{"type":"PERSONNE","valeur":"Rachid Haddad"}]}
+{"id":"fr34","lang":"fr","text":"Le colis a été remis en main propre à Tamatea Faatau, gardien de l'immeuble.","entites":[{"type":"PERSONNE","valeur":"Tamatea Faatau"}]}
+{"id":"fr35","lang":"fr","text":"Le taux de TVA applicable est de 11 % pour les prestations de services.","entites":[]}
+{"id":"fr36","lang":"fr","text":"Mme Léa Martin-Ruiz et son époux Antoine Ruiz sollicitent un rendez-vous à Toulouse.","entites":[{"type":"PERSONNE","valeur":"Léa Martin-Ruiz"},{"type":"PERSONNE","valeur":"Antoine Ruiz"},{"type":"LIEU","valeur":"Toulouse"}]}
+{"id":"fr37","lang":"fr","text":"Le rapport d'audit a été rédigé par Guillaume Van der Berghe.","entites":[{"type":"PERSONNE","valeur":"Guillaume Van der Berghe"}]}
+{"id":"fr38","lang":"fr","text":"L'élève Kenji Tuilagi a obtenu les félicitations du conseil de classe.","entites":[{"type":"PERSONNE","valeur":"Kenji Tuilagi"}]}
+{"id":"fr39","lang":"fr","text":"Le compte rendu sera diffusé à l'ensemble des participants avant la fin de la semaine.","entites":[]}
+{"id":"fr40","lang":"fr","text":"Le bail commercial est consenti à la SARL Les Jardins de Tina, représentée par Mme Sonia Tein.","entites":[{"type":"SOCIETE","valeur":"SARL Les Jardins de Tina"},{"type":"PERSONNE","valeur":"Sonia Tein"}]}
+{"id":"fr41","lang":"fr","text":"Contacter Benoît Lemaire ou, en son absence, Samia Kaddouri.","entites":[{"type":"PERSONNE","valeur":"Benoît Lemaire"},{"type":"PERSONNE","valeur":"Samia Kaddouri"}]}
+{"id":"fr42","lang":"fr","text":"Le véhicule de service est stationné sur le parking de Ducos.","entites":[{"type":"LIEU","valeur":"Ducos"}]}
+{"id":"fr43","lang":"fr","text":"Mme Ahmed épouse Lambert a déposé une réclamation auprès du service client.","entites":[{"type":"PERSONNE","valeur":"Ahmed épouse Lambert"}]}
+{"id":"fr44","lang":"fr","text":"Le jury était composé de Pierre-Yves Le Goff, Odile Quéméner et Jacques Tjibaou-Kasarhérou.","entites":[{"type":"PERSONNE","valeur":"Pierre-Yves Le Goff"},{"type":"PERSONNE","valeur":"Odile Quéméner"},{"type":"PERSONNE","valeur":"Jacques Tjibaou-Kasarhérou"}]}
+{"id":"fr45","lang":"fr","text":"Merci de bien vouloir compléter le formulaire et de le retourner signé.","entites":[]}
+{"id":"fr46","lang":"fr","text":"Selon M. Vũ Hải Đăng, la livraison aura lieu à Mont-Dore la semaine prochaine.","entites":[{"type":"PERSONNE","valeur":"Vũ Hải Đăng"},{"type":"LIEU","valeur":"Mont-Dore"}]}
+{"id":"fr47","lang":"fr","text":"La gérante de la société Coiffure Heiata, Heiata Mai, demande un délai de paiement.","entites":[{"type":"SOCIETE","valeur":"Coiffure Heiata"},{"type":"PERSONNE","valeur":"Heiata Mai"}]}
+{"id":"fr48","lang":"fr","text":"Le prochain conseil municipal se tiendra en salle des délibérations.","entites":[]}
+{"id":"fr49","lang":"fr","text":"Le témoin, Abdelkader Mansouri, déclare avoir vu le véhicule quitter les lieux.","entites":[{"type":"PERSONNE","valeur":"Abdelkader Mansouri"}]}
+{"id":"fr50","lang":"fr","text":"Cordialement, Élodie Fabre-Nicolas, chargée de mission.","entites":[{"type":"PERSONNE","valeur":"Élodie Fabre-Nicolas"}]}
+{"id":"fr51","lang":"fr","text":"M. et Mme Tehei Tauhiro souhaitent inscrire leur fille à la cantine.","entites":[{"type":"PERSONNE","valeur":"Tehei Tauhiro"}]}
+{"id":"fr52","lang":"fr","text":"L'inventaire annuel du stock aura lieu le dernier samedi du mois.","entites":[]}
+{"id":"fr53","lang":"fr","text":"Le cabinet Roussel & Associés assiste Mme Hélène Wahnapo dans cette procédure.","entites":[{"type":"SOCIETE","valeur":"Roussel & Associés"},{"type":"PERSONNE","valeur":"Hélène Wahnapo"}]}
+{"id":"fr54","lang":"fr","text":"Le formateur Lê Minh Châu animera la session à Bordeaux.","entites":[{"type":"PERSONNE","valeur":"Lê Minh Châu"},{"type":"LIEU","valeur":"Bordeaux"}]}
+{"id":"fr55","lang":"fr","text":"Le client Gérard Dubois-Lemoine conteste le montant de la pénalité de retard.","entites":[{"type":"PERSONNE","valeur":"Gérard Dubois-Lemoine"}]}
+{"id":"fr56","lang":"fr","text":"Sur proposition de Mme Laïla Ben Youssef, le point 3 est ajouté à l'ordre du jour.","entites":[{"type":"PERSONNE","valeur":"Laïla Ben Youssef"}]}
+{"id":"fr57","lang":"fr","text":"La société Transports Maréchal Frères a déménagé à Païta.","entites":[{"type":"SOCIETE","valeur":"Transports Maréchal Frères"},{"type":"LIEU","valeur":"Païta"}]}
+{"id":"fr58","lang":"fr","text":"La remise des diplômes est prévue en fin d'après-midi dans le grand amphithéâtre.","entites":[]}
+{"id":"fr59","lang":"fr","text":"Raymond Poedi, chef de quart, a signalé l'incident à 4 h 10.","entites":[{"type":"PERSONNE","valeur":"Raymond Poedi"}]}
+{"id":"fr60","lang":"fr","text":"Mme Vaimiti Bonnet-Teai a été recrutée en contrat à durée déterminée.","entites":[{"type":"PERSONNE","valeur":"Vaimiti Bonnet-Teai"}]}
+{"id":"fr61","lang":"fr","text":"Destinataires : Sébastien Garcia, Inès Haddou, Kévin Tran.","entites":[{"type":"PERSONNE","valeur":"Sébastien Garcia"},{"type":"PERSONNE","valeur":"Inès Haddou"},{"type":"PERSONNE","valeur":"Kévin Tran"}]}
+{"id":"fr62","lang":"fr","text":"L'entreprise Menuiserie Kanak Bois Précieux recrute deux apprentis à Poindimié.","entites":[{"type":"SOCIETE","valeur":"Menuiserie Kanak Bois Précieux"},{"type":"LIEU","valeur":"Poindimié"}]}
+{"id":"fr63","lang":"fr","text":"Le paiement par virement bancaire est à privilégier pour les montants importants.","entites":[]}
+{"id":"fr64","lang":"fr","text":"Isabelle Ngo, épouse Fontaine, est la nouvelle trésorière.","entites":[{"type":"PERSONNE","valeur":"Isabelle Ngo"},{"type":"PERSONNE","valeur":"Fontaine"}]}
+{"id":"fr65","lang":"fr","text":"Entretien annuel de Mehdi Saïdi avec sa responsable, Christine Wakolo.","entites":[{"type":"PERSONNE","valeur":"Mehdi Saïdi"},{"type":"PERSONNE","valeur":"Christine Wakolo"}]}
+{"id":"fr66","lang":"fr","text":"La livraison des fournitures scolaires est prévue pour la rentrée de février.","entites":[]}
+{"id":"en01","lang":"en","text":"Please forward the signed agreement to Daniel Whitmore before Friday.","entites":[{"type":"PERSONNE","valeur":"Daniel Whitmore"}]}
+{"id":"en02","lang":"en","text":"The invoice was approved by Priya Raghunathan, head of procurement at Coral Reef Supplies Ltd.","entites":[{"type":"PERSONNE","valeur":"Priya Raghunathan"},{"type":"SOCIETE","valeur":"Coral Reef Supplies Ltd"}]}
+{"id":"en03","lang":"en","text":"Payment is due within thirty days of the invoice date.","entites":[]}
+{"id":"en04","lang":"en","text":"Our new office in Auckland will be managed by Tama Ngata.","entites":[{"type":"LIEU","valeur":"Auckland"},{"type":"PERSONNE","valeur":"Tama Ngata"}]}
+{"id":"en05","lang":"en","text":"Dr. Margaret O'Connell reviewed the safety report on Monday.","entites":[{"type":"PERSONNE","valeur":"Margaret O'Connell"}]}
+{"id":"en06","lang":"en","text":"The meeting with Nguyen Van Hoa and Sarah Kowalski has been moved to 3 pm.","entites":[{"type":"PERSONNE","valeur":"Nguyen Van Hoa"},{"type":"PERSONNE","valeur":"Sarah Kowalski"}]}
+{"id":"en07","lang":"en","text":"All employees must complete the compliance training by the end of the quarter.","entites":[]}
+{"id":"en08","lang":"en","text":"Ahmed Al-Rashid joined Blue Harbour Consulting as a senior analyst.","entites":[{"type":"PERSONNE","valeur":"Ahmed Al-Rashid"},{"type":"SOCIETE","valeur":"Blue Harbour Consulting"}]}
+{"id":"en09","lang":"en","text":"Regards, Jonathan Pike-Ellison, Finance Director.","entites":[{"type":"PERSONNE","valeur":"Jonathan Pike-Ellison"}]}
+{"id":"en10","lang":"en","text":"The shipment left Sydney on 4 May and is expected in Suva next week.","entites":[{"type":"LIEU","valeur":"Sydney"},{"type":"LIEU","valeur":"Suva"}]}
+{"id":"en11","lang":"en","text":"Ms. Leilani Kahale has requested a copy of her employment contract.","entites":[{"type":"PERSONNE","valeur":"Leilani Kahale"}]}
+{"id":"en12","lang":"en","text":"The board approved the annual budget without amendments.","entites":[]}
+{"id":"en13","lang":"en","text":"Contact Robert Chen or Emma van Dijk for technical support.","entites":[{"type":"PERSONNE","valeur":"Robert Chen"},{"type":"PERSONNE","valeur":"Emma van Dijk"}]}
+{"id":"en14","lang":"en","text":"The lease was signed by Greenfield Property Holdings and tenant Oliver Mbeki.","entites":[{"type":"SOCIETE","valeur":"Greenfield Property Holdings"},{"type":"PERSONNE","valeur":"Oliver Mbeki"}]}
+{"id":"en15","lang":"en","text":"Hi Josh, thanks for sending the updated figures.","entites":[{"type":"PERSONNE","valeur":"Josh"}]}
+{"id":"en16","lang":"en","text":"Delivery address: 45 Queen Street, Brisbane QLD 4000, attention Fiona MacLeod.","entites":[{"type":"ADRESSE","valeur":"45 Queen Street, Brisbane QLD 4000"},{"type":"PERSONNE","valeur":"Fiona MacLeod"}]}
+{"id":"en17","lang":"en","text":"Please do not reply to this automated message.","entites":[]}
+{"id":"en18","lang":"en","text":"The witness, Mrs. Abigail Thornton-Hayes, confirmed the timeline.","entites":[{"type":"PERSONNE","valeur":"Abigail Thornton-Hayes"}]}
+{"id":"en19","lang":"en","text":"Kofi Mensah will present the quarterly results to investors in London.","entites":[{"type":"PERSONNE","valeur":"Kofi Mensah"},{"type":"LIEU","valeur":"London"}]}
+{"id":"en20","lang":"en","text":"Our auditor, Lucas Ferreira of Ferreira & Partners, flagged two issues.","entites":[{"type":"PERSONNE","valeur":"Lucas Ferreira"},{"type":"SOCIETE","valeur":"Ferreira & Partners"}]}
+{"id":"en21","lang":"en","text":"The candidate, Mei Ling Tan, has ten years of experience in logistics.","entites":[{"type":"PERSONNE","valeur":"Mei Ling Tan"}]}
+{"id":"es01","lang":"es","text":"La señora Lucía Herrera Domínguez firmó el contrato en Sevilla.","entites":[{"type":"PERSONNE","valeur":"Lucía Herrera Domínguez"},{"type":"LIEU","valeur":"Sevilla"}]}
+{"id":"es02","lang":"es","text":"El pago se realizará mediante transferencia bancaria en un plazo de treinta días.","entites":[]}
+{"id":"es03","lang":"es","text":"Javier Moreno, gerente de Construcciones Albarrán SL, aprobó el presupuesto.","entites":[{"type":"PERSONNE","valeur":"Javier Moreno"},{"type":"SOCIETE","valeur":"Construcciones Albarrán SL"}]}
+{"id":"es04","lang":"es","text":"Saludos cordiales, Ana Belén Gutiérrez.","entites":[{"type":"PERSONNE","valeur":"Ana Belén Gutiérrez"}]}
+{"id":"es05","lang":"es","text":"El informe fue revisado por Diego Fernández de Córdoba y Rosa Iglesias.","entites":[{"type":"PERSONNE","valeur":"Diego Fernández de Córdoba"},{"type":"PERSONNE","valeur":"Rosa Iglesias"}]}
+{"id":"es06","lang":"es","text":"La reunión se celebrará en la sala de juntas del edificio principal.","entites":[]}
+{"id":"de01","lang":"de","text":"Herr Matthias Bergmann hat die Rechnung am Montag freigegeben.","entites":[{"type":"PERSONNE","valeur":"Matthias Bergmann"}]}
+{"id":"de02","lang":"de","text":"Die Lieferung an die Firma Schneider Haustechnik GmbH in Hamburg ist verspätet.","entites":[{"type":"SOCIETE","valeur":"Schneider Haustechnik GmbH"},{"type":"LIEU","valeur":"Hamburg"}]}
+{"id":"de03","lang":"de","text":"Bitte senden Sie die unterschriebenen Unterlagen bis Ende der Woche zurück.","entites":[]}
+{"id":"de04","lang":"de","text":"Frau Ayşe Yılmaz-Krüger übernimmt die Leitung der Buchhaltung.","entites":[{"type":"PERSONNE","valeur":"Ayşe Yılmaz-Krüger"}]}
+{"id":"it01","lang":"it","text":"Il dottor Giuseppe Lombardi ha firmato il verbale a Milano.","entites":[{"type":"PERSONNE","valeur":"Giuseppe Lombardi"},{"type":"LIEU","valeur":"Milano"}]}
+{"id":"it02","lang":"it","text":"La signora Francesca De Luca è la nuova responsabile commerciale di Ottica Rinaldi Srl.","entites":[{"type":"PERSONNE","valeur":"Francesca De Luca"},{"type":"SOCIETE","valeur":"Ottica Rinaldi Srl"}]}
+{"id":"it03","lang":"it","text":"Il pagamento deve essere effettuato entro trenta giorni dalla data della fattura.","entites":[]}
+{"id":"pt01","lang":"pt","text":"O contrato foi assinado por João Pedro Albuquerque em Lisboa.","entites":[{"type":"PERSONNE","valeur":"João Pedro Albuquerque"},{"type":"LIEU","valeur":"Lisboa"}]}
+{"id":"pt02","lang":"pt","text":"A senhora Mariana Costa Ribeiro solicitou uma segunda via da fatura.","entites":[{"type":"PERSONNE","valeur":"Mariana Costa Ribeiro"}]}
+{"id":"nl01","lang":"nl","text":"Mevrouw Sanne de Vries heeft de offerte goedgekeurd.","entites":[{"type":"PERSONNE","valeur":"Sanne de Vries"}]}
+{"id":"nl02","lang":"nl","text":"De vergadering wordt verplaatst naar volgende week dinsdag.","entites":[]}
+{"id":"vi01","lang":"vi","text":"Ông Nguyễn Văn Hùng đã ký hợp đồng với công ty vào ngày hôm qua.","entites":[{"type":"PERSONNE","valeur":"Nguyễn Văn Hùng"}]}
+{"id":"vi02","lang":"vi","text":"Bà Trần Thị Mai là kế toán trưởng của công ty.","entites":[{"type":"PERSONNE","valeur":"Trần Thị Mai"}]}
+{"id":"ar01","lang":"ar","text":"وقّع السيد خالد المنصوري العقد في الرباط.","entites":[{"type":"PERSONNE","valeur":"خالد المنصوري"},{"type":"LIEU","valeur":"الرباط"}]}
+{"id":"pl01","lang":"pl","text":"Pani Katarzyna Wiśniewska zatwierdziła fakturę w poniedziałek.","entites":[{"type":"PERSONNE","valeur":"Katarzyna Wiśniewska"}]}
+{"id":"es07","lang":"es","text":"El cliente Pablo Ortiz Cabello solicita la devolución del importe.","entites":[{"type":"PERSONNE","valeur":"Pablo Ortiz Cabello"}]}

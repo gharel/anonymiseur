@@ -1,0 +1,1241 @@
+[
+ {
+  "id": "fr01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Hinatea Teriitahi",
+    "score": 0.995
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Papeete",
+    "score": 0.9959
+   }
+  ]
+ },
+ {
+  "id": "fr02",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Wakaine Poiwi",
+    "score": 0.9277
+   }
+  ]
+ },
+ {
+  "id": "fr03",
+  "entites": []
+ },
+ {
+  "id": "fr04",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Nguyễn Thị Lan",
+    "score": 0.9967
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Dumbéa",
+    "score": 0.9859
+   }
+  ]
+ },
+ {
+  "id": "fr05",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "Lagon",
+    "score": 0.524
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Bleu Logistique SAS",
+    "score": 0.6828
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Karim Benali",
+    "score": 0.9904
+   }
+  ]
+ },
+ {
+  "id": "fr06",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Jean-Baptiste Morel-Duval",
+    "score": 0.9945
+   }
+  ]
+ },
+ {
+  "id": "fr07",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Anne de Villeneuve",
+    "score": 0.9849
+   }
+  ]
+ },
+ {
+  "id": "fr08",
+  "entites": []
+ },
+ {
+  "id": "fr09",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Fatima-Zahra El Idrissi",
+    "score": 0.9918
+   }
+  ]
+ },
+ {
+  "id": "fr10",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "Koné",
+    "score": 0.9803
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Trần Văn Minh",
+    "score": 0.9955
+   }
+  ]
+ },
+ {
+  "id": "fr11",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Teva Tehaamatai",
+    "score": 0.9855
+   }
+  ]
+ },
+ {
+  "id": "fr12",
+  "entites": []
+ },
+ {
+  "id": "fr13",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Louis d'Harcourt du Plessis",
+    "score": 0.8209
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Ferronnerie Tavernier SARL",
+    "score": 0.8783
+   }
+  ]
+ },
+ {
+  "id": "fr14",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Youssef Ait Lahcen",
+    "score": 0.9219
+   }
+  ]
+ },
+ {
+  "id": "fr15",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Moana",
+    "score": 0.5568
+   }
+  ]
+ },
+ {
+  "id": "fr16",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Iabe Hnawia",
+    "score": 0.9918
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Lifou",
+    "score": 0.9539
+   }
+  ]
+ },
+ {
+  "id": "fr17",
+  "entites": []
+ },
+ {
+  "id": "fr18",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Sylvie Lebreton-Caillaud",
+    "score": 0.9943
+   }
+  ]
+ },
+ {
+  "id": "fr19",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Pacific Froid Services",
+    "score": 0.8182
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Bourail",
+    "score": 0.9747
+   }
+  ]
+ },
+ {
+  "id": "fr20",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Phạm Quốc Bảo",
+    "score": 0.985
+   }
+  ]
+ },
+ {
+  "id": "fr21",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "KAMOUDA Éloi",
+    "score": 0.97
+   }
+  ]
+ },
+ {
+  "id": "fr22",
+  "entites": []
+ },
+ {
+  "id": "fr23",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Mohamed Cherif",
+    "score": 0.9925
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Nadia Bouzidi",
+    "score": 0.9904
+   }
+  ]
+ },
+ {
+  "id": "fr24",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Boulangerie Tamarii Rau",
+    "score": 0.8653
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Faa'a",
+    "score": 0.9933
+   }
+  ]
+ },
+ {
+  "id": "fr25",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Rose-Marie Wenisso",
+    "score": 0.9888
+   }
+  ]
+ },
+ {
+  "id": "fr26",
+  "entites": []
+ },
+ {
+  "id": "fr27",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Philippe Ounou",
+    "score": 0.9879
+   }
+  ]
+ },
+ {
+  "id": "fr28",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "avenue du Maréchal",
+    "score": 0.7722
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Foch",
+    "score": 0.5652
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Foch",
+    "score": 0.5619
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "98800 Nouméa",
+    "score": 0.8916
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Claire Vasseur",
+    "score": 0.9853
+   }
+  ]
+ },
+ {
+  "id": "fr29",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Thierry Nakamura",
+    "score": 0.9905
+   }
+  ]
+ },
+ {
+  "id": "fr30",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Hoàng Đức Anh",
+    "score": 0.9818
+   }
+  ]
+ },
+ {
+  "id": "fr31",
+  "entites": []
+ },
+ {
+  "id": "fr32",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Marie-Thérèse Gope-Iwate",
+    "score": 0.9953
+   }
+  ]
+ },
+ {
+  "id": "fr33",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Électricité Moderne du Nord",
+    "score": 0.916
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Rachid Haddad",
+    "score": 0.9938
+   }
+  ]
+ },
+ {
+  "id": "fr34",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Tamatea Faatau",
+    "score": 0.9906
+   }
+  ]
+ },
+ {
+  "id": "fr35",
+  "entites": []
+ },
+ {
+  "id": "fr36",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Léa Martin-Ruiz",
+    "score": 0.9953
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Antoine Ruiz",
+    "score": 0.9953
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Toulouse",
+    "score": 0.9955
+   }
+  ]
+ },
+ {
+  "id": "fr37",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Guillaume Van der Berghe",
+    "score": 0.9802
+   }
+  ]
+ },
+ {
+  "id": "fr38",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Kenji Tuilagi",
+    "score": 0.9784
+   }
+  ]
+ },
+ {
+  "id": "fr39",
+  "entites": []
+ },
+ {
+  "id": "fr40",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "Les Jardins",
+    "score": 0.5205
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Sonia Tein",
+    "score": 0.9856
+   }
+  ]
+ },
+ {
+  "id": "fr41",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Benoît Lemaire",
+    "score": 0.9955
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Samia Kaddouri",
+    "score": 0.9957
+   }
+  ]
+ },
+ {
+  "id": "fr42",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "Ducos",
+    "score": 0.7395
+   }
+  ]
+ },
+ {
+  "id": "fr43",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Ahmed épouse Lambert",
+    "score": 0.9225
+   }
+  ]
+ },
+ {
+  "id": "fr44",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Pierre-Yves Le Goff",
+    "score": 0.9965
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Odile Quéméner",
+    "score": 0.9965
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Jacques Tjibaou-Kasarhérou",
+    "score": 0.9974
+   }
+  ]
+ },
+ {
+  "id": "fr45",
+  "entites": []
+ },
+ {
+  "id": "fr46",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "M. Vũ Hải Đăng",
+    "score": 0.9515
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Mont-Dore",
+    "score": 0.9885
+   }
+  ]
+ },
+ {
+  "id": "fr47",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Heiata Mai",
+    "score": 0.9759
+   }
+  ]
+ },
+ {
+  "id": "fr48",
+  "entites": []
+ },
+ {
+  "id": "fr49",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Abdelkader Mansouri",
+    "score": 0.9927
+   }
+  ]
+ },
+ {
+  "id": "fr50",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Élodie Fabre-Nicolas",
+    "score": 0.9938
+   }
+  ]
+ },
+ {
+  "id": "fr51",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Tehei Tauhiro",
+    "score": 0.9909
+   }
+  ]
+ },
+ {
+  "id": "fr52",
+  "entites": []
+ },
+ {
+  "id": "fr53",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Roussel",
+    "score": 0.6841
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Associés",
+    "score": 0.9149
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Hélène Wahnapo",
+    "score": 0.9951
+   }
+  ]
+ },
+ {
+  "id": "fr54",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Lê Minh Châu",
+    "score": 0.978
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Bordeaux",
+    "score": 0.9946
+   }
+  ]
+ },
+ {
+  "id": "fr55",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Gérard Dubois-Lemoine",
+    "score": 0.9597
+   }
+  ]
+ },
+ {
+  "id": "fr56",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Laïla Ben Youssef",
+    "score": 0.9927
+   }
+  ]
+ },
+ {
+  "id": "fr57",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Transports Maréchal Frères",
+    "score": 0.7712
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Païta",
+    "score": 0.9927
+   }
+  ]
+ },
+ {
+  "id": "fr58",
+  "entites": []
+ },
+ {
+  "id": "fr59",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Raymond Poedi",
+    "score": 0.994
+   }
+  ]
+ },
+ {
+  "id": "fr60",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Vaimiti Bonnet-Teai",
+    "score": 0.9909
+   }
+  ]
+ },
+ {
+  "id": "fr61",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Sébastien Garcia",
+    "score": 0.9942
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Inès Haddou",
+    "score": 0.9965
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Kévin Tran",
+    "score": 0.9955
+   }
+  ]
+ },
+ {
+  "id": "fr62",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Menuiserie Kanak Bois Précieux",
+    "score": 0.8743
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Précieux",
+    "score": 0.6174
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Poindimié",
+    "score": 0.9926
+   }
+  ]
+ },
+ {
+  "id": "fr63",
+  "entites": []
+ },
+ {
+  "id": "fr64",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Isabelle Ngo",
+    "score": 0.985
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Fontaine",
+    "score": 0.9669
+   }
+  ]
+ },
+ {
+  "id": "fr65",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Mehdi Saïdi",
+    "score": 0.9825
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Christine Wakolo",
+    "score": 0.9901
+   }
+  ]
+ },
+ {
+  "id": "fr66",
+  "entites": []
+ },
+ {
+  "id": "en01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Daniel Whitmore",
+    "score": 0.9619
+   }
+  ]
+ },
+ {
+  "id": "en02",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Priya Raghunathan",
+    "score": 0.8316
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Coral Reef Supplies Ltd",
+    "score": 0.8813
+   }
+  ]
+ },
+ {
+  "id": "en03",
+  "entites": []
+ },
+ {
+  "id": "en04",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "Auckland",
+    "score": 0.9854
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Tama Ngata",
+    "score": 0.98
+   }
+  ]
+ },
+ {
+  "id": "en05",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Margaret O'Connell",
+    "score": 0.9795
+   }
+  ]
+ },
+ {
+  "id": "en06",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Nguyen Van Hoa",
+    "score": 0.9944
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Sarah Kowalski",
+    "score": 0.9938
+   }
+  ]
+ },
+ {
+  "id": "en07",
+  "entites": []
+ },
+ {
+  "id": "en08",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Ahmed Al-Rashid",
+    "score": 0.9944
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Blue Harbour Consulting",
+    "score": 0.9185
+   }
+  ]
+ },
+ {
+  "id": "en09",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Jonathan Pike-Ellison",
+    "score": 0.9616
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Finance Director",
+    "score": 0.9655
+   }
+  ]
+ },
+ {
+  "id": "en10",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "Sydney",
+    "score": 0.9522
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Suva",
+    "score": 0.8608
+   }
+  ]
+ },
+ {
+  "id": "en11",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Leilani Kahale",
+    "score": 0.9932
+   }
+  ]
+ },
+ {
+  "id": "en12",
+  "entites": []
+ },
+ {
+  "id": "en13",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Robert Chen",
+    "score": 0.9891
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Emma van Dijk",
+    "score": 0.9923
+   }
+  ]
+ },
+ {
+  "id": "en14",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Greenfield Property Holdings",
+    "score": 0.9816
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Oliver Mbeki",
+    "score": 0.9841
+   }
+  ]
+ },
+ {
+  "id": "en15",
+  "entites": []
+ },
+ {
+  "id": "en16",
+  "entites": [
+   {
+    "kind": "LIEU",
+    "valeur": "Queen Street",
+    "score": 0.9896
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Brisbane QLD",
+    "score": 0.9954
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Fiona MacLeod",
+    "score": 0.8089
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "MacLeod",
+    "score": 0.5114
+   }
+  ]
+ },
+ {
+  "id": "en17",
+  "entites": []
+ },
+ {
+  "id": "en18",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Mrs. Abigail Thornton-Hayes",
+    "score": 0.9253
+   }
+  ]
+ },
+ {
+  "id": "en19",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Kofi Mensah",
+    "score": 0.9933
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "London",
+    "score": 0.9857
+   }
+  ]
+ },
+ {
+  "id": "en20",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Lucas Ferreira",
+    "score": 0.6769
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "of Ferreira & Partners",
+    "score": 0.9514
+   }
+  ]
+ },
+ {
+  "id": "en21",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Mei Ling Tan",
+    "score": 0.9826
+   }
+  ]
+ },
+ {
+  "id": "es01",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "señora Lucía Herrera",
+    "score": 0.7828
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Domínguez",
+    "score": 0.5952
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Sevilla",
+    "score": 0.9627
+   }
+  ]
+ },
+ {
+  "id": "es02",
+  "entites": []
+ },
+ {
+  "id": "es03",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Javier Moreno",
+    "score": 0.97
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "de Construcciones Albarrán SL",
+    "score": 0.9196
+   }
+  ]
+ },
+ {
+  "id": "es04",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Ana Belén Gutiérrez",
+    "score": 0.9941
+   }
+  ]
+ },
+ {
+  "id": "es05",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Diego Fernández de Córdoba",
+    "score": 0.933
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Rosa Iglesias",
+    "score": 0.9661
+   }
+  ]
+ },
+ {
+  "id": "es06",
+  "entites": []
+ },
+ {
+  "id": "de01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Matthias Bergmann",
+    "score": 0.9974
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Rechnung am Montag freigegeben",
+    "score": 0.7845
+   }
+  ]
+ },
+ {
+  "id": "de02",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Lieferung",
+    "score": 0.9771
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "die Firma Schneider Haustechnik GmbH",
+    "score": 0.9614
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Hamburg",
+    "score": 0.6375
+   }
+  ]
+ },
+ {
+  "id": "de03",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Sie",
+    "score": 0.7817
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "unterschriebenen Unterlagen bis Ende der Woche zurück",
+    "score": 0.8782
+   }
+  ]
+ },
+ {
+  "id": "de04",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Frau Ayşe Yılmaz",
+    "score": 0.6372
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Yılmaz-Krüger übernimmt die Leitung der Buchhaltung",
+    "score": 0.8804
+   }
+  ]
+ },
+ {
+  "id": "it01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Giuseppe Lombardi",
+    "score": 0.9763
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Milano",
+    "score": 0.9877
+   }
+  ]
+ },
+ {
+  "id": "it02",
+  "entites": [
+   {
+    "kind": "SOCIETE",
+    "valeur": "Francesca De Luca",
+    "score": 0.6307
+   },
+   {
+    "kind": "SOCIETE",
+    "valeur": "Ottica Rinaldi Srl",
+    "score": 0.8938
+   }
+  ]
+ },
+ {
+  "id": "it03",
+  "entites": []
+ },
+ {
+  "id": "pt01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "João Pedro Albuquerque",
+    "score": 0.8085
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Albuquerque",
+    "score": 0.6009
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Albuquerque",
+    "score": 0.5394
+   },
+   {
+    "kind": "LIEU",
+    "valeur": "Lisboa",
+    "score": 0.7082
+   }
+  ]
+ },
+ {
+  "id": "pt02",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Mariana Costa Ribeiro",
+    "score": 0.9537
+   }
+  ]
+ },
+ {
+  "id": "nl01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Mevrouw Sanne",
+    "score": 0.9685
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "Vries",
+    "score": 0.8805
+   },
+   {
+    "kind": "PERSONNE",
+    "valeur": "heeft",
+    "score": 0.5092
+   }
+  ]
+ },
+ {
+  "id": "nl02",
+  "entites": []
+ },
+ {
+  "id": "vi01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Nguyễn Văn Hùng",
+    "score": 0.7764
+   }
+  ]
+ },
+ {
+  "id": "vi02",
+  "entites": []
+ },
+ {
+  "id": "ar01",
+  "entites": []
+ },
+ {
+  "id": "pl01",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Pani Katarzyna Wiśniewska",
+    "score": 0.9841
+   }
+  ]
+ },
+ {
+  "id": "es07",
+  "entites": [
+   {
+    "kind": "PERSONNE",
+    "valeur": "Pablo Ortiz Cabello",
+    "score": 0.9893
+   }
+  ]
+ }
+]

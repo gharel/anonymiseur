@@ -1,0 +1,20 @@
+/target/
+/target-*/
+**/target/
+tools/.venv/
+__pycache__/
+*.pyc
+
+# Tables de correspondance et sorties : jamais versionnées (données réelles possibles)
+*.anonmap
+/sorties/
+*_anonymise.*
+*_restaure.*
+
+# Modèles et données volumineuses, téléchargés par tools/
+/assets/ner/*.onnx
+/assets/tessdata/*.traineddata
+
+.DS_Store
+Thumbs.db
+*.snap.new

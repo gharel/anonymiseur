@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       # Empreintes de la dernière release : jamais écrites en dur dans la page.
       # Sans release, empreintes.json n'existe pas et la page affiche un message.

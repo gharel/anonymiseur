@@ -280,6 +280,7 @@ name = "anon-ner"
 version = "0.1.0"
 dependencies = [
  "anon-core",
+ "anon-dict",
  "ort",
  "serde_json",
  "thiserror 2.0.21",

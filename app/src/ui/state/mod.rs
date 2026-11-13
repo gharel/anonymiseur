@@ -5,7 +5,6 @@ pub mod anonymize;
 pub mod deanonymize;
 pub mod files;
 pub mod freetext;
-pub mod password;
 
 /// Onglet principal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

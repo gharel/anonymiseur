@@ -5,13 +5,15 @@
 //! - `state` : état et transitions de chaque onglet, sans egui ;
 //! - `screens` : rendu de chaque onglet ;
 //! - `app` : fenêtre, en-tête, onglets, pied ;
-//! - `mock` : données factices de la maquette.
+//! - `runner` : fil de travail (traitements longs, avancement, annulation) ;
+//! - `service` : opérations sur les fichiers, sans egui.
 
 pub mod app;
 pub mod gallery;
-pub mod mock;
 pub mod platform;
+pub mod runner;
 pub mod screens;
+pub mod service;
 pub mod state;
 pub mod theme;
 pub mod widgets;

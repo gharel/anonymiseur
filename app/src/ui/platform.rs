@@ -9,13 +9,17 @@ pub trait Platform {
     fn pick_documents(&mut self) -> Vec<FileEntry>;
     /// Dialogue de choix d'une table `.anonmap`.
     fn pick_map(&mut self) -> Option<PathBuf>;
-    /// Dialogue de choix d'un fichier à restaurer.
-    fn pick_response(&mut self) -> Option<FileEntry>;
+    /// Dialogue de choix de fichiers à restaurer.
+    fn pick_responses(&mut self) -> Vec<FileEntry>;
+    /// Dialogue de choix d'un dossier.
+    fn pick_folder(&mut self, start: Option<&Path>) -> Option<PathBuf>;
+    /// Dialogue « Enregistrer sous » pour un texte Markdown.
+    fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf>;
     /// Ouvre un dossier dans l'explorateur.
     fn open_folder(&mut self, path: &Path);
 }
 
-/// Taille d'un fichier, sans échouer.
+/// Entrée de liste pour un chemin (taille lue sans échouer).
 pub fn file_entry(path: PathBuf) -> FileEntry {
     let size = std::fs::metadata(&path).ok().map(|m| m.len());
     FileEntry::new(path, size)
@@ -25,16 +29,10 @@ pub fn file_entry(path: PathBuf) -> FileEntry {
 #[derive(Debug, Default)]
 pub struct NativePlatform;
 
-const DOCUMENT_EXTENSIONS: &[&str] = &[
-    "docx", "xlsx", "pptx", "odt", "ods", "odp", "pdf", "txt", "md", "csv", "png", "jpg", "jpeg",
-];
-
 impl Platform for NativePlatform {
     fn pick_documents(&mut self) -> Vec<FileEntry> {
         rfd::FileDialog::new()
             .set_title("Choisir les documents à anonymiser")
-            .add_filter("Documents pris en charge", DOCUMENT_EXTENSIONS)
-            .add_filter("Tous les fichiers", &["*"])
             .pick_files()
             .unwrap_or_default()
             .into_iter()
@@ -49,12 +47,33 @@ impl Platform for NativePlatform {
             .pick_file()
     }
 
-    fn pick_response(&mut self) -> Option<FileEntry> {
+    fn pick_responses(&mut self) -> Vec<FileEntry> {
         rfd::FileDialog::new()
-            .set_title("Choisir le fichier à restaurer")
-            .add_filter("Documents pris en charge", DOCUMENT_EXTENSIONS)
-            .pick_file()
+            .set_title("Choisir les fichiers à restaurer")
+            .pick_files()
+            .unwrap_or_default()
+            .into_iter()
             .map(file_entry)
+            .collect()
+    }
+
+    fn pick_folder(&mut self, start: Option<&Path>) -> Option<PathBuf> {
+        let mut d = rfd::FileDialog::new().set_title("Choisir le dossier de sortie");
+        if let Some(s) = start {
+            d = d.set_directory(s);
+        }
+        d.pick_folder()
+    }
+
+    fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf> {
+        let mut d = rfd::FileDialog::new()
+            .set_title("Enregistrer le texte anonymisé")
+            .add_filter("Markdown", &["md"])
+            .set_file_name(name);
+        if let Some(s) = start {
+            d = d.set_directory(s);
+        }
+        d.save_file()
     }
 
     fn open_folder(&mut self, path: &Path) {
@@ -65,12 +84,12 @@ impl Platform for NativePlatform {
         } else {
             "xdg-open"
         };
-        // Échec silencieux : l'utilisateur voit le chemin dans le rapport.
+        // Échec silencieux : le chemin est affiché dans le rapport.
         let _ = std::process::Command::new(program).arg(path).spawn();
     }
 }
 
-/// Sans effet : maquette et tests. Garde la trace des demandes.
+/// Sans effet : tests. Garde la trace des demandes.
 #[derive(Debug, Default)]
 pub struct NullPlatform {
     pub requests: Vec<&'static str>,
@@ -87,12 +106,22 @@ impl Platform for NullPlatform {
         None
     }
 
-    fn pick_response(&mut self) -> Option<FileEntry> {
-        self.requests.push("réponse");
+    fn pick_responses(&mut self) -> Vec<FileEntry> {
+        self.requests.push("réponses");
+        Vec::new()
+    }
+
+    fn pick_folder(&mut self, _start: Option<&Path>) -> Option<PathBuf> {
+        self.requests.push("dossier de sortie");
+        None
+    }
+
+    fn save_markdown(&mut self, _start: Option<&Path>, _name: &str) -> Option<PathBuf> {
+        self.requests.push("enregistrer");
         None
     }
 
     fn open_folder(&mut self, _path: &Path) {
-        self.requests.push("dossier");
+        self.requests.push("ouvrir le dossier");
     }
 }

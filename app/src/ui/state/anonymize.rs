@@ -1,14 +1,20 @@
 //! État de l'onglet « Anonymiser » : Déposer → Vérifier → Protéger → Terminé.
-//! Aucune dépendance à egui : les transitions se testent seules.
+//! Aucune dépendance à egui : les transitions se testent seules. Les
+//! traitements longs sont confiés au fil de travail par `AnonApp` ; l'état
+//! reçoit leurs résultats par les méthodes `*_done`.
 
 use super::files::FileEntry;
-use super::password::{self, Strength};
-use anon_core::{DetectOptions, EntityKind, Family, Profile, Tag};
+use crate::ui::service::{BatchReport, Protection, Rejected, unsupported_reason};
+use anon_core::{DetectOptions, EntityKind, Family, Profile, Session, Tag};
+use anon_engine::{Analysis, AnalyzeOptions, Candidate, InputFile, SELECT_MIN_CONFIDENCE};
+use anon_vault::{PasswordStrength, password_strength};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Étapes, dans l'ordre.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Step {
+    #[default]
     Drop,
     Review,
     Protect,
@@ -37,101 +43,397 @@ impl Step {
     }
 }
 
-/// Une valeur détectée, proposée à l'utilisateur.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Candidate {
-    pub kind: EntityKind,
-    pub value: String,
-    /// Extrait autour de la valeur (déjà raccourci).
-    pub context: String,
-    pub occurrences: u32,
-    pub tag: Tag,
-    pub selected: bool,
-    /// Détection incertaine : l'utilisateur doit trancher.
-    pub to_confirm: bool,
+/// Traitement en cours.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Busy {
+    Analyzing,
+    OpeningTable,
+    Anonymizing,
+}
+
+impl Busy {
+    pub fn label(self) -> &'static str {
+        match self {
+            Busy::Analyzing => "Analyse des fichiers",
+            Busy::OpeningTable => "Ouverture de la table",
+            Busy::Anonymizing => "Anonymisation et contrôle de fuite",
+        }
+    }
+}
+
+/// Une ligne est « à confirmer » : valeur ambiguë ou confiance faible.
+pub fn needs_confirmation(c: &Candidate) -> bool {
+    c.ambiguous || c.confidence < SELECT_MIN_CONFIDENCE
 }
 
 /// Erreurs de saisie d'un terme manuel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManualTermError {
     Empty,
-    AlreadyListed,
 }
 
 impl ManualTermError {
     pub fn message(self) -> &'static str {
         match self {
             ManualTermError::Empty => "Saisissez un terme à anonymiser.",
-            ManualTermError::AlreadyListed => "Ce terme est déjà dans la liste.",
         }
     }
 }
 
-/// Écran « Vérifier ».
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReviewState {
+/// Mode de protection choisi à l'étape « Protéger ».
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProtectMode {
+    #[default]
+    NewPassword,
+    /// Reprendre une table existante : mêmes balises, même mot de passe.
+    ExistingTable,
+    Irreversible,
+}
+
+/// Table existante ouverte (session gardée en mémoire seulement).
+#[derive(Clone, PartialEq)]
+pub struct ExistingTable {
+    pub name: String,
+    pub session: Session,
+    pub entries: usize,
+}
+
+impl std::fmt::Debug for ExistingTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExistingTable")
+            .field("entries", &self.entries)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Erreurs de mot de passe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasswordIssue {
+    TooWeak,
+    Mismatch,
+}
+
+impl PasswordIssue {
+    pub fn message(self) -> &'static str {
+        match self {
+            PasswordIssue::TooWeak => {
+                "Mot de passe trop faible : au moins 12 caractères, en mêlant minuscules, majuscules, chiffres et symboles, ou une longue phrase."
+            }
+            PasswordIssue::Mismatch => "Les deux mots de passe ne correspondent pas.",
+        }
+    }
+}
+
+/// Niveau minimal accepté pour chiffrer la table.
+pub fn is_acceptable(s: PasswordStrength) -> bool {
+    s >= PasswordStrength::Correct
+}
+
+/// Écran « Protéger ».
+#[derive(Clone, Default, PartialEq)]
+pub struct ProtectState {
+    pub mode: ProtectMode,
+    pub password: String,
+    pub confirm: String,
+    /// Fichier `.anonmap` choisi pour la reprise, avant ouverture.
+    pub existing_path: Option<PathBuf>,
+    pub existing: Option<ExistingTable>,
+    pub existing_error: Option<String>,
+}
+
+impl std::fmt::Debug for ProtectState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProtectState")
+            .field("mode", &self.mode)
+            .field("existing", &self.existing)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ProtectState {
+    pub fn strength(&self) -> PasswordStrength {
+        password_strength(&self.password)
+    }
+
+    pub fn password_issue(&self) -> Option<PasswordIssue> {
+        if self.mode != ProtectMode::NewPassword || self.password.is_empty() {
+            return None;
+        }
+        (!is_acceptable(self.strength())).then_some(PasswordIssue::TooWeak)
+    }
+
+    pub fn confirm_issue(&self) -> Option<PasswordIssue> {
+        if self.mode != ProtectMode::NewPassword || self.confirm.is_empty() {
+            return None;
+        }
+        (self.confirm != self.password).then_some(PasswordIssue::Mismatch)
+    }
+
+    pub fn can_proceed(&self) -> bool {
+        match self.mode {
+            ProtectMode::NewPassword => {
+                is_acceptable(self.strength()) && self.password == self.confirm
+            }
+            ProtectMode::ExistingTable => self.existing.is_some() && !self.password.is_empty(),
+            ProtectMode::Irreversible => true,
+        }
+    }
+
+    pub fn protection(&self) -> Protection {
+        match self.mode {
+            ProtectMode::Irreversible => Protection::Irreversible,
+            _ => Protection::Password(self.password.clone()),
+        }
+    }
+
+    pub fn clear_secrets(&mut self) {
+        self.password.clear();
+        self.confirm.clear();
+        self.existing = None;
+    }
+}
+
+/// Erreur de transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepError {
+    NoFiles,
+    NothingSelected,
+    PasswordNotReady,
+    NoOutputDir,
+    Busy,
+    WrongStep,
+}
+
+impl StepError {
+    pub fn message(self) -> &'static str {
+        match self {
+            StepError::NoFiles => "Ajoutez au moins un fichier pris en charge.",
+            StepError::NothingSelected => "Cochez au moins une valeur à anonymiser.",
+            StepError::PasswordNotReady => {
+                "Choisissez un mot de passe robuste et confirmez-le, reprenez une table existante, ou activez le mode irréversible."
+            }
+            StepError::NoOutputDir => "Choisissez le dossier où enregistrer les fichiers.",
+            StepError::Busy => "Un traitement est déjà en cours.",
+            StepError::WrongStep => "Action impossible à cette étape.",
+        }
+    }
+}
+
+/// Données confiées au fil de travail pour l'anonymisation.
+#[derive(Debug)]
+pub struct AnonymizeJob {
+    pub inputs: Vec<InputFile>,
+    pub analysis: Analysis,
+    pub never: Vec<String>,
+    pub protection: Protection,
+    pub out_dir: PathBuf,
+    /// Session de départ : table reprise, ou session courante.
+    pub session: Option<Session>,
+}
+
+/// État complet de l'onglet.
+#[derive(Debug)]
+pub struct AnonymizeState {
+    pub step: Step,
+    pub files: Vec<FileEntry>,
+    /// Fichiers refusés (au dépôt ou à la lecture), avec la raison.
+    pub rejected: Vec<Rejected>,
+    pub inputs: Vec<InputFile>,
+    pub analysis: Option<Analysis>,
     pub profile: Profile,
-    pub candidates: Vec<Candidate>,
     /// Familles affichées ; vide = toutes.
     pub family_filter: Vec<Family>,
     pub manual_term: String,
     pub manual_kind: EntityKind,
     pub manual_error: Option<ManualTermError>,
+    /// Liste « ne jamais anonymiser » de cette session.
+    pub never: Vec<String>,
+    /// Balise prévue par candidat coché.
+    pub tag_preview: HashMap<usize, Tag>,
+    pub protect: ProtectState,
+    pub out_dir: Option<PathBuf>,
+    pub report: Option<BatchReport>,
+    pub busy: Option<Busy>,
+    pub error: Option<StepError>,
 }
 
-impl Default for ReviewState {
+impl Default for AnonymizeState {
     fn default() -> Self {
         Self {
+            step: Step::Drop,
+            files: Vec::new(),
+            rejected: Vec::new(),
+            inputs: Vec::new(),
+            analysis: None,
             profile: Profile::Standard,
-            candidates: Vec::new(),
             family_filter: Vec::new(),
             manual_term: String::new(),
             manual_kind: EntityKind::Autre,
             manual_error: None,
+            never: Vec::new(),
+            tag_preview: HashMap::new(),
+            protect: ProtectState::default(),
+            out_dir: None,
+            report: None,
+            busy: None,
+            error: None,
         }
     }
 }
 
-impl ReviewState {
-    pub fn new(candidates: Vec<Candidate>) -> Self {
-        Self {
-            candidates,
-            ..Self::default()
+impl AnonymizeState {
+    /// Ajoute des fichiers : doublons ignorés, extensions non gérées refusées
+    /// avec leur raison (`supported` vide = tout accepter, le moteur tranchera).
+    pub fn add_files(&mut self, entries: impl IntoIterator<Item = FileEntry>, supported: &[&str]) {
+        for e in entries {
+            if self.files.iter().any(|f| f.path == e.path) {
+                continue;
+            }
+            let ext = crate::ui::service::extension(&e.path);
+            if !supported.is_empty() && !supported.contains(&ext.as_str()) {
+                self.rejected.retain(|r| r.name != e.name);
+                self.rejected.push(Rejected {
+                    name: e.name.clone(),
+                    reason: unsupported_reason(&e.path),
+                });
+                continue;
+            }
+            if self.out_dir.is_none() {
+                self.out_dir = e.path.parent().map(|p| p.to_path_buf());
+            }
+            self.files.push(e);
+        }
+        self.error = None;
+    }
+
+    pub fn remove_file(&mut self, index: usize) {
+        if index < self.files.len() {
+            self.files.remove(index);
         }
     }
 
-    /// Le type est-il proposé avec le profil courant ?
-    fn profile_wants(&self, kind: EntityKind) -> bool {
-        DetectOptions {
-            profile: self.profile,
-            ..DetectOptions::default()
+    pub fn dismiss_rejected(&mut self) {
+        self.rejected.clear();
+    }
+
+    pub fn analyze_options(&self) -> AnalyzeOptions {
+        AnalyzeOptions {
+            detect: DetectOptions {
+                profile: self.profile,
+                ..DetectOptions::default()
+            },
+            always: Vec::new(),
+            never: self.never.clone(),
         }
-        .wants(kind)
     }
 
-    /// Une ligne est retenue par le profil (les ajouts manuels le sont toujours).
-    fn in_profile(&self, c: &Candidate) -> bool {
-        self.profile_wants(c.kind) || c.kind == EntityKind::Autre
+    /// Lance l'analyse : renvoie les chemins à lire.
+    pub fn begin_analysis(&mut self) -> Result<Vec<PathBuf>, StepError> {
+        let r = if self.busy.is_some() {
+            Err(StepError::Busy)
+        } else if self.files.is_empty() {
+            Err(StepError::NoFiles)
+        } else if !matches!(self.step, Step::Drop | Step::Review) {
+            Err(StepError::WrongStep)
+        } else {
+            self.busy = Some(Busy::Analyzing);
+            Ok(self.files.iter().map(|f| f.path.clone()).collect())
+        };
+        self.error = r.as_ref().err().copied();
+        r
     }
 
-    /// Indices des lignes visibles, dans l'ordre : profil puis filtre de famille.
-    pub fn visible(&self) -> Vec<usize> {
-        self.candidates
+    /// Résultat de l'analyse. Les fichiers illisibles passent dans `rejected` ;
+    /// s'il ne reste rien, on reste sur « Déposer ».
+    pub fn analysis_done(
+        &mut self,
+        inputs: Vec<InputFile>,
+        unreadable: Vec<Rejected>,
+        analysis: Analysis,
+        session: &Session,
+    ) {
+        self.busy = None;
+        let mut failed = Vec::new();
+        for f in &analysis.files {
+            if let Some(e) = &f.error {
+                failed.push(Rejected {
+                    name: f.name.clone(),
+                    reason: crate::ui::service::sentence(&e.to_string()),
+                });
+            }
+        }
+        for r in unreadable.into_iter().chain(failed) {
+            self.rejected.retain(|x| x.name != r.name);
+            self.rejected.push(r);
+        }
+        let ok: Vec<String> = analysis
+            .files
             .iter()
-            .enumerate()
-            .filter(|(_, c)| self.in_profile(c))
-            .filter(|(_, c)| {
+            .filter(|f| f.error.is_none())
+            .map(|f| f.name.clone())
+            .collect();
+        self.files.retain(|f| ok.contains(&f.name));
+        self.inputs = inputs
+            .into_iter()
+            .filter(|i| ok.contains(&i.name))
+            .collect();
+        if analysis.cancelled || self.inputs.is_empty() {
+            self.analysis = None;
+            self.step = Step::Drop;
+            return;
+        }
+        self.analysis = Some(analysis);
+        self.step = Step::Review;
+        self.refresh_preview(session);
+    }
+
+    /// Changer de profil relance l'analyse : renvoie les chemins à relire.
+    pub fn set_profile(&mut self, profile: Profile) -> Option<Vec<PathBuf>> {
+        if self.profile == profile {
+            return None;
+        }
+        self.profile = profile;
+        if self.analysis.is_some() {
+            self.begin_analysis().ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn refresh_preview(&mut self, session: &Session) {
+        self.tag_preview = self
+            .analysis
+            .as_ref()
+            .map(|a| a.preview_tags(session).into_iter().collect())
+            .unwrap_or_default();
+    }
+
+    fn candidates(&self) -> &[Candidate] {
+        self.analysis
+            .as_ref()
+            .map(|a| a.candidates.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Identifiants des lignes visibles (filtre par famille), dans l'ordre.
+    pub fn visible(&self) -> Vec<usize> {
+        self.candidates()
+            .iter()
+            .filter(|c| {
                 self.family_filter.is_empty() || self.family_filter.contains(&c.kind.family())
             })
-            .map(|(i, _)| i)
+            .map(|c| c.id)
             .collect()
     }
 
-    /// Nombre de lignes par famille, dans le profil courant (pour les filtres).
+    pub fn candidate(&self, id: usize) -> Option<&Candidate> {
+        self.analysis.as_ref().and_then(|a| a.candidate(id))
+    }
+
     pub fn count_by_family(&self, family: Family) -> usize {
-        self.candidates
+        self.candidates()
             .iter()
-            .filter(|c| self.in_profile(c) && c.kind.family() == family)
+            .filter(|c| c.kind.family() == family)
             .count()
     }
 
@@ -147,286 +449,92 @@ impl ReviewState {
         self.family_filter.clear();
     }
 
-    pub fn toggle(&mut self, index: usize) {
-        if let Some(c) = self.candidates.get_mut(index) {
-            c.selected = !c.selected;
-            c.to_confirm = false;
+    fn with_analysis(&mut self, session: &Session, f: impl FnOnce(&mut Analysis)) {
+        if let Some(a) = self.analysis.as_mut() {
+            f(a);
         }
+        self.refresh_preview(session);
     }
 
-    /// État de la case d'en-tête pour les lignes visibles.
+    pub fn toggle(&mut self, id: usize, session: &Session) {
+        let selected = self.candidate(id).is_some_and(|c| c.selected);
+        self.with_analysis(session, |a| {
+            a.set_selected(id, !selected);
+        });
+    }
+
+    pub fn set_kind(&mut self, id: usize, kind: EntityKind, session: &Session) {
+        self.with_analysis(session, |a| {
+            a.set_kind(id, kind);
+        });
+    }
+
+    pub fn set_case_sensitive(&mut self, id: usize, on: bool, session: &Session) {
+        self.with_analysis(session, |a| {
+            a.set_case_sensitive(id, on);
+        });
+    }
+
+    /// « Ne jamais anonymiser » : la ligne disparaît, la valeur rejoint la liste.
+    pub fn never_anonymize(&mut self, id: usize, session: &Session) {
+        let Some(value) = self.candidate(id).map(|c| c.value.clone()) else {
+            return;
+        };
+        if !self.never.contains(&value) {
+            self.never.push(value);
+        }
+        self.with_analysis(session, |a| {
+            a.remove(id);
+        });
+    }
+
+    /// État de la case d'en-tête : (cochées, visibles).
     pub fn header_state(&self) -> (usize, usize) {
         let vis = self.visible();
         let checked = vis
             .iter()
-            .filter(|i| self.candidates.get(**i).is_some_and(|c| c.selected))
+            .filter(|id| self.candidate(**id).is_some_and(|c| c.selected))
             .count();
         (checked, vis.len())
     }
 
-    /// Coche ou décoche toutes les lignes visibles.
-    pub fn set_all_visible(&mut self, selected: bool) {
-        for i in self.visible() {
-            if let Some(c) = self.candidates.get_mut(i) {
-                c.selected = selected;
+    pub fn set_all_visible(&mut self, selected: bool, session: &Session) {
+        let vis = self.visible();
+        self.with_analysis(session, |a| {
+            for id in vis {
+                a.set_selected(id, selected);
             }
-        }
+        });
     }
 
-    /// Lignes qui seront anonymisées (cochées et dans le profil).
     pub fn selected_count(&self) -> usize {
-        self.candidates
-            .iter()
-            .filter(|c| c.selected && self.in_profile(c))
-            .count()
+        self.candidates().iter().filter(|c| c.selected).count()
     }
 
     pub fn pending_confirmations(&self) -> usize {
-        self.candidates
+        self.candidates()
             .iter()
-            .filter(|c| c.to_confirm && self.in_profile(c))
+            .filter(|c| needs_confirmation(c))
             .count()
     }
 
-    /// Prochain index libre pour un type (les parties de personne partagent leurs indices).
-    fn next_index(&self, kind: EntityKind) -> u32 {
-        self.candidates
-            .iter()
-            .filter(|c| {
-                c.tag.kind == kind || (kind.is_person_part() && c.tag.kind.is_person_part())
-            })
-            .map(|c| c.tag.index)
-            .max()
-            .unwrap_or(0)
-            + 1
-    }
-
-    /// Ajoute le terme saisi à la main ; il est coché d'office.
-    pub fn add_manual(&mut self) -> Result<usize, ManualTermError> {
+    /// Ajoute le terme saisi ; renvoie l'identifiant de la ligne.
+    pub fn add_manual(&mut self, session: &Session) -> Result<usize, ManualTermError> {
         let term = self.manual_term.trim().to_owned();
-        let result = if term.is_empty() {
-            Err(ManualTermError::Empty)
-        } else if self
-            .candidates
-            .iter()
-            .any(|c| c.value.to_lowercase() == term.to_lowercase())
-        {
-            Err(ManualTermError::AlreadyListed)
-        } else {
-            let kind = self.manual_kind;
-            let tag = Tag::new(kind, self.next_index(kind));
-            self.candidates.push(Candidate {
-                kind,
-                value: term,
-                context: "Ajout manuel".to_owned(),
-                occurrences: 0,
-                tag,
-                selected: true,
-                to_confirm: false,
-            });
+        let kind = self.manual_kind;
+        let mut id = None;
+        if !term.is_empty() {
+            self.with_analysis(session, |a| id = a.add_manual(kind, &term));
+        }
+        let r = id.ok_or(ManualTermError::Empty);
+        if r.is_ok() {
             self.manual_term.clear();
-            // Le nouveau terme doit rester visible malgré un éventuel filtre.
             let fam = kind.family();
             if !self.family_filter.is_empty() && !self.family_filter.contains(&fam) {
                 self.family_filter.push(fam);
             }
-            Ok(self.candidates.len() - 1)
-        };
-        self.manual_error = result.err();
-        result
-    }
-}
-
-/// Erreurs de mot de passe à l'étape « Protéger ».
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PasswordIssue {
-    TooWeak,
-    Mismatch,
-}
-
-impl PasswordIssue {
-    pub fn message(self) -> &'static str {
-        match self {
-            PasswordIssue::TooWeak => "Mot de passe trop faible : au moins 10 caractères, variés.",
-            PasswordIssue::Mismatch => "Les deux mots de passe ne correspondent pas.",
         }
-    }
-}
-
-/// Écran « Protéger ».
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProtectState {
-    pub password: String,
-    pub confirm: String,
-    /// Aucune table de correspondance : la restauration sera impossible.
-    pub irreversible: bool,
-    pub output_dir: Option<PathBuf>,
-}
-
-impl ProtectState {
-    pub fn strength(&self) -> Strength {
-        password::evaluate(&self.password)
-    }
-
-    /// Problème à signaler sous le champ concerné (aucun tant que rien n'est saisi).
-    pub fn password_issue(&self) -> Option<PasswordIssue> {
-        if self.irreversible || self.password.is_empty() {
-            return None;
-        }
-        if !self.strength().level.is_acceptable() {
-            return Some(PasswordIssue::TooWeak);
-        }
-        None
-    }
-
-    pub fn confirm_issue(&self) -> Option<PasswordIssue> {
-        if self.irreversible || self.confirm.is_empty() {
-            return None;
-        }
-        (self.confirm != self.password).then_some(PasswordIssue::Mismatch)
-    }
-
-    pub fn can_proceed(&self) -> bool {
-        self.irreversible
-            || (self.strength().level.is_acceptable() && self.password == self.confirm)
-    }
-
-    /// Efface les mots de passe de la mémoire de l'écran.
-    pub fn clear_secrets(&mut self) {
-        self.password.clear();
-        self.confirm.clear();
-    }
-}
-
-/// Résultat du contrôle de fuite d'un fichier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LeakCheck {
-    Passed,
-    /// Le fichier n'est pas livré : `n` valeurs subsistent.
-    Blocked(u32),
-}
-
-/// Risque de ré-identification estimé.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Risk {
-    Low,
-    Medium,
-    High,
-}
-
-impl Risk {
-    pub fn label(self) -> &'static str {
-        match self {
-            Risk::Low => "Faible",
-            Risk::Medium => "Moyen",
-            Risk::High => "Élevé",
-        }
-    }
-}
-
-/// Rapport d'un fichier traité.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FileReport {
-    pub name: String,
-    pub output_name: String,
-    pub replacements: u32,
-    pub warnings: Vec<String>,
-    pub leak_check: LeakCheck,
-    pub risk: Risk,
-    pub risk_reason: Option<String>,
-}
-
-/// Erreur de transition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StepError {
-    NoFiles,
-    NothingSelected,
-    PasswordNotReady,
-    WrongStep,
-}
-
-impl StepError {
-    pub fn message(self) -> &'static str {
-        match self {
-            StepError::NoFiles => "Ajoutez au moins un fichier pris en charge.",
-            StepError::NothingSelected => "Cochez au moins une valeur à anonymiser.",
-            StepError::PasswordNotReady => {
-                "Choisissez un mot de passe robuste et confirmez-le, ou activez le mode irréversible."
-            }
-            StepError::WrongStep => "Action impossible à cette étape.",
-        }
-    }
-}
-
-/// État complet de l'onglet.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AnonymizeState {
-    pub step: Step,
-    pub files: Vec<FileEntry>,
-    /// Fichiers refusés au dépôt (raccourcis Google, formats inconnus).
-    pub rejected: Vec<FileEntry>,
-    pub review: ReviewState,
-    pub protect: ProtectState,
-    pub reports: Vec<FileReport>,
-    pub error: Option<StepError>,
-}
-
-impl Default for AnonymizeState {
-    fn default() -> Self {
-        Self {
-            step: Step::Drop,
-            files: Vec::new(),
-            rejected: Vec::new(),
-            review: ReviewState::default(),
-            protect: ProtectState::default(),
-            reports: Vec::new(),
-            error: None,
-        }
-    }
-}
-
-impl AnonymizeState {
-    /// Ajoute des fichiers ; ignore les doublons, met de côté les formats refusés.
-    pub fn add_files(&mut self, entries: impl IntoIterator<Item = FileEntry>) {
-        for e in entries {
-            if self.files.iter().any(|f| f.path == e.path)
-                || self.rejected.iter().any(|f| f.path == e.path)
-            {
-                continue;
-            }
-            if e.format.is_supported() {
-                self.files.push(e);
-            } else {
-                self.rejected.push(e);
-            }
-        }
-        self.error = None;
-    }
-
-    pub fn remove_file(&mut self, index: usize) {
-        if index < self.files.len() {
-            self.files.remove(index);
-        }
-    }
-
-    pub fn dismiss_rejected(&mut self) {
-        self.rejected.clear();
-    }
-
-    /// Déposer → Vérifier, avec les détections fournies par l'analyse.
-    pub fn start_review(&mut self, candidates: Vec<Candidate>) -> Result<(), StepError> {
-        let r = if self.step != Step::Drop {
-            Err(StepError::WrongStep)
-        } else if self.files.is_empty() {
-            Err(StepError::NoFiles)
-        } else {
-            let profile = self.review.profile;
-            self.review = ReviewState::new(candidates);
-            self.review.profile = profile;
-            self.step = Step::Review;
-            Ok(())
-        };
-        self.error = r.err();
+        self.manual_error = r.err();
         r
     }
 
@@ -434,7 +542,7 @@ impl AnonymizeState {
     pub fn confirm_review(&mut self) -> Result<(), StepError> {
         let r = if self.step != Step::Review {
             Err(StepError::WrongStep)
-        } else if self.review.selected_count() == 0 {
+        } else if self.selected_count() == 0 {
             Err(StepError::NothingSelected)
         } else {
             self.step = Step::Protect;
@@ -444,24 +552,87 @@ impl AnonymizeState {
         r
     }
 
-    /// Protéger → Terminé, avec les rapports produits par le traitement.
-    pub fn finish(&mut self, reports: Vec<FileReport>) -> Result<(), StepError> {
-        let r = if self.step != Step::Protect {
+    /// Table existante ouverte (ou erreur d'ouverture).
+    pub fn existing_opened(&mut self, result: Result<Session, String>) {
+        self.busy = None;
+        match result {
+            Ok(session) => {
+                let name = self
+                    .protect
+                    .existing_path
+                    .as_deref()
+                    .map(crate::ui::service::file_name)
+                    .unwrap_or_default();
+                self.protect.existing = Some(ExistingTable {
+                    name,
+                    entries: session.entities.len(),
+                    session,
+                });
+                self.protect.existing_error = None;
+            }
+            Err(msg) => {
+                self.protect.existing = None;
+                self.protect.existing_error = Some(msg);
+            }
+        }
+    }
+
+    /// Protéger → traitement : prend l'analyse et les fichiers pour le fil de travail.
+    pub fn begin_anonymize(&mut self) -> Result<AnonymizeJob, StepError> {
+        let r = if self.busy.is_some() {
+            Err(StepError::Busy)
+        } else if self.step != Step::Protect {
             Err(StepError::WrongStep)
         } else if !self.protect.can_proceed() {
             Err(StepError::PasswordNotReady)
+        } else if self.out_dir.is_none() {
+            Err(StepError::NoOutputDir)
         } else {
-            self.protect.clear_secrets();
-            self.reports = reports;
-            self.step = Step::Done;
-            Ok(())
+            match (self.analysis.take(), self.out_dir.clone()) {
+                (Some(analysis), Some(out_dir)) => {
+                    self.busy = Some(Busy::Anonymizing);
+                    Ok(AnonymizeJob {
+                        inputs: std::mem::take(&mut self.inputs),
+                        analysis,
+                        never: self.never.clone(),
+                        protection: self.protect.protection(),
+                        out_dir,
+                        session: self
+                            .protect
+                            .existing
+                            .as_ref()
+                            .filter(|_| self.protect.mode == ProtectMode::ExistingTable)
+                            .map(|e| e.session.clone()),
+                    })
+                }
+                _ => Err(StepError::WrongStep),
+            }
         };
-        self.error = r.err();
+        self.error = r.as_ref().err().copied();
         r
     }
 
-    /// Étape précédente (sans effet sur Déposer et Terminé).
+    /// Résultat de l'anonymisation : l'analyse et les fichiers reviennent (pour
+    /// l'export en texte d'un fichier bloqué).
+    pub fn anonymize_done(
+        &mut self,
+        report: BatchReport,
+        inputs: Vec<InputFile>,
+        analysis: Analysis,
+    ) {
+        self.busy = None;
+        self.inputs = inputs;
+        self.analysis = Some(analysis);
+        self.protect.clear_secrets();
+        self.report = Some(report);
+        self.step = Step::Done;
+    }
+
+    /// Étape précédente.
     pub fn back(&mut self) {
+        if self.busy.is_some() {
+            return;
+        }
         self.step = match self.step {
             Step::Review => Step::Drop,
             Step::Protect => Step::Review,
@@ -470,234 +641,227 @@ impl AnonymizeState {
         self.error = None;
     }
 
-    /// Recommence depuis le début.
+    /// Recommence (les fichiers déposés sont oubliés).
     pub fn reset(&mut self) {
+        let profile = self.profile;
         *self = Self::default();
+        self.profile = profile;
     }
 
-    /// Consigne à coller avant le texte anonymisé dans l'IA.
-    pub fn ai_instruction(&self) -> String {
-        "Ce document a été anonymisé : les données personnelles sont remplacées par des \
-balises entre crochets, comme [PERSONNE_1] ou [EMAIL_2]. Recopiez ces balises exactement, \
-sans les modifier, les traduire ni les compléter. N'essayez pas de deviner les valeurs \
-d'origine."
-            .to_owned()
-    }
-
-    /// Fichiers réellement livrés (contrôle de fuite réussi).
-    pub fn delivered_count(&self) -> usize {
-        self.reports
-            .iter()
-            .filter(|r| r.leak_check == LeakCheck::Passed)
-            .count()
+    /// Fichier d'entrée par nom (export du texte d'un fichier bloqué).
+    pub fn input(&self, name: &str) -> Option<&InputFile> {
+        self.inputs.iter().find(|i| i.name == name)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::mock;
+    use anon_engine::{Engine, NoProgress};
 
-    fn with_files() -> AnonymizeState {
-        let mut s = AnonymizeState::default();
-        s.add_files(mock::files());
-        s
+    const LETTRE: &str = "Madame Hélène Kaloï, 44 ans, a rencontré Pierre Garnier.\n\
+        Contact : helene.kaloi@example.com.\nNautilus Pacifique SARL";
+
+    fn entry(name: &str) -> FileEntry {
+        FileEntry::new(PathBuf::from("C:/dossier").join(name), Some(10))
+    }
+
+    /// État en revue sur un vrai texte analysé par le moteur.
+    fn reviewed(profile: Profile) -> (AnonymizeState, Session) {
+        let engine = Engine::standard();
+        let mut s = AnonymizeState {
+            profile,
+            ..Default::default()
+        };
+        s.add_files([entry("lettre.txt")], &["txt"]);
+        let paths = s.begin_analysis();
+        assert!(paths.is_ok());
+        let input = InputFile::new("lettre.txt", LETTRE.as_bytes().to_vec());
+        let session = Session::new();
+        let analysis = engine.analyze(
+            std::slice::from_ref(&input),
+            &s.analyze_options(),
+            &session,
+            &NoProgress,
+        );
+        s.analysis_done(vec![input], Vec::new(), analysis, &session);
+        (s, session)
     }
 
     #[test]
-    fn cannot_review_without_files() {
+    fn unsupported_files_are_rejected_with_reason() {
         let mut s = AnonymizeState::default();
-        assert_eq!(s.start_review(mock::candidates()), Err(StepError::NoFiles));
-        assert_eq!(s.step, Step::Drop);
-        assert_eq!(s.error, Some(StepError::NoFiles));
-    }
-
-    #[test]
-    fn google_shortcuts_are_rejected_and_duplicates_ignored() {
-        let mut s = AnonymizeState::default();
-        s.add_files(vec![
-            FileEntry::new("a/Contrat.docx".into(), Some(10)),
-            FileEntry::new("a/Contrat.docx".into(), Some(10)),
-            FileEntry::new("a/Budget.gsheet".into(), Some(1)),
-        ]);
+        s.add_files(
+            [
+                entry("a.docx"),
+                entry("a.docx"),
+                entry("vieux.doc"),
+                entry("b.gsheet"),
+            ],
+            &["docx", "txt"],
+        );
         assert_eq!(s.files.len(), 1);
-        assert_eq!(s.rejected.len(), 1);
+        assert_eq!(s.rejected.len(), 2);
+        assert!(s.rejected[0].reason.contains("réenregistrez"));
+        assert_eq!(s.out_dir, Some(PathBuf::from("C:/dossier")));
         s.remove_file(0);
-        s.remove_file(5);
+        assert_eq!(s.begin_analysis(), Err(StepError::NoFiles));
+    }
+
+    #[test]
+    fn analysis_moves_to_review_with_previews() {
+        let (s, _) = reviewed(Profile::Standard);
+        assert_eq!(s.step, Step::Review);
+        assert!(s.busy.is_none());
+        assert!(!s.visible().is_empty());
+        assert!(!s.tag_preview.is_empty());
+        assert!(s.selected_count() > 0);
+    }
+
+    #[test]
+    fn failed_file_stays_on_drop() {
+        let engine = Engine::standard();
+        let mut s = AnonymizeState::default();
+        s.add_files([entry("vide.txt")], &[]);
+        let _ = s.begin_analysis();
+        let input = InputFile::new("vide.txt", Vec::new());
+        let a = engine.analyze(
+            std::slice::from_ref(&input),
+            &s.analyze_options(),
+            &Session::new(),
+            &NoProgress,
+        );
+        s.analysis_done(vec![input], Vec::new(), a, &Session::new());
+        assert_eq!(s.step, Step::Drop);
         assert!(s.files.is_empty());
+        assert_eq!(s.rejected.len(), 1);
+        assert!(s.rejected[0].reason.starts_with("Le fichier est vide"));
     }
 
     #[test]
-    fn full_happy_path() {
-        let mut s = with_files();
-        assert_eq!(s.start_review(mock::candidates()), Ok(()));
-        assert_eq!(s.step, Step::Review);
-        assert_eq!(s.confirm_review(), Ok(()));
-        assert_eq!(s.step, Step::Protect);
-        assert_eq!(s.finish(mock::reports()), Err(StepError::PasswordNotReady));
-        s.protect.password = "Cheval-Agrafe-Batterie-47".into();
-        s.protect.confirm = "Cheval-Agrafe-Batterie-47".into();
-        assert_eq!(s.finish(mock::reports()), Ok(()));
-        assert_eq!(s.step, Step::Done);
-        assert!(s.protect.password.is_empty(), "mot de passe effacé");
-        assert!(!s.reports.is_empty());
-        s.reset();
-        assert_eq!(s, AnonymizeState::default());
+    fn profile_change_requests_a_new_analysis() {
+        let (mut s, _) = reviewed(Profile::Standard);
+        assert_eq!(s.set_profile(Profile::Standard), None);
+        let again = s.set_profile(Profile::Renforce);
+        assert_eq!(again.map(|p| p.len()), Some(1));
+        assert_eq!(s.busy, Some(Busy::Analyzing));
     }
 
     #[test]
-    fn back_goes_one_step() {
-        let mut s = with_files();
-        let _ = s.start_review(mock::candidates());
-        let _ = s.confirm_review();
-        s.back();
-        assert_eq!(s.step, Step::Review);
-        s.back();
-        assert_eq!(s.step, Step::Drop);
-        s.back();
-        assert_eq!(s.step, Step::Drop);
-    }
-
-    #[test]
-    fn transitions_refuse_the_wrong_step() {
-        let mut s = with_files();
-        assert_eq!(s.confirm_review(), Err(StepError::WrongStep));
-        assert_eq!(s.finish(vec![]), Err(StepError::WrongStep));
-    }
-
-    #[test]
-    fn nothing_selected_blocks_review() {
-        let mut s = with_files();
-        let _ = s.start_review(mock::candidates());
-        s.review.set_all_visible(false);
-        assert_eq!(s.confirm_review(), Err(StepError::NothingSelected));
-    }
-
-    #[test]
-    fn irreversible_mode_skips_password() {
-        let mut s = with_files();
-        let _ = s.start_review(mock::candidates());
-        let _ = s.confirm_review();
-        s.protect.irreversible = true;
-        assert!(s.protect.can_proceed());
-        assert_eq!(s.finish(mock::reports()), Ok(()));
-    }
-
-    #[test]
-    fn password_issues() {
-        let mut p = ProtectState::default();
-        assert_eq!(p.password_issue(), None);
-        p.password = "court".into();
-        assert_eq!(p.password_issue(), Some(PasswordIssue::TooWeak));
-        p.password = "Qmzrtx-Wpvk7".into();
-        assert_eq!(p.password_issue(), None);
-        p.confirm = "Qmzrtx-Wpvk".into();
-        assert_eq!(p.confirm_issue(), Some(PasswordIssue::Mismatch));
-        assert!(!p.can_proceed());
-        p.confirm.push('7');
-        assert_eq!(p.confirm_issue(), None);
-        assert!(p.can_proceed());
-    }
-
-    #[test]
-    fn profile_hides_quasi_identifiers() {
-        let mut r = ReviewState::new(mock::candidates());
-        let standard = r.visible().len();
-        assert!(
-            r.visible()
-                .iter()
-                .all(|i| !r.candidates[*i].kind.is_quasi_identifier())
-        );
-        r.profile = Profile::Renforce;
-        assert!(r.visible().len() > standard);
-    }
-
-    #[test]
-    fn family_filter() {
-        let mut r = ReviewState::new(mock::candidates());
-        r.profile = Profile::Renforce;
-        let all = r.visible().len();
-        r.toggle_family(Family::Personnes);
-        let people = r.visible();
-        assert!(!people.is_empty() && people.len() < all);
-        assert!(
-            people
-                .iter()
-                .all(|i| r.candidates[*i].kind.family() == Family::Personnes)
-        );
-        assert_eq!(people.len(), r.count_by_family(Family::Personnes));
-        r.toggle_family(Family::Contacts);
+    fn row_operations() {
+        let (mut s, session) = reviewed(Profile::Renforce);
+        let ids = s.visible();
+        let first = ids[0];
+        let before = s.candidate(first).map(|c| c.selected);
+        s.toggle(first, &session);
+        assert_eq!(s.candidate(first).map(|c| c.selected), before.map(|b| !b));
+        s.set_kind(first, EntityKind::Matricule, &session);
         assert_eq!(
-            r.visible().len(),
-            r.count_by_family(Family::Personnes) + r.count_by_family(Family::Contacts)
+            s.candidate(first).map(|c| c.kind),
+            Some(EntityKind::Matricule)
         );
-        r.toggle_family(Family::Personnes);
-        r.toggle_family(Family::Contacts);
-        assert_eq!(r.visible().len(), all);
-        r.toggle_family(Family::Lieux);
-        r.clear_filter();
-        assert_eq!(r.visible().len(), all);
+        s.set_case_sensitive(first, true, &session);
+        assert_eq!(s.candidate(first).map(|c| c.case_sensitive), Some(true));
+        let value = s
+            .candidate(first)
+            .map(|c| c.value.clone())
+            .unwrap_or_default();
+        s.never_anonymize(first, &session);
+        assert!(s.candidate(first).is_none());
+        assert!(s.never.contains(&value));
+        assert!(s.analyze_options().never.contains(&value));
     }
 
     #[test]
-    fn header_checkbox_acts_on_visible_rows_only() {
-        let mut r = ReviewState::new(mock::candidates());
-        r.toggle_family(Family::Contacts);
-        r.set_all_visible(false);
-        let (checked, total) = r.header_state();
-        assert_eq!(checked, 0);
-        assert!(total > 0);
-        r.clear_filter();
+    fn family_filter_and_header() {
+        let (mut s, session) = reviewed(Profile::Renforce);
+        let all = s.visible().len();
+        s.toggle_family(Family::Contacts);
+        let contacts = s.visible();
+        assert!(!contacts.is_empty() && contacts.len() < all);
+        assert_eq!(contacts.len(), s.count_by_family(Family::Contacts));
+        s.set_all_visible(false, &session);
+        assert_eq!(s.header_state().0, 0);
+        s.clear_filter();
         assert!(
-            r.header_state().0 > 0,
+            s.header_state().0 > 0,
             "les autres familles restent cochées"
         );
-    }
-
-    #[test]
-    fn toggling_a_row_resolves_its_confirmation() {
-        let mut r = ReviewState::new(mock::candidates());
-        let idx = r.candidates.iter().position(|c| c.to_confirm);
-        assert!(idx.is_some());
-        if let Some(i) = idx {
-            let before = r.pending_confirmations();
-            r.toggle(i);
-            assert_eq!(r.pending_confirmations(), before - 1);
-        }
+        assert_eq!(s.visible().len(), all);
     }
 
     #[test]
     fn manual_terms() {
-        let mut r = ReviewState::new(mock::candidates());
-        assert_eq!(r.add_manual(), Err(ManualTermError::Empty));
-        r.manual_term = "  claire martin ".into();
-        assert_eq!(r.add_manual(), Err(ManualTermError::AlreadyListed));
-        r.manual_term = "Projet Hirondelle".into();
-        r.toggle_family(Family::Personnes);
-        let added = r.add_manual();
-        assert!(added.is_ok());
-        assert_eq!(r.manual_error, None);
-        assert!(r.manual_term.is_empty());
-        if let Ok(i) = added {
-            assert!(r.visible().contains(&i), "visible malgré le filtre");
-            assert_eq!(r.candidates[i].tag.to_string(), "[AUTRE_1]");
+        let (mut s, session) = reviewed(Profile::Standard);
+        assert_eq!(s.add_manual(&session), Err(ManualTermError::Empty));
+        s.manual_term = "Nautilus".into();
+        s.manual_kind = EntityKind::Societe;
+        s.toggle_family(Family::Personnes);
+        let id = s.add_manual(&session);
+        assert!(id.is_ok());
+        if let Ok(id) = id {
+            assert!(s.visible().contains(&id), "visible malgré le filtre");
+            assert!(s.tag_preview.contains_key(&id));
         }
+        assert!(s.manual_term.is_empty());
     }
 
     #[test]
-    fn person_parts_share_indices() {
-        let mut r = ReviewState::new(mock::candidates());
-        let max_person = r
-            .candidates
-            .iter()
-            .filter(|c| c.kind.is_person_part())
-            .map(|c| c.tag.index)
-            .max()
-            .unwrap_or(0);
-        r.manual_term = "Bastien".into();
-        r.manual_kind = EntityKind::Prenom;
-        if let Ok(i) = r.add_manual() {
-            assert_eq!(r.candidates[i].tag.index, max_person + 1);
+    fn protect_rules() {
+        let mut p = ProtectState::default();
+        assert!(!p.can_proceed());
+        p.password = "court".into();
+        assert_eq!(p.password_issue(), Some(PasswordIssue::TooWeak));
+        p.password = "Cheval-Agrafe-Batterie-47".into();
+        assert_eq!(p.password_issue(), None);
+        p.confirm = "Cheval".into();
+        assert_eq!(p.confirm_issue(), Some(PasswordIssue::Mismatch));
+        assert!(!p.can_proceed());
+        p.confirm = p.password.clone();
+        assert!(p.can_proceed());
+        p.mode = ProtectMode::ExistingTable;
+        assert!(!p.can_proceed(), "table non ouverte");
+        p.existing = Some(ExistingTable {
+            name: "t.anonmap".into(),
+            session: Session::new(),
+            entries: 0,
+        });
+        assert!(p.can_proceed());
+        p.mode = ProtectMode::Irreversible;
+        assert_eq!(p.protection(), Protection::Irreversible);
+        p.clear_secrets();
+        assert!(p.password.is_empty() && p.existing.is_none());
+    }
+
+    #[test]
+    fn anonymize_job_round_trip() {
+        let (mut s, _) = reviewed(Profile::Standard);
+        assert_eq!(s.begin_anonymize().err(), Some(StepError::WrongStep));
+        assert_eq!(s.confirm_review(), Ok(()));
+        assert_eq!(s.begin_anonymize().err(), Some(StepError::PasswordNotReady));
+        s.protect.mode = ProtectMode::Irreversible;
+        let job = s.begin_anonymize();
+        assert!(job.is_ok());
+        assert_eq!(s.busy, Some(Busy::Anonymizing));
+        assert!(s.analysis.is_none());
+        assert_eq!(s.begin_anonymize().err(), Some(StepError::Busy));
+        if let Ok(job) = job {
+            assert_eq!(job.out_dir, PathBuf::from("C:/dossier"));
+            s.anonymize_done(BatchReport::default(), job.inputs, job.analysis);
         }
+        assert_eq!(s.step, Step::Done);
+        assert!(s.analysis.is_some());
+        s.reset();
+        assert_eq!(s.step, Step::Drop);
+    }
+
+    #[test]
+    fn back_goes_one_step() {
+        let (mut s, _) = reviewed(Profile::Standard);
+        let _ = s.confirm_review();
+        s.back();
+        assert_eq!(s.step, Step::Review);
+        s.back();
+        assert_eq!(s.step, Step::Drop);
     }
 }

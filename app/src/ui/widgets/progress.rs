@@ -1,7 +1,7 @@
 //! Barre de progression et jauge de robustesse du mot de passe.
 
-use crate::ui::state::password::{Strength, StrengthLevel};
 use crate::ui::theme::{Weight, font, palette, radius};
+use anon_vault::PasswordStrength;
 use egui::{Rect, Response, RichText, Role, Sense, Ui, Widget, WidgetInfo, pos2, vec2};
 
 /// Hauteur de la piste.
@@ -67,30 +67,43 @@ impl Widget for ProgressBar<'_> {
 /// Jauge de robustesse : quatre segments et un libellé.
 #[derive(Debug, Clone, Copy)]
 pub struct StrengthMeter {
-    strength: Strength,
+    /// `None` : rien de saisi.
+    strength: Option<PasswordStrength>,
 }
 
 impl StrengthMeter {
-    pub fn new(strength: Strength) -> Self {
-        Self { strength }
+    /// Jauge d'un mot de passe saisi (vide : jauge éteinte).
+    pub fn of(password: &str) -> Self {
+        Self {
+            strength: (!password.is_empty()).then(|| anon_vault::password_strength(password)),
+        }
+    }
+}
+
+fn strength_label(s: Option<PasswordStrength>) -> &'static str {
+    match s {
+        None => "à saisir",
+        Some(PasswordStrength::TropCourt) => "trop court",
+        Some(PasswordStrength::Faible) => "faible",
+        Some(PasswordStrength::Correct) => "correcte",
+        Some(PasswordStrength::Fort) => "forte",
     }
 }
 
 impl Widget for StrengthMeter {
     fn ui(self, ui: &mut Ui) -> Response {
         let p = palette();
-        let level = self.strength.level;
-        let filled = level.segments();
-        let color = match level {
-            StrengthLevel::Empty => p.gray_300,
-            StrengthLevel::TooWeak => p.error,
-            StrengthLevel::Weak => p.warning,
-            StrengthLevel::Good => p.primary,
-            StrengthLevel::Strong => p.primary_dark,
+        let level = self.strength;
+        let (filled, color) = match level {
+            None => (0u8, p.gray_300),
+            Some(PasswordStrength::TropCourt) => (1, p.error),
+            Some(PasswordStrength::Faible) => (2, p.warning),
+            Some(PasswordStrength::Correct) => (3, p.primary),
+            Some(PasswordStrength::Fort) => (4, p.primary_dark),
         };
-        // Texte toujours AA : rouge d'erreur pour « trop faible », sinon anthracite.
+        // Texte toujours AA : rouge d'erreur quand le mot de passe est refusé, sinon anthracite.
         let text_color = match level {
-            StrengthLevel::TooWeak => p.error,
+            Some(PasswordStrength::TropCourt | PasswordStrength::Faible) => p.error,
             _ => p.text,
         };
         ui.vertical(|ui| {
@@ -105,7 +118,7 @@ impl Widget for StrengthMeter {
                 let c = if i < filled { color } else { p.gray_200 };
                 ui.painter().rect_filled(seg, radius(3.0), c);
             }
-            let text = format!("Robustesse : {}", level.label());
+            let text = format!("Robustesse : {}", strength_label(level));
             ui.label(
                 RichText::new(&text)
                     .font(font(Weight::Medium, p.text_xs))

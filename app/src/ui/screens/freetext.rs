@@ -2,8 +2,7 @@
 
 use super::page_title;
 use crate::ui::app::Effect;
-use crate::ui::mock;
-use crate::ui::state::freetext::{FreeTextNotice, FreeTextState};
+use crate::ui::state::freetext::FreeTextState;
 use crate::ui::theme::palette;
 use crate::ui::widgets::{Banner, Card, Icon, PillButton, TextField};
 use egui::Ui;
@@ -52,14 +51,13 @@ pub fn show(ui: &mut Ui, st: &mut FreeTextState, fx: &mut Vec<Effect>) {
                 .add(PillButton::primary("Anonymiser").icon(Icon::Lock))
                 .clicked()
             {
-                // Branchement futur : anonymisation par anon-engine.
-                st.anonymize(mock::anonymize_text);
+                fx.push(Effect::FreeAnonymize);
             }
             if ui
                 .add(PillButton::secondary("Restaurer").icon(Icon::Undo))
                 .clicked()
             {
-                st.restore(mock::restore_text);
+                fx.push(Effect::FreeRestore);
             }
             if ui
                 .add(PillButton::ghost("Copier le texte anonymisé").icon(Icon::Copy))
@@ -72,17 +70,16 @@ pub fn show(ui: &mut Ui, st: &mut FreeTextState, fx: &mut Vec<Effect>) {
     });
     if let Some(n) = st.notice {
         let msg = n.message();
-        let banner = match n {
-            FreeTextNotice::NothingToAnonymize | FreeTextNotice::NothingToRestore => {
-                Banner::warning(&msg)
-            }
-            _ => Banner::success(&msg),
+        let banner = if n.is_problem() {
+            Banner::warning(&msg)
+        } else {
+            Banner::success(&msg)
         };
         banner.show(ui);
     }
     Banner::info(
-        "Le texte n'est jamais enregistré. Les correspondances de cette page sont oubliées à la \
-fermeture de l'application.",
+        "Le texte n'est jamais enregistré. Les balises sont celles de la session en cours : une \
+même valeur garde la même balise dans les fichiers et ici. « Nouvelle session » les oublie.",
     )
     .show(ui);
 }

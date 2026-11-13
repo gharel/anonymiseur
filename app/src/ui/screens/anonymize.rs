@@ -2,22 +2,30 @@
 
 use super::{action_bar, card_title, file_row, file_tile, page_title};
 use crate::ui::app::Effect;
-use crate::ui::mock;
-use crate::ui::state::anonymize::{AnonymizeState, FileReport, LeakCheck, Risk, Step};
-use crate::ui::state::files::human_size;
+use crate::ui::runner::Shared;
+use crate::ui::service::{BatchReport, Outcome, Rejected, file_name};
+use crate::ui::state::anonymize::{AnonymizeState, ProtectMode, Step, needs_confirmation};
+use crate::ui::state::files::{FileFormat, human_size};
 use crate::ui::theme::{Weight, font, palette};
 use crate::ui::widgets::badge::{FAMILIES, family_label, family_tint};
 use crate::ui::widgets::button::icon_button;
-use crate::ui::widgets::checkbox::toggle;
 use crate::ui::widgets::nav::{filter_chip, segmented};
 use crate::ui::widgets::{
-    Badge, Banner, Card, CheckState, Column, DataTable, DropZone, Icon, PillButton, RowTone,
-    Stepper, StrengthMeter, TextField, body, caption, muted, overline, subheading,
+    Badge, Banner, Card, CheckState, Checkbox, Column, DataTable, DropZone, Icon, PillButton,
+    ProgressBar, RowTone, Stepper, StrengthMeter, TextField, body, caption, muted, overline,
+    subheading,
 };
-use anon_core::{EntityKind, Profile};
-use egui::{RichText, Ui};
+use anon_core::{EntityKind, Profile, Session, WarningCode};
+use anon_engine::RiskLevel;
+use egui::{RichText, Sense, Ui};
 
-pub fn show(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
+pub fn show(
+    ui: &mut Ui,
+    st: &mut AnonymizeState,
+    session: &Session,
+    progress: &Shared,
+    fx: &mut Vec<Effect>,
+) {
     page_title(
         ui,
         "Anonymiser des documents",
@@ -25,12 +33,57 @@ pub fn show(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
     );
     let labels: Vec<&str> = Step::ALL.iter().map(|s| s.label()).collect();
     Stepper::new(&labels, st.step.index()).show(ui);
+    if let Some(busy) = st.busy {
+        busy_card(ui, busy.label(), progress, fx);
+        return;
+    }
     match st.step {
         Step::Drop => drop_step(ui, st, fx),
-        Step::Review => review_step(ui, st),
-        Step::Protect => protect_step(ui, st),
+        Step::Review => review_step(ui, st, session, fx),
+        Step::Protect => protect_step(ui, st, fx),
         Step::Done => done_step(ui, st, fx),
     }
+}
+
+/// Carte d'avancement avec bouton Annuler.
+pub fn busy_card(ui: &mut Ui, title: &str, progress: &Shared, fx: &mut Vec<Effect>) {
+    let p = palette();
+    Card::new().show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = p.space(3);
+        let label = progress.label();
+        let line = if label.is_empty() {
+            title.to_owned()
+        } else {
+            format!("{title} : {label}")
+        };
+        ui.add(ProgressBar::new(progress.fraction(), &line));
+        ui.horizontal(|ui| {
+            if progress.is_cancel_requested() {
+                muted(ui, "Annulation demandée : le fichier en cours se termine.");
+            } else if ui
+                .add(PillButton::secondary("Annuler").icon(Icon::X).small())
+                .clicked()
+            {
+                fx.push(Effect::Cancel);
+            }
+        });
+    });
+}
+
+fn rejected_banner(ui: &mut Ui, rejected: &[Rejected]) -> bool {
+    if rejected.is_empty() {
+        return false;
+    }
+    let text = rejected
+        .iter()
+        .map(|r| format!("{} : {}", r.name, r.reason))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Banner::warning(&text)
+        .title("Fichiers non pris en compte")
+        .show(ui);
+    ui.add(PillButton::ghost("Masquer ces messages").small())
+        .clicked()
 }
 
 fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
@@ -61,21 +114,18 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
         }
     });
 
-    if !st.rejected.is_empty() {
-        let names: Vec<&str> = st.rejected.iter().map(|f| f.name.as_str()).collect();
-        let text = format!(
-            "Non ajoutés : {}. Les raccourcis Google ne contiennent pas le document : ouvrez-le, \
-puis Fichier → Télécharger au format Word, Excel ou PowerPoint.",
-            names.join(", ")
-        );
-        Banner::warning(&text).title("Fichiers ignorés").show(ui);
+    if rejected_banner(ui, &st.rejected) {
+        st.dismiss_rejected();
     }
     Banner::info(
-        "Ouvrez le document, puis Fichier → Télécharger, et choisissez le format Microsoft \
+        "Ouvrez le document, puis Fichier > Télécharger, et choisissez le format Microsoft \
 (Word, Excel ou PowerPoint). Déposez ensuite le fichier téléchargé.",
     )
     .title("Fichiers Google Docs, Sheets ou Slides")
     .show(ui);
+    if let Some(e) = st.error {
+        Banner::error(e.message()).show(ui);
+    }
 
     action_bar(
         ui,
@@ -97,15 +147,34 @@ puis Fichier → Télécharger au format Word, Excel ou PowerPoint.",
                     .icon(Icon::Search)
                     .enabled(!st.files.is_empty()),
             );
-            if go.clicked() {
-                // Branchement futur : analyse par anon-engine.
-                let _ = st.start_review(mock::candidates());
+            if go.clicked()
+                && let Ok(paths) = st.begin_analysis()
+            {
+                fx.push(Effect::Analyze(paths));
             }
         },
     );
 }
 
-fn review_step(ui: &mut Ui, st: &mut AnonymizeState) {
+/// Menu de choix du type d'une ligne.
+fn kind_menu(response: &egui::Response, current: EntityKind) -> Option<EntityKind> {
+    let mut chosen = None;
+    egui::Popup::menu(response).show(|ui| {
+        ui.set_min_width(220.0);
+        egui::ScrollArea::vertical()
+            .max_height(320.0)
+            .show(ui, |ui| {
+                for k in EntityKind::ALL {
+                    if ui.selectable_label(*k == current, k.label()).clicked() {
+                        chosen = Some(*k);
+                    }
+                }
+            });
+    });
+    chosen
+}
+
+fn review_step(ui: &mut Ui, st: &mut AnonymizeState, session: &Session, fx: &mut Vec<Effect>) {
     let p = palette();
     Card::new().show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -115,17 +184,21 @@ fn review_step(ui: &mut Ui, st: &mut AnonymizeState) {
                     .font(font(Weight::Semibold, p.text_sm))
                     .color(p.dark),
             );
+            let mut profile = st.profile;
             segmented(
                 ui,
                 "Niveau de protection",
-                &mut st.review.profile,
+                &mut profile,
                 &[
                     (Profile::Standard, "Standard"),
                     (Profile::Renforce, "Renforcé"),
                 ],
             );
+            if let Some(paths) = st.set_profile(profile) {
+                fx.push(Effect::Analyze(paths));
+            }
         });
-        let desc = match st.review.profile {
+        let desc = match st.profile {
             Profile::Standard => "Noms, sociétés, coordonnées, identifiants et données bancaires.",
             Profile::Renforce => {
                 "Standard, plus les dates, âges, fonctions, lieux et montants : combinés, ils \
@@ -135,50 +208,54 @@ permettent de reconnaître une personne."
         muted(ui, desc);
     });
 
-    let pending = st.review.pending_confirmations();
+    if rejected_banner(ui, &st.rejected) {
+        st.dismiss_rejected();
+    }
+    let pending = st.pending_confirmations();
     if pending > 0 {
         let text = format!(
-            "{pending} détections incertaines sont surlignées en jaune. Cochez celles à \
-anonymiser, laissez les autres décochées."
+            "{pending} valeurs courtes ou incertaines sont surlignées en jaune : vérifiez-les. \
+Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute la session."
         );
         Banner::warning(&text).title("À confirmer").show(ui);
     }
 
     Card::new().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(3);
-        // Filtres par famille.
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(p.space(2), p.space(2));
-            let all = st.review.family_filter.is_empty();
+            let all = st.family_filter.is_empty();
             let brand = crate::ui::theme::Tinted {
                 fill: p.primary_subtle,
                 ink: p.primary_dark,
                 edge: p.primary,
             };
             if filter_chip(ui, "Toutes", None, all, brand).clicked() {
-                st.review.clear_filter();
+                st.clear_filter();
             }
             for fam in FAMILIES {
-                let n = st.review.count_by_family(fam);
+                let n = st.count_by_family(fam);
                 if n == 0 {
                     continue;
                 }
-                let on = st.review.family_filter.contains(&fam);
+                let on = st.family_filter.contains(&fam);
                 if filter_chip(ui, family_label(fam), Some(n), on, family_tint(fam)).clicked() {
-                    st.review.toggle_family(fam);
+                    st.toggle_family(fam);
                 }
             }
         });
 
         let columns = [
-            Column::fixed("Type", 196.0),
+            Column::fixed("Type", 190.0),
             Column::fill("Valeur", 1.0),
-            Column::fill("Contexte", 1.3),
-            Column::fixed("Occurrences", 120.0),
-            Column::fixed("Balise", 144.0),
+            Column::fill("Contexte", 1.2),
+            Column::fixed("Occ.", 60.0),
+            Column::fixed("Casse", 64.0),
+            Column::fixed("Balise", 136.0),
+            Column::fixed("", 44.0),
         ];
-        let visible = st.review.visible();
-        let (checked, total) = st.review.header_state();
+        let visible = st.visible();
+        let (checked, total) = st.header_state();
         let header = if checked == 0 {
             CheckState::Unchecked
         } else if checked == total {
@@ -186,86 +263,135 @@ anonymiser, laissez les autres décochées."
         } else {
             CheckState::Mixed
         };
-        let rows = &st.review.candidates;
-        let row_of = |i: usize| visible.get(i).and_then(|idx| rows.get(*idx));
-        let out = DataTable::new("detections", &columns)
-            .checkable(header)
-            .max_height(44.0 * 8.0)
-            .show(
-                ui,
-                visible.len(),
-                |i| row_of(i).is_some_and(|c| c.selected),
-                |i| {
-                    if row_of(i).is_some_and(|c| c.to_confirm) {
-                        RowTone::Attention
-                    } else {
-                        RowTone::Normal
-                    }
-                },
-                |i| row_of(i).map(|c| c.value.clone()).unwrap_or_default(),
-                |ui, i, col| {
-                    let Some(c) = row_of(i) else { return };
-                    match col {
-                        0 => {
-                            ui.add(Badge::entity(c.kind));
+        let mut kind_change: Option<(usize, EntityKind)> = None;
+        let mut case_change: Option<(usize, bool)> = None;
+        let mut never: Option<usize> = None;
+        let out = {
+            let row_of = |i: usize| visible.get(i).and_then(|id| st.candidate(*id));
+            DataTable::new("detections", &columns)
+                .checkable(header)
+                .max_height(44.0 * 9.0)
+                .show(
+                    ui,
+                    visible.len(),
+                    |i| row_of(i).is_some_and(|c| c.selected),
+                    |i| {
+                        if row_of(i).is_some_and(needs_confirmation) {
+                            RowTone::Attention
+                        } else {
+                            RowTone::Normal
                         }
-                        1 => {
-                            if c.to_confirm {
-                                Icon::TriangleAlert.show(ui, p.data.ink, 16.0);
+                    },
+                    |i| row_of(i).map(|c| c.value.clone()).unwrap_or_default(),
+                    |ui, i, col| {
+                        let Some(c) = row_of(i) else { return };
+                        match col {
+                            0 => {
+                                let r = ui.add(Badge::entity(c.kind));
+                                let r = ui.interact(r.rect, r.id.with("type"), Sense::click());
+                                let label = format!("Type : {}. Modifier", c.kind.label());
+                                r.widget_info(|| {
+                                    egui::WidgetInfo::labeled(egui::Role::Button, true, &label)
+                                });
+                                let r = r
+                                    .on_hover_text("Changer le type")
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+                                if let Some(k) = kind_menu(&r, c.kind) {
+                                    kind_change = Some((c.id, k));
+                                }
                             }
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&c.value)
-                                        .font(font(Weight::Semibold, p.text_sm))
-                                        .color(p.dark),
-                                )
-                                .truncate(),
-                            );
+                            1 => {
+                                if needs_confirmation(c) {
+                                    Icon::TriangleAlert.show(ui, p.data.ink, 16.0);
+                                }
+                                let mut text = RichText::new(&c.value)
+                                    .font(font(Weight::Semibold, p.text_sm))
+                                    .color(p.dark);
+                                if !c.selected {
+                                    text = text.color(p.text_secondary);
+                                }
+                                let r = ui.add(egui::Label::new(text).truncate());
+                                if !c.variants.is_empty() {
+                                    r.on_hover_text(format!(
+                                        "Autres formes : {}",
+                                        c.variants.join(", ")
+                                    ));
+                                }
+                            }
+                            2 => {
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(&c.context)
+                                            .font(font(Weight::Regular, p.text_sm))
+                                            .color(p.text_secondary),
+                                    )
+                                    .truncate(),
+                                );
+                            }
+                            3 => {
+                                body(ui, &c.occurrences.to_string());
+                            }
+                            4 => {
+                                let label = format!("Respecter la casse de {}", c.value);
+                                if ui
+                                    .add(Checkbox::bare(c.case_sensitive, &label))
+                                    .on_hover_text("Respecter la casse exacte")
+                                    .clicked()
+                                {
+                                    case_change = Some((c.id, !c.case_sensitive));
+                                }
+                            }
+                            5 => match st.tag_preview.get(&c.id) {
+                                Some(tag) => {
+                                    ui.label(
+                                        RichText::new(tag.to_string())
+                                            .monospace()
+                                            .color(p.primary_dark),
+                                    );
+                                }
+                                None => {
+                                    caption(ui, "non remplacée");
+                                }
+                            },
+                            _ => {
+                                let label = format!("Ne jamais anonymiser {}", c.value);
+                                if icon_button(ui, Icon::EyeOff, &label, p.text_secondary).clicked()
+                                {
+                                    never = Some(c.id);
+                                }
+                            }
                         }
-                        2 => {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&c.context)
-                                        .font(font(Weight::Regular, p.text_sm))
-                                        .color(p.text_secondary),
-                                )
-                                .truncate(),
-                            );
-                        }
-                        3 => {
-                            let text = if c.occurrences == 0 {
-                                "—".to_owned()
-                            } else {
-                                c.occurrences.to_string()
-                            };
-                            body(ui, &text);
-                        }
-                        _ => {
-                            ui.label(
-                                RichText::new(c.tag.to_string())
-                                    .monospace()
-                                    .color(p.primary_dark),
-                            );
-                        }
-                    }
-                },
-            );
+                    },
+                )
+        };
         if out.header_toggled {
-            st.review.set_all_visible(header != CheckState::Checked);
+            st.set_all_visible(header != CheckState::Checked, session);
         }
         for i in out.toggled_rows {
-            if let Some(idx) = visible.get(i) {
-                st.review.toggle(*idx);
+            if let Some(id) = visible.get(i) {
+                st.toggle(*id, session);
             }
+        }
+        if let Some((id, k)) = kind_change {
+            st.set_kind(id, k, session);
+        }
+        if let Some((id, on)) = case_change {
+            st.set_case_sensitive(id, on, session);
+        }
+        if let Some(id) = never {
+            st.never_anonymize(id, session);
+        }
+        if visible.is_empty() {
+            muted(ui, "Aucune donnée sensible détectée dans ces fichiers.");
         }
 
         // Ajout manuel.
         ui.add_space(p.space(1));
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = p.space(2);
-            let error = st.review.manual_error.map(|e| e.message());
+            let error = st.manual_error.map(|e| e.message());
             let field_w = (ui.available_width() - 360.0).clamp(200.0, 420.0);
-            let r = TextField::new("Terme à ajouter", &mut st.review.manual_term)
+            let r = TextField::new("Terme à ajouter", &mut st.manual_term)
                 .placeholder("Ajouter un terme absent de la liste")
                 .id_salt("terme-manuel")
                 .hide_label()
@@ -274,20 +400,29 @@ anonymiser, laissez les autres décochées."
                 .show(ui);
             let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             egui::ComboBox::from_id_salt("type-manuel")
-                .selected_text(st.review.manual_kind.label())
+                .selected_text(st.manual_kind.label())
                 .width(190.0)
                 .show_ui(ui, |ui| {
                     for k in EntityKind::ALL {
-                        ui.selectable_value(&mut st.review.manual_kind, *k, k.label());
+                        ui.selectable_value(&mut st.manual_kind, *k, k.label());
                     }
                 })
                 .response
                 .on_hover_text("Type du terme ajouté");
             let add = ui.add(PillButton::secondary("Ajouter").icon(Icon::Plus));
             if add.clicked() || enter {
-                let _ = st.review.add_manual();
+                let _ = st.add_manual(session);
             }
         });
+        if !st.never.is_empty() {
+            caption(
+                ui,
+                &format!(
+                    "Jamais anonymisés dans cette session : {}",
+                    st.never.join(", ")
+                ),
+            );
+        }
     });
 
     if let Some(e) = st.error {
@@ -305,14 +440,14 @@ anonymiser, laissez les autres décochées."
             }
             muted(
                 ui,
-                &format!("{} valeurs seront anonymisées", st.review.selected_count()),
+                &format!("{} valeurs seront anonymisées", st.selected_count()),
             );
         },
         |ui, st| {
             let go = ui.add(
                 PillButton::primary("Continuer")
                     .icon(Icon::ChevronRight)
-                    .enabled(st.review.selected_count() > 0),
+                    .enabled(st.selected_count() > 0),
             );
             if go.clicked() {
                 let _ = st.confirm_review();
@@ -321,7 +456,7 @@ anonymiser, laissez les autres décochées."
     );
 }
 
-fn protect_step(ui: &mut Ui, st: &mut AnonymizeState) {
+fn protect_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
     let p = palette();
     Card::new().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(4);
@@ -329,8 +464,8 @@ fn protect_step(ui: &mut Ui, st: &mut AnonymizeState) {
         ui.add(
             egui::Label::new(
                 RichText::new(
-                    "La table relie chaque balise à la vraie valeur. Elle reste sur votre \
-ordinateur, chiffrée par ce mot de passe. Sans lui, la restauration est impossible : notez-le \
+                    "La table relie chaque balise à la vraie valeur. Elle est enregistrée à côté \
+des fichiers, chiffrée par ce mot de passe. Sans lui, la restauration est impossible : notez-le \
 en lieu sûr.",
                 )
                 .font(font(Weight::Regular, p.text_sm))
@@ -338,45 +473,126 @@ en lieu sûr.",
             )
             .wrap(),
         );
-        let field_w = ui.available_width().min(420.0);
-        let disabled = st.protect.irreversible;
-        ui.add_enabled_ui(!disabled, |ui| {
-            let issue = st.protect.password_issue().map(|i| i.message());
-            TextField::password("Mot de passe", &mut st.protect.password)
-                .id_salt("mdp")
-                .required(true)
-                .error(issue)
-                .width(field_w)
-                .show(ui);
-            let strength = st.protect.strength();
-            ui.scope(|ui| {
-                ui.set_width(field_w);
-                ui.add(StrengthMeter::new(strength));
-            });
-            let confirm_issue = st.protect.confirm_issue().map(|i| i.message());
-            TextField::password("Confirmation du mot de passe", &mut st.protect.confirm)
-                .id_salt("mdp-confirmation")
-                .required(true)
-                .error(confirm_issue)
-                .width(field_w)
-                .show(ui);
-        });
-        toggle(
+        let mut mode = st.protect.mode;
+        segmented(
             ui,
-            &mut st.protect.irreversible,
-            "Mode irréversible : ne pas créer de table de correspondance",
+            "Protection",
+            &mut mode,
+            &[
+                (ProtectMode::NewPassword, "Nouveau mot de passe"),
+                (ProtectMode::ExistingTable, "Reprendre une table"),
+                (ProtectMode::Irreversible, "Irréversible"),
+            ],
         );
-        if st.protect.irreversible {
-            Banner::warning(
-                "Les balises ne pourront jamais être remplacées par les vraies valeurs. À \
-réserver aux documents que vous n'aurez pas à restaurer.",
-            )
-            .show(ui);
+        if mode != st.protect.mode {
+            st.protect.mode = mode;
+            st.protect.password.clear();
+            st.protect.confirm.clear();
         }
+        let field_w = ui.available_width().min(420.0);
+        match st.protect.mode {
+            ProtectMode::NewPassword => {
+                let issue = st.protect.password_issue().map(|i| i.message());
+                TextField::password("Mot de passe", &mut st.protect.password)
+                    .id_salt("mdp")
+                    .required(true)
+                    .error(issue)
+                    .width(field_w)
+                    .show(ui);
+                ui.scope(|ui| {
+                    ui.set_width(field_w);
+                    ui.add(StrengthMeter::of(&st.protect.password));
+                });
+                let confirm_issue = st.protect.confirm_issue().map(|i| i.message());
+                TextField::password("Confirmation du mot de passe", &mut st.protect.confirm)
+                    .id_salt("mdp-confirmation")
+                    .required(true)
+                    .error(confirm_issue)
+                    .width(field_w)
+                    .show(ui);
+            }
+            ProtectMode::ExistingTable => {
+                muted(
+                    ui,
+                    "Les valeurs déjà présentes dans cette table gardent leurs balises. Une \
+nouvelle table, complétée, est enregistrée avec le même mot de passe.",
+                );
+                match &st.protect.existing {
+                    Some(t) => {
+                        ui.horizontal(|ui| {
+                            ui.add(Badge::brand("Ouverte"));
+                            body(ui, &format!("{} : {} correspondances", t.name, t.entries));
+                        });
+                    }
+                    None => {
+                        let name = st
+                            .protect
+                            .existing_path
+                            .as_deref()
+                            .map(file_name)
+                            .unwrap_or_else(|| "Aucune table choisie".to_owned());
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = p.space(3);
+                            if ui
+                                .add(
+                                    PillButton::secondary("Choisir la table")
+                                        .icon(Icon::FolderOpen)
+                                        .small(),
+                                )
+                                .clicked()
+                            {
+                                fx.push(Effect::PickExistingMap);
+                            }
+                            body(ui, &name);
+                        });
+                        let error = st.protect.existing_error.as_deref();
+                        TextField::password("Mot de passe de la table", &mut st.protect.password)
+                            .id_salt("mdp-reprise")
+                            .error(error)
+                            .width(field_w)
+                            .show(ui);
+                        let ready =
+                            st.protect.existing_path.is_some() && !st.protect.password.is_empty();
+                        if ui
+                            .add(
+                                PillButton::primary("Ouvrir la table")
+                                    .icon(Icon::LockOpen)
+                                    .enabled(ready)
+                                    .small(),
+                            )
+                            .clicked()
+                        {
+                            fx.push(Effect::OpenExistingMap);
+                        }
+                    }
+                }
+            }
+            ProtectMode::Irreversible => {
+                Banner::warning(
+                    "Aucune table n'est créée : les balises ne pourront jamais être remplacées \
+par les vraies valeurs. À réserver aux documents que vous n'aurez pas à restaurer.",
+                )
+                .show(ui);
+            }
+        }
+        ui.separator();
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = p.space(3);
+            Icon::FolderOpen.show(ui, p.text_secondary, 18.0);
+            let dir = st
+                .out_dir
+                .as_deref()
+                .map(|d| d.display().to_string())
+                .unwrap_or_else(|| "Aucun dossier choisi".to_owned());
+            body(ui, &format!("Dossier de sortie : {dir}"));
+            if ui.add(PillButton::ghost("Changer").small()).clicked() {
+                fx.push(Effect::PickOutputDir);
+            }
+        });
         caption(
             ui,
-            "Les fichiers anonymisés sont enregistrés à côté des originaux, avec « (anonymisé) » \
-dans leur nom.",
+            "Chaque fichier est enregistré sous « nom_anonymise » ; un fichier existant n'est \
+jamais remplacé.",
         );
     });
     if let Some(e) = st.error {
@@ -394,15 +610,14 @@ dans leur nom.",
             }
         },
         |ui, st| {
-            let label = format!("Anonymiser {} fichiers", st.files.len());
+            let label = format!("Anonymiser {} fichiers", st.inputs.len());
             let go = ui.add(
                 PillButton::primary(&label)
                     .icon(Icon::Lock)
-                    .enabled(st.protect.can_proceed()),
+                    .enabled(st.protect.can_proceed() && st.out_dir.is_some()),
             );
             if go.clicked() {
-                // Branchement futur : traitement par anon-engine.
-                let _ = st.finish(mock::reports());
+                fx.push(Effect::Anonymize);
             }
         },
     );
@@ -410,65 +625,81 @@ dans leur nom.",
 
 fn done_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
     let p = palette();
-    let delivered = st.delivered_count();
-    let total = st.reports.len();
-    let folder = st
-        .files
-        .first()
-        .and_then(|f| f.path.parent())
-        .map(|d| d.display().to_string())
-        .unwrap_or_default();
-    let blocked = total - delivered;
-    let text = if blocked == 0 {
-        format!("{delivered} fichiers anonymisés, enregistrés dans {folder}.")
-    } else {
-        format!(
-            "{delivered} fichiers sur {total} enregistrés dans {folder}. {blocked} fichier \
-bloqué par le contrôle de fuite : il n'a pas été livré."
-        )
+    let Some(report) = st.report.clone() else {
+        return;
     };
-    Banner::success(&text)
-        .title("Anonymisation terminée")
-        .show(ui);
+    summary_banner(ui, &report);
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = p.space(3);
         if ui
             .add(PillButton::primary("Ouvrir le dossier").icon(Icon::FolderOpen))
             .clicked()
         {
-            fx.push(Effect::OpenOutputFolder);
+            fx.push(Effect::OpenFolder(report.out_dir.clone()));
         }
         if ui
             .add(PillButton::secondary("Copier la consigne pour l'IA").icon(Icon::Clipboard))
             .clicked()
         {
-            fx.push(Effect::Copy(st.ai_instruction()));
+            fx.push(Effect::Copy(anon_engine::ai_instruction().to_owned()));
         }
         if ui
-            .add(PillButton::ghost("Nouvelle anonymisation").icon(Icon::RefreshCw))
+            .add(PillButton::ghost("Anonymiser d'autres fichiers").icon(Icon::RefreshCw))
             .clicked()
         {
             st.reset();
         }
     });
     subheading(ui, "Rapport par fichier");
-    let format_of = |name: &str| {
-        st.files
-            .iter()
-            .find(|f| f.name == name)
-            .map(|f| f.format)
-            .unwrap_or(crate::ui::state::files::FileFormat::Unsupported)
-    };
-    for r in &st.reports {
-        report_card(ui, r, format_of(&r.name));
+    let format_of = |name: &str| FileFormat::from_path(std::path::Path::new(name));
+    for f in &report.files {
+        report_card(ui, &f.name, &f.outcome, format_of(&f.name), fx);
     }
 }
 
-fn report_card(ui: &mut Ui, r: &FileReport, format: crate::ui::state::files::FileFormat) {
+fn summary_banner(ui: &mut Ui, report: &BatchReport) {
+    let delivered = report.delivered();
+    let total = report.files.len();
+    let folder = report.out_dir.display().to_string();
+    if let Some(fatal) = &report.fatal {
+        Banner::error(fatal).title("Aucun fichier écrit").show(ui);
+        return;
+    }
+    let mut text = format!("{delivered} fichiers sur {total} enregistrés dans {folder}.");
+    if let Some(map) = &report.map_path {
+        text.push_str(&format!(
+            " Table de correspondance : {}. Gardez-la avec son mot de passe pour restaurer.",
+            file_name(map)
+        ));
+    } else if delivered > 0 {
+        text.push_str(" Mode irréversible : aucune table n'a été créée.");
+    }
+    if report.cancelled {
+        text.push_str(" Traitement annulé : les fichiers restants n'ont pas été traités.");
+    }
+    if delivered == total {
+        Banner::success(&text)
+            .title("Anonymisation terminée")
+            .show(ui);
+    } else {
+        Banner::warning(&text)
+            .title("Anonymisation terminée, avec des fichiers non livrés")
+            .show(ui);
+    }
+}
+
+fn report_card(
+    ui: &mut Ui,
+    name: &str,
+    outcome: &Outcome,
+    format: FileFormat,
+    fx: &mut Vec<Effect>,
+) {
     let p = palette();
-    let accent = match r.leak_check {
-        LeakCheck::Passed => p.primary,
-        LeakCheck::Blocked(_) => p.error,
+    let accent = match outcome {
+        Outcome::Written { .. } => p.primary,
+        Outcome::Leak { .. } | Outcome::Failed(_) => p.error,
+        Outcome::Cancelled => p.gray_400,
     };
     Card::new().accent(accent).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(3);
@@ -479,68 +710,106 @@ fn report_card(ui: &mut Ui, r: &FileReport, format: crate::ui::state::files::Fil
                 ui.spacing_mut().item_spacing.y = 2.0;
                 ui.add(
                     egui::Label::new(
-                        RichText::new(&r.name)
+                        RichText::new(name)
                             .font(font(Weight::Semibold, p.text_base))
                             .color(p.dark),
                     )
                     .truncate(),
                 );
-                let out = match r.leak_check {
-                    LeakCheck::Passed => format!("Enregistré sous « {} »", r.output_name),
-                    LeakCheck::Blocked(_) => "Non livré".to_owned(),
+                let out = match outcome {
+                    Outcome::Written { path, .. } => {
+                        format!("Enregistré sous « {} »", file_name(path))
+                    }
+                    Outcome::Leak { .. } => "Non livré : contrôle de fuite".to_owned(),
+                    Outcome::Failed(_) => "Non traité".to_owned(),
+                    Outcome::Cancelled => "Annulé".to_owned(),
                 };
                 caption(ui, &out);
             });
         });
-        ui.columns(3, |cols| {
-            if let [a, b, c] = cols {
-                stat(a, "Remplacements", |ui| {
-                    ui.label(
-                        RichText::new(r.replacements.to_string())
-                            .font(font(Weight::Bold, p.text_xl))
-                            .color(p.dark),
+        match outcome {
+            Outcome::Written {
+                replacements,
+                warnings,
+                risk,
+                ..
+            } => {
+                ui.columns(3, |cols| {
+                    if let [a, b, c] = cols {
+                        stat(a, "Remplacements", |ui| {
+                            ui.label(
+                                RichText::new(replacements.to_string())
+                                    .font(font(Weight::Bold, p.text_xl))
+                                    .color(p.dark),
+                            );
+                        });
+                        stat(b, "Contrôle de fuite", |ui| {
+                            ui.add(Badge::brand("Réussi"));
+                        });
+                        stat(c, "Risque de ré-identification", |ui| {
+                            let label = risk.level.label();
+                            let badge = match risk.level {
+                                RiskLevel::Faible => Badge::brand(label),
+                                RiskLevel::Modere => Badge::warning(label),
+                                RiskLevel::Eleve => Badge::error(label),
+                            };
+                            ui.add(badge);
+                        });
+                    }
+                });
+                for advice in &risk.advice {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(advice)
+                                .font(font(Weight::Regular, p.text_sm))
+                                .color(p.text),
+                        )
+                        .wrap(),
                     );
-                });
-                stat(b, "Contrôle de fuite", |ui| match r.leak_check {
-                    LeakCheck::Passed => {
-                        ui.add(Badge::brand("Réussi"));
-                    }
-                    LeakCheck::Blocked(n) => {
-                        ui.add(Badge::error(&format!("Bloqué : {n} valeur restante")));
-                    }
-                });
-                stat(c, "Risque de ré-identification", |ui| {
-                    let badge = match r.risk {
-                        Risk::Low => Badge::brand(r.risk.label()),
-                        Risk::Medium => Badge::warning(r.risk.label()),
-                        Risk::High => Badge::error(r.risk.label()),
-                    };
-                    ui.add(badge);
-                });
-            }
-        });
-        if let Some(reason) = &r.risk_reason {
-            ui.add(
-                egui::Label::new(
-                    RichText::new(reason)
-                        .font(font(Weight::Regular, p.text_sm))
-                        .color(p.text),
-                )
-                .wrap(),
-            );
-        }
-        if !r.warnings.is_empty() {
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
-                overline(ui, "Avertissements");
-                for w in &r.warnings {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
-                        Icon::TriangleAlert.show(ui, p.data.ink, 16.0);
-                        body(ui, w);
+                }
+                if !warnings.is_empty() {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 4.0;
+                        overline(ui, "Avertissements");
+                        for w in warnings {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.spacing_mut().item_spacing.x = 6.0;
+                                let icon = if w.code == WarningCode::LowOcrConfidence {
+                                    Icon::Image
+                                } else {
+                                    Icon::TriangleAlert
+                                };
+                                icon.show(ui, p.data.ink, 16.0);
+                                body(ui, &format!("{} : {}", w.part, w.detail));
+                            });
+                        }
                     });
                 }
-            });
+            }
+            Outcome::Leak { tags, parts } => {
+                let text = format!(
+                    "Après réécriture, {} restent lisibles ({}). Le fichier n'a pas été enregistré. \
+Vous pouvez enregistrer son texte anonymisé, sans mise en forme.",
+                    tags.join(", "),
+                    parts.join(", ")
+                );
+                Banner::error(&text).title("Contrôle de fuite : bloqué").show(ui);
+                if ui
+                    .add(
+                        PillButton::secondary("Enregistrer le texte anonymisé (.md)")
+                            .icon(Icon::Download),
+                    )
+                    .clicked()
+                {
+                    fx.push(Effect::ExportText(name.to_owned()));
+                }
+            }
+            Outcome::Failed(msg) => {
+                Banner::error(msg).show(ui);
+            }
+            Outcome::Cancelled => {
+                muted(ui, "Traitement annulé avant ce fichier.");
+            }
         }
     });
 }

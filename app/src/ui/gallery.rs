@@ -1,7 +1,6 @@
 //! Galerie des composants dans tous leurs états, pour les instantanés et la
 //! relecture visuelle de la charte.
 
-use super::state::password::evaluate;
 use super::theme::palette;
 use super::widgets::badge::FAMILIES;
 use super::widgets::field::field_id;
@@ -178,7 +177,7 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
                 TextField::password("Mot de passe", &mut st.password)
                     .id_salt("galerie-mdp")
                     .show(b);
-                b.add(StrengthMeter::new(evaluate(&st.password)));
+                b.add(StrengthMeter::of(&st.password));
                 for pw in [
                     "",
                     "court",
@@ -186,7 +185,7 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
                     "Qmzrtx-Wpvk7",
                     "Cheval-Agrafe-Batterie-47",
                 ] {
-                    b.add(StrengthMeter::new(evaluate(pw)));
+                    b.add(StrengthMeter::of(pw));
                 }
             }
         });

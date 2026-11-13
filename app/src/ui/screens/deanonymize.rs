@@ -1,26 +1,41 @@
 //! Onglet « Désanonymiser » : table + mot de passe, réponse de l'IA, résultat.
 
+use super::anonymize::busy_card;
 use super::{card_title, file_row, page_title};
 use crate::ui::app::Effect;
-use crate::ui::mock;
-use crate::ui::state::deanonymize::{DeanonymizeState, InputMode, MapStatus, UnlockError};
+use crate::ui::runner::Shared;
+use crate::ui::service::{file_name, unused_tags};
+use crate::ui::state::deanonymize::{Busy, DeanonymizeState, InputMode, MapStatus};
 use crate::ui::theme::{Weight, font, palette, radius};
 use crate::ui::widgets::button::icon_button;
 use crate::ui::widgets::nav::segmented;
 use crate::ui::widgets::{
-    Badge, Banner, Card, DropZone, Icon, PillButton, TextField, caption, muted, subheading,
+    Badge, Banner, Card, DropZone, Icon, PillButton, TextField, body, caption, muted, overline,
+    subheading,
 };
+use anon_engine::RestoreReport;
 use egui::{Frame, Margin, RichText, Ui};
 
 /// Largeur à partir de laquelle les deux cartes sont côte à côte.
 const TWO_COLUMNS: f32 = 760.0;
 
-pub fn show(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
+pub fn show(ui: &mut Ui, st: &mut DeanonymizeState, progress: &Shared, fx: &mut Vec<Effect>) {
     page_title(
         ui,
         "Désanonymiser une réponse",
-        "Remettez les vraies valeurs dans le texte ou le fichier renvoyé par l'IA.",
+        "Remettez les vraies valeurs dans le texte ou les fichiers renvoyés par l'IA.",
     );
+    match st.busy {
+        Some(Busy::Opening) => {
+            busy_card(ui, "Ouverture de la table", progress, fx);
+            return;
+        }
+        Some(Busy::Restoring) => {
+            busy_card(ui, "Restauration des fichiers", progress, fx);
+            return;
+        }
+        None => {}
+    }
     if ui.available_width() >= TWO_COLUMNS {
         ui.columns(2, |cols| {
             if let [a, b] = cols {
@@ -57,8 +72,8 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                 {
                     fx.push(Effect::PickMap);
                 }
-                if let Some(e) = st.unlock_error {
-                    Banner::error(e.message()).show(ui);
+                if let Some(e) = &st.unlock_error {
+                    Banner::error(e).show(ui);
                 }
             }
             MapStatus::Locked { name, .. } => {
@@ -74,31 +89,30 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                         .truncate(),
                     );
                 });
-                let error = st.unlock_error.map(UnlockError::message);
+                let error = st.unlock_error.as_deref();
                 let r = TextField::password("Mot de passe de la table", &mut st.password)
                     .id_salt("mdp-table")
                     .error(error)
                     .show(ui);
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 ui.horizontal(|ui| {
-                    let go = ui.add(PillButton::primary("Déverrouiller").icon(Icon::LockOpen));
+                    let go = ui.add(
+                        PillButton::primary("Ouvrir la table")
+                            .icon(Icon::LockOpen)
+                            .enabled(!st.password.is_empty()),
+                    );
                     if go.clicked() || enter {
-                        // Branchement futur : ouverture par anon-vault.
-                        let _ = st.unlock(|_, _| Ok((12, "12 novembre 2026".to_owned())));
+                        fx.push(Effect::Unlock);
                     }
                     if ui.add(PillButton::ghost("Changer de table")).clicked() {
                         fx.push(Effect::PickMap);
                     }
                 });
             }
-            MapStatus::Unlocked {
-                name,
-                entries,
-                created,
-            } => {
+            MapStatus::Unlocked { name, entries, .. } => {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = p.space(2);
-                    ui.add(Badge::brand("Déverrouillée"));
+                    ui.add(Badge::brand("Ouverte"));
                     ui.add(
                         egui::Label::new(
                             RichText::new(&name)
@@ -108,10 +122,7 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                         .truncate(),
                     );
                 });
-                muted(
-                    ui,
-                    &format!("{entries} correspondances, créée le {created}."),
-                );
+                muted(ui, &format!("{entries} correspondances."));
                 if ui
                     .add(
                         PillButton::ghost("Refermer la table")
@@ -138,7 +149,7 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
             &mut st.mode,
             &[
                 (InputMode::Paste, "Coller du texte"),
-                (InputMode::File, "Fichier"),
+                (InputMode::File, "Fichiers"),
             ],
         );
         match st.mode {
@@ -149,35 +160,45 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                     .multiline(6)
                     .show(ui);
             }
-            InputMode::File => match &st.input_file {
-                None => {
-                    if ui
-                        .add(
-                            DropZone::new(
-                                "Déposez le fichier renvoyé par l'IA",
-                                "ou cliquez pour le choisir",
-                            )
-                            .height(150.0),
+            InputMode::File => {
+                if ui
+                    .add(
+                        DropZone::new(
+                            "Déposez les fichiers renvoyés par l'IA",
+                            "ou cliquez pour les choisir",
                         )
-                        .clicked()
-                    {
-                        fx.push(Effect::PickResponse);
-                    }
+                        .height(130.0),
+                    )
+                    .clicked()
+                {
+                    fx.push(Effect::PickResponses);
                 }
-                Some(f) => {
-                    let mut clear = false;
+                let mut remove = None;
+                for (i, f) in st.input_files.iter().enumerate() {
                     file_row(ui, f, |ui| {
-                        if icon_button(ui, Icon::X, "Retirer le fichier", p.text_secondary)
-                            .clicked()
-                        {
-                            clear = true;
+                        let label = format!("Retirer {}", f.name);
+                        if icon_button(ui, Icon::X, &label, p.text_secondary).clicked() {
+                            remove = Some(i);
                         }
                     });
-                    if clear {
-                        st.input_file = None;
-                    }
                 }
-            },
+                if let Some(i) = remove {
+                    st.remove_input_file(i);
+                }
+                if !st.input_files.is_empty() {
+                    let dir = st
+                        .out_dir
+                        .as_deref()
+                        .map(|d| d.display().to_string())
+                        .unwrap_or_default();
+                    ui.horizontal_wrapped(|ui| {
+                        caption(ui, &format!("Enregistrés dans : {dir}"));
+                        if ui.add(PillButton::ghost("Changer").small()).clicked() {
+                            fx.push(Effect::PickRestoreDir);
+                        }
+                    });
+                }
+            }
         }
         let ready = st.is_unlocked() && st.has_input();
         let go = ui.add(
@@ -186,65 +207,108 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                 .enabled(ready),
         );
         if !st.is_unlocked() {
-            caption(ui, "Déverrouillez d'abord la table de correspondance.");
+            caption(ui, "Ouvrez d'abord la table de correspondance.");
         }
         if go.clicked() {
-            // Branchement futur : restauration par anon-engine.
-            let _ = st.restore(mock::restore);
+            fx.push(Effect::Restore);
         }
     });
 }
 
+fn report_banners(ui: &mut Ui, r: &RestoreReport) {
+    if !r.unknown.is_empty() {
+        let text = format!(
+            "{} : absentes de la table, laissées telles quelles. L'IA les a peut-être inventées : \
+vérifiez ces passages.",
+            r.unknown.join(", ")
+        );
+        Banner::warning(&text).title("Balises inconnues").show(ui);
+    }
+    let unused = unused_tags(r);
+    if !unused.is_empty() {
+        let text = format!(
+            "{} : absentes de la réponse. L'IA les a peut-être supprimées ou réécrites.",
+            unused.join(", ")
+        );
+        Banner::info(&text).title("Balises non retrouvées").show(ui);
+    }
+}
+
 fn result_section(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
     let p = palette();
-    let Some(r) = &st.result else { return };
-    Card::new().accent(p.primary).show(ui, |ui| {
-        ui.spacing_mut().item_spacing.y = p.space(3);
-        ui.horizontal(|ui| {
-            subheading(ui, "Résultat");
-            ui.add(Badge::brand(&format!("{} balises restaurées", r.restored)));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
+    if let Some((text, r)) = &st.text_result {
+        Card::new().accent(p.primary).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = p.space(3);
+            ui.horizontal(|ui| {
+                subheading(ui, "Résultat");
+                ui.add(Badge::brand(&format!("{} balises restaurées", r.restored)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(
+                            PillButton::secondary("Copier le résultat")
+                                .icon(Icon::Copy)
+                                .small(),
+                        )
+                        .clicked()
+                    {
+                        fx.push(Effect::Copy(text.clone()));
+                    }
+                });
+            });
+            Frame::new()
+                .fill(p.bg_subtle)
+                .corner_radius(radius(p.radius_md))
+                .inner_margin(Margin::same(16))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(text)
+                                .font(font(Weight::Regular, p.text_sm))
+                                .color(p.text),
+                        )
+                        .wrap()
+                        .selectable(true),
+                    );
+                });
+            report_banners(ui, r);
+        });
+    }
+    if !st.file_results.is_empty() {
+        Card::new().accent(p.primary).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = p.space(3);
+            subheading(ui, "Fichiers restaurés");
+            let mut folder = None;
+            for o in &st.file_results {
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = p.space(2);
+                    overline(ui, &o.name);
+                    match &o.result {
+                        Ok((path, r)) => {
+                            folder = path.parent().map(|d| d.to_path_buf());
+                            ui.horizontal_wrapped(|ui| {
+                                ui.add(Badge::brand(&format!("{} balises restaurées", r.restored)));
+                                body(ui, &format!("Enregistré sous « {} »", file_name(path)));
+                            });
+                            report_banners(ui, r);
+                        }
+                        Err(msg) => {
+                            Banner::error(msg).show(ui);
+                        }
+                    }
+                });
+            }
+            if let Some(dir) = folder
+                && ui
                     .add(
-                        PillButton::secondary("Copier le résultat")
-                            .icon(Icon::Copy)
+                        PillButton::secondary("Ouvrir le dossier")
+                            .icon(Icon::FolderOpen)
                             .small(),
                     )
                     .clicked()
-                {
-                    fx.push(Effect::Copy(r.text.clone()));
-                }
-            });
+            {
+                fx.push(Effect::OpenFolder(dir));
+            }
         });
-        Frame::new()
-            .fill(p.bg_subtle)
-            .corner_radius(radius(p.radius_md))
-            .inner_margin(Margin::same(16))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(&r.text)
-                            .font(font(Weight::Regular, p.text_sm))
-                            .color(p.text),
-                    )
-                    .wrap()
-                    .selectable(true),
-                );
-            });
-        if !r.unknown_tags.is_empty() {
-            let text = format!(
-                "{} : absentes de la table, l'IA les a peut-être inventées. Vérifiez ces passages.",
-                r.unknown_tags.join(", ")
-            );
-            Banner::warning(&text).title("Balises inconnues").show(ui);
-        }
-        if !r.missing_tags.is_empty() {
-            let text = format!(
-                "{} : absentes de la réponse. L'IA les a peut-être supprimées ou réécrites.",
-                r.missing_tags.join(", ")
-            );
-            Banner::info(&text).title("Balises non retrouvées").show(ui);
-        }
-    });
+    }
 }

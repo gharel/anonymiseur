@@ -1,0 +1,515 @@
+//! Parcours de l'interface de bout en bout sur les vrais exemples, sans egui :
+//! état des onglets + opérations du fil de travail + moteur livré.
+//!
+//! analyser `exemples/` → sélection par défaut → anonymiser dans un dossier
+//! temporaire → fichiers écrits et `.anonmap` → réouverture avec le mot de passe
+//! → restauration ; mauvais mot de passe ; fuite simulée ; fichier refusé ;
+//! non-écrasement ; annulation.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use anon_core::{
+    BlockContext, BlockRole, Extraction, FormatError, Handler, Output, Session, TextBlock,
+    TextTransform, TransformOptions,
+};
+use anon_engine::{Engine, NoProgress, Progress};
+use anonymiseur::ui::platform::file_entry;
+use anonymiseur::ui::service::{
+    MAP_BASENAME, Outcome, Protection, anonymize_batch, read_inputs, restore_batch,
+};
+use anonymiseur::ui::state::anonymize::{AnonymizeState, ProtectMode, Step};
+use anonymiseur::ui::state::deanonymize::DeanonymizeState;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+const PASSWORD: &str = "Cheval-Agrafe-Batterie-47";
+
+fn engine() -> &'static Engine {
+    static ENGINE: OnceLock<Engine> = OnceLock::new();
+    ENGINE.get_or_init(|| anonymiseur::moteur::build().engine)
+}
+
+fn exemples() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../exemples")
+}
+
+fn temp_dir(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("anonymiseur-e2e-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+/// Exemples gérés par le moteur (sans la réponse d'IA simulée ni les notices).
+fn example_paths() -> Vec<PathBuf> {
+    let supported = engine().supported_extensions();
+    let mut out: Vec<PathBuf> = std::fs::read_dir(exemples())
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            let name = p.file_name().unwrap().to_string_lossy().to_string();
+            let ext = p
+                .extension()
+                .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default();
+            supported.contains(&ext.as_str())
+                && !name.starts_with("reponse-ia")
+                && name != "LISEZMOI.md"
+                && ext != "json"
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// Copie des exemples dans un dossier de travail (sortie par défaut = dossier du premier fichier).
+fn copy_examples(dir: &Path) -> Vec<PathBuf> {
+    example_paths()
+        .into_iter()
+        .map(|p| {
+            let to = dir.join(p.file_name().unwrap());
+            std::fs::copy(&p, &to).unwrap();
+            to
+        })
+        .collect()
+}
+
+/// Analyse par l'état de l'onglet, comme le fait `AnonApp`.
+fn analyzed(paths: Vec<PathBuf>, session: &Session, progress: &dyn Progress) -> AnonymizeState {
+    let mut st = AnonymizeState::default();
+    let supported = engine().supported_extensions();
+    st.add_files(paths.into_iter().map(file_entry), &supported);
+    let to_read = st.begin_analysis().unwrap();
+    let (inputs, rejected) = read_inputs(&to_read);
+    let analysis = engine().analyze(&inputs, &st.analyze_options(), session, progress);
+    st.analysis_done(inputs, rejected, analysis, session);
+    st
+}
+
+fn anonymize(st: &mut AnonymizeState, session: &mut Session, progress: &dyn Progress) {
+    st.confirm_review().unwrap();
+    let job = st.begin_anonymize().unwrap();
+    if let Some(s) = job.session.clone() {
+        *session = s;
+    }
+    let report = anonymize_batch(
+        engine(),
+        &job.inputs,
+        &job.analysis,
+        &job.never,
+        session,
+        &job.protection,
+        &job.out_dir,
+        progress,
+    );
+    st.anonymize_done(report, job.inputs, job.analysis);
+}
+
+#[test]
+fn parcours_complet_sur_les_exemples() {
+    let work = temp_dir("parcours");
+    let paths = copy_examples(&work);
+    assert!(paths.len() >= 8, "exemples gérés : {}", paths.len());
+    let mut session = Session::new();
+    let mut st = analyzed(paths.clone(), &session, &NoProgress);
+    assert_eq!(st.step, Step::Review);
+    assert!(st.rejected.is_empty(), "{:?}", st.rejected);
+    assert!(st.selected_count() > 10);
+    assert!(!st.tag_preview.is_empty());
+    assert_eq!(st.out_dir.as_deref(), Some(work.as_path()));
+
+    st.protect.mode = ProtectMode::NewPassword;
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut session, &NoProgress);
+    assert_eq!(st.step, Step::Done);
+    assert!(st.protect.password.is_empty(), "mot de passe effacé");
+    let report = st.report.clone().unwrap();
+    assert!(report.fatal.is_none());
+    let map = report.map_path.clone().unwrap();
+    assert_eq!(map, work.join(MAP_BASENAME));
+
+    // Fichiers écrits : suffixe, aucun original modifié, aucune valeur cochée lisible.
+    let mut written = Vec::new();
+    for f in &report.files {
+        match &f.outcome {
+            Outcome::Written {
+                path, replacements, ..
+            } => {
+                let stem = f.name.rsplit_once('.').unwrap().0;
+                assert!(
+                    path.file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .starts_with(&format!("{stem}_anonymise")),
+                    "{}",
+                    path.display()
+                );
+                assert!(*replacements > 0, "{}", f.name);
+                written.push(path.clone());
+            }
+            Outcome::Leak { .. } => {
+                // Bloqué : aucun fichier produit.
+                let stem = f.name.rsplit_once('.').unwrap().0;
+                assert!(!std::fs::read_dir(&work).unwrap().any(|e| {
+                    e.unwrap()
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(&format!("{stem}_anonymise"))
+                }));
+            }
+            other => panic!("{} : {other:?}", f.name),
+        }
+    }
+    assert!(
+        written.len() >= paths.len() - 2,
+        "{} livrés sur {}",
+        written.len(),
+        paths.len()
+    );
+    for p in &paths {
+        let original = exemples().join(p.file_name().unwrap());
+        assert_eq!(std::fs::read(p).unwrap(), std::fs::read(original).unwrap());
+    }
+
+    // La table se rouvre avec le mot de passe et contient la session.
+    let mut d = DeanonymizeState::default();
+    d.choose_map(map.clone()).unwrap();
+    d.password = PASSWORD.into();
+    let (path, pw) = d.begin_unlock().unwrap();
+    let opened = anon_vault::open(&std::fs::read(&path).unwrap(), &pw).map_err(|e| e.to_string());
+    d.unlock_done(opened);
+    assert!(d.is_unlocked());
+    let restored_session = d.session().unwrap().clone();
+    assert_eq!(restored_session.entities.len(), session.entities.len());
+
+    // Restauration de chaque fichier livré, dans un autre dossier.
+    let back = temp_dir("restaure");
+    d.add_input_files(written.iter().cloned().map(file_entry));
+    d.out_dir = Some(back.clone());
+    let job = d.begin_restore_files().unwrap();
+    let (inputs, unreadable) = read_inputs(&job.paths);
+    assert!(unreadable.is_empty());
+    let results = restore_batch(engine(), &inputs, &job.session, &job.out_dir, &NoProgress);
+    d.restore_files_done(results.clone());
+    for r in &results {
+        let (path, rep) = r
+            .result
+            .as_ref()
+            .unwrap_or_else(|e| panic!("{} : {e}", r.name));
+        assert!(
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains("_restaure")
+        );
+        assert!(rep.unknown.is_empty(), "{} : {:?}", r.name, rep.unknown);
+        let image = ["png", "jpg", "jpeg"]
+            .iter()
+            .any(|e| r.name.ends_with(&format!(".{e}")));
+        // Une image seule ou un PDF scanné n'ont pas de balise en texte : elles
+        // sont dessinées dans l'image. Rien à compter côté texte.
+        let scan = r.name.starts_with("courrier-scanne");
+        if !image && !scan {
+            assert!(rep.restored > 0, "{}", r.name);
+        }
+    }
+    // Texte brut : la restauration redonne l'original à la forme canonique près.
+    let notes = results
+        .iter()
+        .find(|r| r.name.starts_with("notes"))
+        .and_then(|r| r.result.as_ref().ok())
+        .map(|(p, _)| std::fs::read_to_string(p).unwrap())
+        .unwrap();
+    assert!(!notes.contains("[PERSONNE_"), "balise non restaurée");
+
+    // Texte collé.
+    d.mode = anonymiseur::ui::state::deanonymize::InputMode::Paste;
+    d.pasted = std::fs::read_to_string(exemples().join("reponse-ia-exemple.md")).unwrap();
+    d.restore_text(|t, s| engine().restore_text(t, s)).unwrap();
+    let (text, rep) = d.text_result.clone().unwrap();
+    assert!(rep.restored >= 5);
+    assert!(!text.contains("[PERSONNE_1]"));
+    assert!(rep.unknown.contains(&"[PERSONNE_99]".to_owned()));
+
+    let _ = std::fs::remove_dir_all(&work);
+    let _ = std::fs::remove_dir_all(&back);
+}
+
+#[test]
+fn mauvais_mot_de_passe() {
+    let work = temp_dir("mdp");
+    let src = exemples().join("notes.txt");
+    let file = work.join("notes.txt");
+    std::fs::copy(&src, &file).unwrap();
+    let mut session = Session::new();
+    let mut st = analyzed(vec![file], &session, &NoProgress);
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut session, &NoProgress);
+    let map = st.report.as_ref().unwrap().map_path.clone().unwrap();
+
+    let mut d = DeanonymizeState::default();
+    d.choose_map(map).unwrap();
+    d.password = "pas le bon".into();
+    let (path, pw) = d.begin_unlock().unwrap();
+    let opened = anon_vault::open(&std::fs::read(path).unwrap(), &pw).map_err(|e| e.to_string());
+    d.unlock_done(opened);
+    assert!(!d.is_unlocked());
+    let msg = d.unlock_error.clone().unwrap();
+    assert!(msg.starts_with("Mot de passe incorrect"), "{msg}");
+    // Un fichier qui n'est pas une table.
+    let not_map = anon_vault::open(b"bonjour", "x").map_err(|e| e.to_string());
+    d.unlock_done(not_map);
+    assert!(d.unlock_error.unwrap().contains("pas une table"));
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+/// Gestionnaire qui recopie le texte sans le modifier : toute valeur cochée
+/// reste lisible, le contrôle de fuite doit bloquer le fichier.
+struct Passthrough;
+
+impl Handler for Passthrough {
+    fn extensions(&self) -> &'static [&'static str] {
+        &["fuite"]
+    }
+
+    fn extract(&self, input: &[u8]) -> Result<Extraction, FormatError> {
+        let text = String::from_utf8_lossy(input);
+        Ok(Extraction {
+            blocks: text
+                .lines()
+                .map(|l| TextBlock {
+                    text: l.to_owned(),
+                    ctx: BlockContext::new("texte", BlockRole::Body),
+                })
+                .collect(),
+            media: Vec::new(),
+            warnings: Vec::new(),
+        })
+    }
+
+    fn transform(
+        &self,
+        input: &[u8],
+        _tr: &dyn TextTransform,
+        _opts: &TransformOptions<'_>,
+    ) -> Result<Output, FormatError> {
+        Ok(Output {
+            bytes: input.to_vec(),
+            replacements: 0,
+            warnings: Vec::new(),
+        })
+    }
+}
+
+static PASSTHROUGH: Passthrough = Passthrough;
+
+#[test]
+fn fuite_simulee_bloque_le_fichier() {
+    let engine = Engine::standard_builder()
+        .handler("fuite", &PASSTHROUGH)
+        .build();
+    let work = temp_dir("fuite");
+    let leaky = work.join("piege.fuite");
+    std::fs::write(&leaky, "Contact : helene.kaloi@example.com").unwrap();
+    let ok = work.join("ok.txt");
+    std::fs::write(&ok, "Écrire à helene.kaloi@example.com").unwrap();
+    let (inputs, _) = read_inputs(&[leaky, ok]);
+    let session0 = Session::new();
+    let analysis = engine.analyze(
+        &inputs,
+        &anon_engine::AnalyzeOptions::default(),
+        &session0,
+        &NoProgress,
+    );
+    let mut session = Session::new();
+    let report = anonymize_batch(
+        &engine,
+        &inputs,
+        &analysis,
+        &[],
+        &mut session,
+        &Protection::Password(PASSWORD.into()),
+        &work,
+        &NoProgress,
+    );
+    assert!(
+        matches!(&report.files[0].outcome, Outcome::Leak { tags, .. } if tags == &vec!["[EMAIL_1]".to_owned()])
+    );
+    assert!(matches!(report.files[1].outcome, Outcome::Written { .. }));
+    assert!(
+        !work.join("piege_anonymise.fuite").exists(),
+        "fichier bloqué non écrit"
+    );
+    assert!(work.join("ok_anonymise.txt").exists());
+    // Repli : le texte anonymisé reste exportable.
+    let text = engine.export_text(&inputs[0], &session).unwrap();
+    assert!(text.contains("[EMAIL_1]") && !text.contains("helene"));
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+#[test]
+fn fichiers_refuses_sans_bloquer_les_autres() {
+    let work = temp_dir("refus");
+    let good = work.join("notes.txt");
+    std::fs::copy(exemples().join("notes.txt"), &good).unwrap();
+    let old = work.join("ancien.doc");
+    std::fs::write(&old, b"binaire").unwrap();
+    let google = work.join("Budget.gsheet");
+    std::fs::write(&google, b"{}").unwrap();
+    let broken = work.join("abime.docx");
+    std::fs::write(&broken, b"PK pas vraiment un docx").unwrap();
+    let session = Session::new();
+    let st = analyzed(vec![good, old, google, broken], &session, &NoProgress);
+    assert_eq!(st.step, Step::Review);
+    assert_eq!(st.files.len(), 1);
+    let reasons: Vec<(&str, &str)> = st
+        .rejected
+        .iter()
+        .map(|r| (r.name.as_str(), r.reason.as_str()))
+        .collect();
+    assert_eq!(reasons.len(), 3, "{reasons:?}");
+    assert!(
+        reasons
+            .iter()
+            .any(|(n, r)| *n == "ancien.doc" && r.contains("réenregistrez"))
+    );
+    assert!(
+        reasons
+            .iter()
+            .any(|(n, r)| *n == "Budget.gsheet" && r.contains("Télécharger"))
+    );
+    assert!(reasons.iter().any(|(n, _)| *n == "abime.docx"));
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+#[test]
+fn aucun_fichier_ecrase() {
+    let work = temp_dir("ecrasement");
+    let file = work.join("notes.txt");
+    std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
+    let mut session = Session::new();
+    for round in 1..=2 {
+        let mut st = analyzed(vec![file.clone()], &session, &NoProgress);
+        st.protect.password = PASSWORD.into();
+        st.protect.confirm = PASSWORD.into();
+        anonymize(&mut st, &mut session, &NoProgress);
+        let report = st.report.unwrap();
+        let (expected_file, expected_map) = if round == 1 {
+            ("notes_anonymise.txt", MAP_BASENAME.to_owned())
+        } else {
+            (
+                "notes_anonymise_2.txt",
+                "table_anonymiseur_2.anonmap".to_owned(),
+            )
+        };
+        assert!(
+            matches!(&report.files[0].outcome, Outcome::Written { path, .. } if path == &work.join(expected_file))
+        );
+        assert_eq!(report.map_path, Some(work.join(expected_map)));
+    }
+    // La première table reste lisible : elle n'a pas été remplacée.
+    assert!(anon_vault::open(&std::fs::read(work.join(MAP_BASENAME)).unwrap(), PASSWORD).is_ok());
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+#[test]
+fn reprise_d_une_table_existante_garde_les_balises() {
+    let work = temp_dir("reprise");
+    let file = work.join("notes.txt");
+    std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
+    let mut first_session = Session::new();
+    let mut st = analyzed(vec![file.clone()], &first_session, &NoProgress);
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut first_session, &NoProgress);
+    let map = st.report.unwrap().map_path.unwrap();
+
+    // Nouvelle session vide, table reprise à l'étape Protéger.
+    let mut session = Session::new();
+    let mut st = analyzed(vec![file], &session, &NoProgress);
+    st.confirm_review().unwrap();
+    st.protect.mode = ProtectMode::ExistingTable;
+    st.protect.existing_path = Some(map.clone());
+    st.protect.password = PASSWORD.into();
+    let opened =
+        anon_vault::open(&std::fs::read(&map).unwrap(), PASSWORD).map_err(|e| e.to_string());
+    st.existing_opened(opened);
+    assert!(st.protect.can_proceed());
+    let job = st.begin_anonymize().unwrap();
+    session = job.session.clone().unwrap();
+    let report = anonymize_batch(
+        engine(),
+        &job.inputs,
+        &job.analysis,
+        &job.never,
+        &mut session,
+        &job.protection,
+        &job.out_dir,
+        &NoProgress,
+    );
+    let first = std::fs::read(work.join("notes_anonymise.txt")).unwrap();
+    let second = std::fs::read(work.join("notes_anonymise_2.txt")).unwrap();
+    assert_eq!(first, second, "mêmes balises");
+    let new_map = report.map_path.unwrap();
+    assert!(anon_vault::open(&std::fs::read(new_map).unwrap(), PASSWORD).is_ok());
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+/// Annule après `after` fichiers.
+struct CancelAfter {
+    after: usize,
+    seen: AtomicUsize,
+}
+
+impl Progress for CancelAfter {
+    fn step(&self, done: usize, _total: usize, _label: &str) {
+        // Fichier `done` commencé : il compte comme traité.
+        self.seen.store(done + 1, Ordering::Relaxed);
+    }
+
+    fn cancelled(&self) -> bool {
+        self.seen.load(Ordering::Relaxed) >= self.after
+    }
+}
+
+#[test]
+fn annulation() {
+    let work = temp_dir("annulation");
+    let paths: Vec<PathBuf> = ["notes.txt", "export.csv", "brief.md"]
+        .iter()
+        .map(|n| {
+            let to = work.join(n);
+            std::fs::copy(exemples().join(n), &to).unwrap();
+            to
+        })
+        .collect();
+
+    // Analyse annulée dès le départ : retour à « Déposer », rien de chargé.
+    let cancel_now = CancelAfter {
+        after: 0,
+        seen: AtomicUsize::new(0),
+    };
+    let session = Session::new();
+    let st = analyzed(paths.clone(), &session, &cancel_now);
+    assert_eq!(st.step, Step::Drop);
+    assert!(st.analysis.is_none());
+
+    // Anonymisation annulée après le premier fichier : il est livré avec sa table.
+    let mut session = Session::new();
+    let mut st = analyzed(paths, &session, &NoProgress);
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    let cancel = CancelAfter {
+        after: 1,
+        seen: AtomicUsize::new(0),
+    };
+    anonymize(&mut st, &mut session, &cancel);
+    let report = st.report.unwrap();
+    assert!(report.cancelled);
+    assert_eq!(report.delivered(), 1);
+    assert!(report.map_path.is_some());
+    assert!(matches!(report.files[1].outcome, Outcome::Cancelled));
+    let _ = std::fs::remove_dir_all(&work);
+}

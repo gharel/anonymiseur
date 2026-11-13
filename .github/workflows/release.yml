@@ -83,7 +83,7 @@ jobs:
           cargo test -p anonymiseur --release --locked --target-dir target-dist --test moteur
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-x64
           path: |
@@ -126,7 +126,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}" packaging/macos/bundle.sh \
             target/release/anonymiseur dist Anonymiseur-macos-arm64
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-arm64
           path: dist/Anonymiseur-macos-arm64.zip
@@ -156,7 +156,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}" packaging/macos/bundle.sh \
             target/release/anonymiseur dist Anonymiseur-Lite-macos-x64 Lite
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-x64
           path: dist/Anonymiseur-Lite-macos-x64.zip

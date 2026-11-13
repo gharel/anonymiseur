@@ -1,0 +1,8 @@
+# macOS : ONNX Runtime (édition complète) appelle ___isPlatformVersionAtLeast (code CoreML,
+# `@available`), fourni par le runtime de clang (libclang_rt.osx.a). rustc lie avec
+# -nodefaultlibs, qui l'écarte ; -fapple-link-rtlib le remet. Sans effet sur l'édition Lite.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-fapple-link-rtlib"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-fapple-link-rtlib"]

@@ -104,6 +104,14 @@ if ($Force -or -not (Test-Path $common) -or -not (Test-Path $re2)) {
     }
     if ($Force -and (Test-Path $buildRoot)) { Remove-Item $buildRoot -Recurse -Force }
 
+    # Le générateur « Visual Studio 17 2022 » exige Visual Studio 2022 ; cmake 3.x ne connaît pas
+    # Visual Studio 2026 (seul présent sur windows-latest de GitHub Actions : prendre windows-2022).
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    $vs2022 = & $vswhere -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (-not $vs2022) {
+        throw "Visual Studio 2022 avec le toolset C++ est requis (introuvable). Sur GitHub Actions : runs-on: windows-2022."
+    }
+
     $buildArgs = @(
         (Join-Path $src "tools\ci_build\build.py"),
         "--build_dir", $buildRoot,

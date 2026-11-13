@@ -26,7 +26,8 @@ env:
 jobs:
   windows:
     name: Windows x64 (complet + Lite)
-    runs-on: windows-latest
+    # Visual Studio 2022 requis par tools/build-ort.ps1 ; windows-latest n'a que Visual Studio 2026.
+    runs-on: windows-2022
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4

@@ -1,8 +1,8 @@
 //! Gestionnaire des images isolées (PNG, JPEG, GIF, BMP, TIFF, WebP).
 
 use anon_core::{
-    BlockContext, BlockRole, Direction, Extraction, FormatError, Handler, MaskRegion, Output,
-    PixelRect, TextBlock, TextTransform, TransformOptions, Warning, WarningCode,
+    BlockContext, BlockRole, Direction, Extraction, FormatError, Handler, MaskRegion, MediaItem,
+    Output, PixelRect, TextBlock, TextTransform, TransformOptions, Warning, WarningCode,
 };
 
 use crate::image_proc::{decode, encode, ocr_decoded, paint_regions};
@@ -133,18 +133,28 @@ impl Handler for ImageHandler {
         IMAGE_EXTENSIONS
     }
 
+    /// L'image elle-même est rendue comme média : le moteur fait l'OCR, calcule
+    /// les zones (y compris manuelles) et masque l'image. Aucun bloc de texte.
     fn extract(&self, input: &[u8]) -> Result<Extraction, FormatError> {
+        // Valide le format : un fichier illisible est une erreur, pas un média.
+        decode(input)?;
+        Ok(Extraction {
+            blocks: Vec::new(),
+            media: vec![MediaItem {
+                name: IMAGE_PART.to_string(),
+                bytes: input.to_vec(),
+            }],
+            warnings: Vec::new(),
+        })
+    }
+
+    /// Texte lu par OCR dans l'image (contrôle de fuite).
+    fn deep_scan(&self, input: &[u8]) -> Result<Vec<TextBlock>, FormatError> {
         let decoded = decode(input)?;
         let session = OcrSession::begin()?;
         let result = ocr_decoded(&session, &decoded.image)?;
         drop(session);
-        let mut warnings = Vec::new();
-        warnings.extend(low_confidence_warning(&result, IMAGE_PART));
-        Ok(Extraction {
-            blocks: ocr_blocks(&result, IMAGE_PART),
-            media: Vec::new(),
-            warnings,
-        })
+        Ok(ocr_blocks(&result, IMAGE_PART))
     }
 
     fn transform(
@@ -166,6 +176,15 @@ impl Handler for ImageHandler {
                 })
             }
             Direction::Anonymize => {
+                // Image masquée par le moteur : octets rendus tels quels (l'empreinte
+                // doit rester celle de l'image du moteur).
+                if let Some(bytes) = opts.media.and_then(|m| m.apply(IMAGE_PART, input)) {
+                    return Ok(Output {
+                        bytes,
+                        replacements: 0,
+                        warnings: Vec::new(),
+                    });
+                }
                 let decoded = decode(input)?;
                 let session = OcrSession::begin()?;
                 let result = ocr_decoded(&session, &decoded.image)?;

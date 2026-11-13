@@ -241,8 +241,8 @@ fn carte_visite_png() {
     let values = expected("carte-visite.png");
     let h = ImageHandler;
 
-    let ex = h.extract(&input).expect("extract");
-    let (read, missed) = found(&values, &joined(&ex.blocks));
+    let ex = h.deep_scan(&input).expect("deep_scan");
+    let (read, missed) = found(&values, &joined(&ex));
     let rate = read.len() as f32 / values.len() as f32;
     println!(
         "carte-visite.png : OCR {}/{} = {:.1} % ; manquées : {missed:?}",
@@ -265,10 +265,10 @@ fn carte_visite_png() {
         "format conservé"
     );
 
-    let again = h.extract(&out.bytes).expect("ré-OCR");
-    let text = joined(&again.blocks);
+    let again = h.deep_scan(&out.bytes).expect("ré-OCR");
+    let text = joined(&again);
     println!("carte-visite.png ré-OCR : {text}");
-    assert_no_leak(&again.blocks, &read, "carte-visite.png");
+    assert_no_leak(&again, &read, "carte-visite.png");
     // Au moins une balise lisible par ré-OCR (l'OCR des balises n'est pas exact).
     let prefixes: Vec<String> = tags
         .iter()

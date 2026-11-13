@@ -52,7 +52,7 @@ fn masquage_tous_formats() {
         } else {
             reencode(&png, format)
         };
-        let before = joined(&h.extract(&input).unwrap().blocks);
+        let before = joined(&h.deep_scan(&input).unwrap());
         let (read, missed) = found(&values, &before);
         println!(
             "{format:?} : OCR {}/{} manquées {missed:?}",
@@ -192,4 +192,59 @@ fn balise_ecrite_si_elle_tient() {
     println!("balise relue : {text}");
     assert!(text.contains("PERSONNE"), "balise illisible : {text}");
     assert!(!text.contains("_2"));
+}
+
+/// Média de test : rend toujours les mêmes octets, et note le nom demandé.
+struct Fixe(Vec<u8>);
+impl anon_core::MediaTransform for Fixe {
+    fn apply(&self, name: &str, _bytes: &[u8]) -> Option<Vec<u8>> {
+        (name == "image").then(|| self.0.clone())
+    }
+}
+
+#[test]
+fn extract_rend_un_media_et_aucun_bloc() {
+    let png = exemple("carte-visite.png");
+    let ex = ImageHandler.extract(&png).unwrap();
+    assert!(ex.blocks.is_empty());
+    assert_eq!(ex.media.len(), 1);
+    assert_eq!(ex.media[0].name, "image");
+    assert_eq!(ex.media[0].bytes, png);
+}
+
+#[test]
+fn deep_scan_rend_le_texte() {
+    let png = exemple("carte-visite.png");
+    let values = expected("carte-visite.png");
+    let blocks = ImageHandler.deep_scan(&png).unwrap();
+    let (read, _) = found(&values, &joined(&blocks));
+    assert!(!read.is_empty(), "rien lu");
+}
+
+#[test]
+fn transform_rend_les_octets_du_moteur() {
+    let png = exemple("carte-visite.png");
+    let (s, _) = session(&expected("carte-visite.png"));
+    // Octets volontairement sans rapport avec une image : non ré-encodés.
+    let fixe = Fixe(b"octets-du-moteur".to_vec());
+    let mut opts = TransformOptions::anonymize();
+    opts.media = Some(&fixe);
+    let out = ImageHandler.transform(&png, &replacer(&s), &opts).unwrap();
+    assert_eq!(out.bytes, fixe.0);
+}
+
+#[test]
+fn transform_sans_media_masque_en_interne() {
+    let png = exemple("carte-visite.png");
+    let values = expected("carte-visite.png");
+    let (read, _) = found(&values, &joined(&ImageHandler.deep_scan(&png).unwrap()));
+    assert!(!read.is_empty(), "rien lu");
+    let (s, _) = session(&read);
+    let out = ImageHandler
+        .transform(&png, &replacer(&s), &TransformOptions::anonymize())
+        .unwrap();
+    let after = joined(&ImageHandler.deep_scan(&out.bytes).unwrap());
+    for (_, v) in &read {
+        assert!(!after.contains(&norm(v)), "« {v} » encore lu");
+    }
 }

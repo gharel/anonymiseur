@@ -51,7 +51,9 @@ fn aller_retour_pdf_et_image() {
         }
 
         let replacer = Replacer::new(&session);
-        // Hors métadonnées : l'auteur est retiré à l'anonymisation et ne revient pas.
+        // Occurrences dans le texte du document, hors métadonnées : l'auteur est
+        // retiré à l'anonymisation et ne revient pas. Une image seule ou une page
+        // scannée n'a pas de bloc de texte (elle est rendue comme image) : 0.
         let occurrences = |octets: &[u8]| -> usize {
             handler
                 .extract(octets)

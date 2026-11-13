@@ -29,7 +29,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Installer la chaîne d'outils
         shell: bash
@@ -98,7 +98,7 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "13.4"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Installer la chaîne d'outils
         run: rustup show active-toolchain || rustup toolchain install
@@ -139,7 +139,7 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "13.4"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Installer la chaîne d'outils
         run: rustup show active-toolchain || rustup toolchain install

@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # Branches seulement : une étiquette (version, modèles) n'a pas à relancer la CI.
   push:
+    branches: ["**"]
   pull_request:
 
 permissions:

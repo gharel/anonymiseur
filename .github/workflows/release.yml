@@ -180,6 +180,8 @@ jobs:
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
           {
+            echo "Page de téléchargement : https://gharel.github.io/anonymiseur/"
+            echo
             echo "Exécutables non signés : voir la section « Premier lancement » du README."
             echo
             echo "| Fichier | SHA-256 |"

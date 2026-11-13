@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+## [0.1.0] - 2026-11-14
+
+Première version publique.
+
 ### Ajouté
 - **Formats** : Word, Excel et PowerPoint (`.docx`, `.xlsx`, `.pptx`), OpenDocument (`.odt`, `.ods`, `.odp`), PDF avec texte, PDF scannés et images (lecture par OCR en français et en anglais), texte, Markdown et CSV. Seuls les passages touchés sont modifiés, le reste du fichier est recopié à l'identique.
 - **Détection** : personnes, sociétés, lieux, adresses, emails, téléphones, IBAN, numéros de sécurité sociale, SIRET, RIDET, cartes bancaires, adresses IP, liens, plaques, matricules. Reconnaissance des variantes d'un même nom (`Jean Dupont`, `DUPONT Jean`, `J. Dupont`) sous une seule balise.

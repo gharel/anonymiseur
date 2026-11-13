@@ -1,7 +1,5 @@
 # Variables nécessaires au script de build de mupdf-sys sous Windows MSVC.
-# (chemins absolus de cette machine ; à adapter dans le vrai crate)
+# Prototype historique : le vrai crate utilise `tools/dev-env.ps1` à la racine.
+# Lancer d'abord `. .\tools\dev-env.ps1` depuis la racine du dépôt, qui définit
+# LIBCLANG_PATH et BINDGEN_EXTRA_CLANG_ARGS pour cette machine.
 [env]
-LIBCLANG_PATH = "C:\\Users\\gharel\\www\\anon\\tools\\.venv\\Lib\\site-packages\\clang\\native"
-# Le libclang du paquet pip n'a pas les en-têtes de ressources de clang :
-# max_align_t manque sinon dans les liaisons (erreur E0425 dans mupdf/src/device/native.rs).
-BINDGEN_EXTRA_CLANG_ARGS = "-include C:/Users/gharel/www/anon/spikes/pdf/bindgen/max_align_t.h"

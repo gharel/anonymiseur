@@ -87,7 +87,7 @@ Changer un contrat = mettre à jour tous les crates consommateurs, ce fichier et
 4. **Aucune panique sur un fichier corrompu.** `unwrap`, `expect`, `panic!` et l'indexation non vérifiée sont interdits hors tests ; on renvoie `FormatError`.
 5. **Exemples uniquement fictifs.** Aucune donnée réelle dans `exemples/`, les tests ou les instantanés. Emails en `example.com`.
 6. **La table de correspondance ne touche le disque que chiffrée**, à l'endroit choisi par l'utilisateur. Aucun fichier temporaire contenant des données en clair.
-7. **`C:\Users\gharel\www\design-skazy` est la source de la charte.** `assets/charte/` est une copie générée : ne pas l'éditer à la main, ne rien écrire dans `design-skazy`.
+7. **Le dépôt `design-skazy` (dossier voisin `../design-skazy`, ou variable `DESIGN_SKAZY`) est la source de la charte.** `assets/charte/` est une copie générée : ne pas l'éditer à la main, ne rien écrire dans `design-skazy`.
 8. **Textes de l'interface** : français, vouvoiement, aucun emoji, titres en majuscule initiale.
 
 ## Définition de « terminé »

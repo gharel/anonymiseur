@@ -34,6 +34,8 @@ pub(crate) struct Model {
     labels: Vec<Label>,
     cls: u32,
     sep: u32,
+    /// Jeton de remplissage des lots (masqué).
+    pad: u32,
     inputs: Vec<String>,
     output: String,
 }
@@ -67,6 +69,9 @@ impl Model {
         let specials = tokenizer
             .encode("", true)
             .map_err(|_| NerError::Config("tokenizer.json : jetons spéciaux"))?;
+        let pad_id = ["<pad>", "[PAD]"]
+            .iter()
+            .find_map(|t| tokenizer.token_to_id(t));
         let (cls, sep) = match specials.get_ids() {
             [cls, sep] => (*cls, *sep),
             _ => {
@@ -101,6 +106,7 @@ impl Model {
             labels,
             cls,
             sep,
+            pad: pad_id.unwrap_or(sep),
             inputs,
             output,
         })
@@ -121,15 +127,21 @@ impl Model {
         }
         let n_labels = self.labels.len();
         let mut acc = ProbAccumulator::new(ids.len(), n_labels);
-        for range in windows(ids.len()) {
+        let ranges = windows(ids.len());
+        let mut batch: Vec<Vec<i64>> = Vec::with_capacity(ranges.len());
+        for range in &ranges {
             let content = ids.get(range.clone()).ok_or(NerError::Tokenize)?;
             let mut win: Vec<i64> = Vec::with_capacity(content.len() + 2);
             win.push(i64::from(self.cls));
             win.extend(content.iter().map(|&i| i64::from(i)));
             win.push(i64::from(self.sep));
-            let logits = self.run_window(win)?;
-            let inner = logits
-                .get(n_labels..logits.len().saturating_sub(n_labels))
+            batch.push(win);
+        }
+        // Toutes les fenêtres d'un bloc en une seule passe (lot).
+        let logits = self.run_batch(&batch)?;
+        for (range, (win, out)) in ranges.into_iter().zip(batch.iter().zip(&logits)) {
+            let inner = out
+                .get(n_labels..(win.len().saturating_sub(1)) * n_labels)
                 .ok_or(NerError::Runtime("sortie du modèle trop courte".into()))?;
             acc.add_window(range, inner);
         }
@@ -141,30 +153,57 @@ impl Model {
         ))
     }
 
-    fn run_window(&self, ids: Vec<i64>) -> Result<Vec<f32>, NerError> {
-        let len = ids.len();
+    /// Passe un lot de fenêtres, complétées à droite par `pad` (masque d'attention à 0).
+    /// Renvoie, par fenêtre, les logits de toutes ses positions (`len × n_labels`).
+    fn run_batch(&self, batch: &[Vec<i64>]) -> Result<Vec<Vec<f32>>, NerError> {
+        let rows = batch.len();
+        let width = batch.iter().map(Vec::len).max().unwrap_or(0);
+        if rows == 0 || width == 0 {
+            return Ok(Vec::new());
+        }
+        let mut ids = vec![i64::from(self.pad); rows * width];
+        let mut mask = vec![0i64; rows * width];
+        for (r, win) in batch.iter().enumerate() {
+            for (c, &id) in win.iter().enumerate() {
+                if let (Some(i), Some(m)) =
+                    (ids.get_mut(r * width + c), mask.get_mut(r * width + c))
+                {
+                    *i = id;
+                    *m = 1;
+                }
+            }
+        }
         let mut feeds: Vec<(Cow<'_, str>, SessionInputValue<'_>)> = Vec::new();
         for name in &self.inputs {
             let data = match name.as_str() {
                 "input_ids" => ids.clone(),
-                "attention_mask" => vec![1i64; len],
-                _ => vec![0i64; len],
+                "attention_mask" => mask.clone(),
+                _ => vec![0i64; rows * width],
             };
-            let t = Tensor::from_array(([1usize, len], data)).map_err(rt)?;
+            let t = Tensor::from_array(([rows, width], data)).map_err(rt)?;
             feeds.push((Cow::Owned(name.clone()), t.into()));
         }
+        let nl = self.labels.len();
         let mut session = self.session.lock().map_err(|_| NerError::Poisoned)?;
         let outputs = session.run(feeds).map_err(rt)?;
         let value = outputs
             .get(&self.output)
             .ok_or(NerError::Runtime("sortie logits absente".into()))?;
         let (shape, data) = value.try_extract_tensor::<f32>().map_err(rt)?;
-        let expected = len * self.labels.len();
+        let expected = rows * width * nl;
         if data.len() != expected || shape.iter().product::<i64>() != expected as i64 {
             return Err(NerError::Runtime(
                 "dimensions de sortie inattendues (nombre d'étiquettes ?)".into(),
             ));
         }
-        Ok(data.to_vec())
+        batch
+            .iter()
+            .enumerate()
+            .map(|(r, win)| {
+                data.get(r * width * nl..(r * width + win.len()) * nl)
+                    .map(<[f32]>::to_vec)
+                    .ok_or(NerError::Runtime("sortie du modèle trop courte".into()))
+            })
+            .collect()
     }
 }

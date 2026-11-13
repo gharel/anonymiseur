@@ -21,7 +21,7 @@ const MIN_PRECISION_PERSONS_FR_CONTROL: f64 = 92.0;
 const MIN_RECALL_PERSONS_OTHER_CONTROL: f64 = 94.0;
 const MIN_PRECISION_PERSONS_OTHER_CONTROL: f64 = 90.0;
 const MIN_RECALL_PERSONS_EXAMPLES: f64 = 90.0;
-const MIN_PRECISION_PERSONS_EXAMPLES: f64 = 70.0;
+const MIN_PRECISION_PERSONS_EXAMPLES: f64 = 93.0;
 /// Part minimale (en %) de phrases du jeu de contrôle où Rust et Python donnent
 /// exactement les mêmes entités (ONNX Runtime 1.31.0 côté Rust, 1.31.x côté Python).
 const MIN_PYTHON_AGREEMENT: f64 = 97.0;

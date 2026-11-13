@@ -21,12 +21,34 @@
 // Sans `ia`, la partie pure reste compilée et testée mais n'est pas appelée.
 #[cfg_attr(not(feature = "ia"), allow(dead_code))]
 mod aggregate;
+#[cfg(feature = "ia")]
+mod filter;
 #[cfg_attr(not(feature = "ia"), allow(dead_code))]
 mod labels;
 #[cfg(feature = "ia")]
 mod model;
 
 pub use aggregate::{MIN_CONFIDENCE, Span, WINDOW_OVERLAP, WINDOW_TOKENS};
+#[cfg(feature = "ia")]
+pub use filter::{SURE_CONFIDENCE, UNSURE_CONFIDENCE};
+
+/// Nombre minimal de lettres d'un bloc pour qu'il soit lu par le modèle.
+const MIN_BLOCK_LETTERS: usize = 2;
+
+/// Vrai si le bloc peut contenir un nom propre : au moins deux lettres, et une
+/// majuscule ou une lettre d'écriture sans casse (arabe, chinois…). Les autres
+/// blocs (montants, dates, codes, texte en minuscules) ne sont pas envoyés au modèle.
+pub fn worth_reading(text: &str) -> bool {
+    let mut letters = 0usize;
+    let mut upper = false;
+    for c in text.chars() {
+        if c.is_alphabetic() {
+            letters += 1;
+            upper |= c.is_uppercase() || !c.is_lowercase();
+        }
+    }
+    letters >= MIN_BLOCK_LETTERS && upper
+}
 
 use anon_core::detect::{DetectOptions, Detector};
 use anon_core::entities::{Detection, Source};
@@ -226,11 +248,13 @@ impl NerDetector {
     }
 
     /// Entités trouvées dans `text` (offsets en octets, sur frontières de caractères),
-    /// selon l'aiguillage par langue, sans filtrage par les réglages. Triées par début.
+    /// selon l'aiguillage par langue, triées par début, après le tri des propositions
+    /// (`filter` : fragments, emails, communes, titres, libellés ; confiance calibrée),
+    /// sans filtrage par les réglages.
     pub fn find(&self, text: &str) -> Result<Vec<Span>, NerError> {
         #[cfg(feature = "ia")]
         {
-            if text.trim().is_empty() {
+            if !worth_reading(text) {
                 return Ok(Vec::new());
             }
             let wanted: Vec<Bundle> = match route(text) {
@@ -245,7 +269,9 @@ impl NerDetector {
                     }
                 }
             }
+            let mut out = filter::refine(text, out);
             out.sort_by_key(|s| (s.start, s.end));
+            out.dedup_by(|a, b| a.kind == b.kind && a.start == b.start && a.end == b.end);
             Ok(out)
         }
         #[cfg(not(feature = "ia"))]
@@ -255,7 +281,8 @@ impl NerDetector {
         }
     }
 
-    /// Entités trouvées par un seul modèle (tests de concordance, mesures).
+    /// Entités brutes d'un seul modèle, sans tri des propositions (concordance avec
+    /// la référence Python, mesures).
     pub fn find_with(&self, bundle: Bundle, text: &str) -> Result<Vec<Span>, NerError> {
         #[cfg(feature = "ia")]
         {
@@ -369,6 +396,16 @@ mod tests_routing {
             Route::Only(Bundle::Multi)
         );
         assert_eq!(route("Garnier"), Route::Both);
+    }
+
+    #[test]
+    fn skips_blocks_without_capital_or_letters() {
+        assert!(worth_reading("Jean"));
+        assert!(!worth_reading("12 450 000 € — 2026-11-12"));
+        assert!(!worth_reading("le paiement est dû"));
+        assert!(!worth_reading("A 1"));
+        assert!(!worth_reading(""));
+        assert!(worth_reading("وقّع السيد خالد المنصوري"));
     }
 
     #[test]

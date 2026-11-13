@@ -1,22 +1,28 @@
-//! Fenêtre principale : en-tête (logo, onglets), contenu, pied. Relie l'état
-//! des onglets au moteur : les traitements longs passent par le fil de travail.
+//! Fenêtre principale : en-tête (logo, onglets, thème), contenu, pied,
+//! notifications, voile de dépôt et panneau des raccourcis. Relie l'état des
+//! onglets au moteur : les traitements longs passent par le fil de travail.
 
 use super::platform::{Platform, file_entry};
 use super::prefs::{self, Preferences};
-use super::runner::{Msg, Runner};
+use super::runner::{Msg, Runner, Shared};
 use super::screens;
-use super::service::{self, anonymize_batch, read_inputs, restore_batch};
-use super::state::Tab;
+use super::service::{self, anonymize_batch_tracked, read_inputs, restore_batch};
+use super::shortcuts::{self, Command};
 use super::state::anonymize::{AddReport, AnonymizeState, Step};
-use super::state::deanonymize::{DeanonymizeState, is_map};
+use super::state::deanonymize::{DeanonymizeState, InputMode, MapStatus, is_map};
 use super::state::freetext::{FreeTextNotice, FreeTextState};
-use super::theme::{self, CONTROL_SM, ThemeChoice, Weight, font, palette};
+use super::state::toasts::{ToastKind, Toasts, count_label};
+use super::state::{Tab, drop_hint};
+use super::theme::{self, CONTROL_SM, ThemeChoice, Weight, font, palette, radius, with_alpha};
+use super::widgets::field::field_id;
 use super::widgets::nav::theme_button;
-use super::widgets::{Banner, BannerKind, Icon, PillButton, TabBar};
+use super::widgets::{Icon, PillButton, TabBar, toast};
 use crate::moteur::IaStatus;
 use anon_core::Session;
 use anon_engine::Engine;
-use egui::{CentralPanel, Frame, Margin, Panel, RichText, ScrollArea, Stroke, Ui, vec2};
+use egui::{
+    CentralPanel, Frame, Margin, Panel, RichText, ScrollArea, Stroke, StrokeKind, Ui, vec2,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -25,6 +31,12 @@ const CONTENT_MAX: f32 = 1040.0;
 /// Hauteur de l'en-tête (`header-height` de la charte : 72 px).
 const HEADER_H: f32 = 72.0;
 const FOOTER_H: f32 = 40.0;
+/// Images attendues au plus pour recevoir le texte du presse-papiers.
+const PASTE_WAIT_FRAMES: u32 = 30;
+/// Intervalle entre deux images d'attente du presse-papiers, en millisecondes.
+const PASTE_POLL_MS: u64 = 30;
+/// Identifiant du champ de recherche du tableau de vérification.
+pub const SEARCH_FIELD: &str = "recherche-detections";
 
 /// Demandes émises par les écrans, exécutées par `AnonApp`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,12 +54,22 @@ pub enum Effect {
     PickResponses,
     PickRestoreDir,
     Restore,
+    /// Colle le presse-papiers dans la zone de réponse et restaure aussitôt.
+    PasteAndRestore,
     FreeAnonymize,
     FreeRestore,
     OpenFolder(PathBuf),
-    Copy(String),
+    /// Copie `text` et affiche la notification `toast`.
+    Copy {
+        text: String,
+        toast: &'static str,
+    },
     Cancel,
     NewSession,
+    /// Table déposée à l'étape Déposer : la reprendre à l'étape Protéger.
+    AcceptOfferedMap,
+    DismissWelcome,
+    ShowShortcuts,
 }
 
 pub struct AnonApp {
@@ -59,9 +81,11 @@ pub struct AnonApp {
     pub session: Session,
     pub engine: Option<Arc<Engine>>,
     pub ia: Option<IaStatus>,
-    /// Message ponctuel affiché en haut du contenu.
-    pub notice: Option<(BannerKind, String)>,
-    /// Préférences (thème, niveau de protection, fenêtre).
+    /// Notifications (coin bas droit).
+    pub toasts: Toasts,
+    /// Panneau « Raccourcis » ouvert.
+    pub show_shortcuts: bool,
+    /// Préférences (thème, niveau de protection, fenêtre, accueil).
     pub prefs: Preferences,
     /// Fichier des préférences ; `None` : rien n'est écrit (tests).
     prefs_path: Option<PathBuf>,
@@ -69,6 +93,10 @@ pub struct AnonApp {
     saved_prefs: Preferences,
     /// Thème appliqué au contexte egui.
     applied_theme: Option<ThemeChoice>,
+    /// Collage demandé : images écoulées depuis la demande.
+    paste_wait: Option<u32>,
+    /// Instant de l'image en cours (secondes).
+    now: f64,
     runner: Runner,
     platform: Box<dyn Platform>,
 }
@@ -137,14 +165,26 @@ impl AnonApp {
             session: Session::new(),
             engine,
             ia,
-            notice: None,
+            toasts: Toasts::default(),
+            show_shortcuts: false,
             prefs,
             prefs_path,
             saved_prefs: prefs,
             applied_theme: None,
+            paste_wait: None,
+            now: 0.0,
             runner,
             platform,
         }
+    }
+
+    /// Avancement du traitement en cours (affichage, tests).
+    pub fn progress(&self) -> Arc<Shared> {
+        Arc::clone(&self.runner.shared)
+    }
+
+    fn toast(&mut self, kind: ToastKind, text: impl Into<String>) {
+        self.toasts.push(kind, text, self.now);
     }
 
     /// Applique le thème choisi au contexte (effectif à l'image suivante).
@@ -197,18 +237,41 @@ impl AnonApp {
                         .anonymize
                         .add_files(paths.into_iter().map(file_entry), &supported);
                     self.report_added(&report);
+                } else {
+                    self.toast(
+                        ToastKind::Warning,
+                        "Revenez à l'étape Déposer pour ajouter des fichiers.",
+                    );
                 }
             }
             Tab::Deanonymize => {
+                let mut added = 0;
                 for path in paths {
                     if is_map(&path) {
-                        let _ = self.deanonymize.choose_map(path);
+                        let name = service::file_name(&path);
+                        if self.deanonymize.choose_map(path).is_ok() {
+                            self.toast(
+                                ToastKind::Success,
+                                format!("Table « {name} » choisie : saisissez son mot de passe."),
+                            );
+                        }
                     } else {
+                        let before = self.deanonymize.input_files.len();
                         self.deanonymize.add_input_files([file_entry(path)]);
+                        added += self.deanonymize.input_files.len() - before;
                     }
                 }
+                if added > 0 {
+                    self.toast(
+                        ToastKind::Success,
+                        count_label(added, "fichier ajouté", "fichiers ajoutés"),
+                    );
+                }
             }
-            Tab::FreeText => {}
+            Tab::FreeText => self.toast(
+                ToastKind::Info,
+                "Déposez les fichiers dans l'onglet Anonymiser ou Désanonymiser.",
+            ),
         }
     }
 
@@ -252,8 +315,134 @@ impl AnonApp {
                 Msg::ExistingOpened(r) => {
                     self.anonymize.existing_opened(r.map_err(|e| e.to_string()));
                 }
-                Msg::MapOpened(r) => self.deanonymize.unlock_done(r.map_err(|e| e.to_string())),
+                Msg::MapOpened(r) => {
+                    let ok = r.is_ok();
+                    self.deanonymize.unlock_done(r.map_err(|e| e.to_string()));
+                    if ok {
+                        self.toast(ToastKind::Success, "Table ouverte.");
+                    }
+                }
                 Msg::Restored(results) => self.deanonymize.restore_files_done(results),
+            }
+        }
+    }
+
+    /// Raccourcis clavier de cette image.
+    fn run_commands(&mut self, ctx: &egui::Context, commands: Vec<Command>, fx: &mut Vec<Effect>) {
+        let busy = self.runner.is_busy();
+        for c in commands {
+            match c {
+                Command::Tab(n) => {
+                    if let Some(t) = Tab::from_index(n) {
+                        self.tab = t;
+                    }
+                }
+                Command::Help => self.show_shortcuts = !self.show_shortcuts,
+                Command::Back => {
+                    if busy {
+                        fx.push(Effect::Cancel);
+                    } else if self.show_shortcuts {
+                        self.show_shortcuts = false;
+                    } else if self.tab == Tab::Anonymize {
+                        self.anonymize.back();
+                    }
+                }
+                Command::Open if !busy => match self.tab {
+                    Tab::Anonymize if self.anonymize.step == Step::Drop => {
+                        fx.push(Effect::PickDocuments);
+                    }
+                    Tab::Deanonymize => fx.push(Effect::PickMap),
+                    _ => {}
+                },
+                Command::Open => {}
+                Command::Primary if !busy => self.primary_action(fx),
+                Command::Primary => {}
+                Command::Find => {
+                    if self.tab == Tab::Anonymize && self.anonymize.step == Step::Review {
+                        ctx.memory_mut(|m| m.request_focus(field_id(SEARCH_FIELD)));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Action principale de l'étape (Ctrl+Entrée), si elle est possible.
+    fn primary_action(&mut self, fx: &mut Vec<Effect>) {
+        match self.tab {
+            Tab::Anonymize => match self.anonymize.step {
+                Step::Drop => {
+                    if self.anonymize.analyze_blocker().is_none()
+                        && let Ok(paths) = self.anonymize.begin_analysis()
+                    {
+                        fx.push(Effect::Analyze(paths));
+                    }
+                }
+                Step::Review => {
+                    let _ = self.anonymize.confirm_review();
+                }
+                Step::Protect => {
+                    if self.anonymize.protect_blocker().is_none() {
+                        fx.push(Effect::Anonymize);
+                    }
+                }
+                Step::Done => {}
+            },
+            Tab::Deanonymize => match self.deanonymize.map {
+                MapStatus::Locked { .. } if self.deanonymize.unlock_blocker().is_none() => {
+                    fx.push(Effect::Unlock);
+                }
+                MapStatus::Unlocked { .. } if self.deanonymize.restore_blocker().is_none() => {
+                    fx.push(Effect::Restore);
+                }
+                _ => {}
+            },
+            Tab::FreeText => fx.push(Effect::FreeAnonymize),
+        }
+    }
+
+    /// Texte du presse-papiers demandé par « Coller depuis le presse-papiers ».
+    fn receive_paste(&mut self, ctx: &egui::Context) {
+        let Some(waited) = self.paste_wait else {
+            return;
+        };
+        let pasted = ctx.input_mut(|i| {
+            let pos = i
+                .events
+                .iter()
+                .position(|e| matches!(e, egui::Event::Paste(_)));
+            pos.map(|p| i.events.remove(p))
+        });
+        match pasted {
+            Some(egui::Event::Paste(text)) if !text.trim().is_empty() => {
+                self.paste_wait = None;
+                self.deanonymize.mode = InputMode::Paste;
+                self.deanonymize.pasted = text;
+                self.restore();
+                if let Some((_, r)) = &self.deanonymize.text_result {
+                    let msg = format!(
+                        "Réponse collée : {}.",
+                        count_label(r.restored, "balise restaurée", "balises restaurées")
+                    );
+                    self.toast(ToastKind::Success, msg);
+                }
+            }
+            Some(_) => {
+                self.paste_wait = None;
+                self.toast(
+                    ToastKind::Warning,
+                    "Le presse-papiers ne contient pas de texte.",
+                );
+            }
+            None if waited >= PASTE_WAIT_FRAMES => {
+                self.paste_wait = None;
+                self.toast(
+                    ToastKind::Warning,
+                    "Le presse-papiers ne contient pas de texte.",
+                );
+            }
+            None => {
+                self.paste_wait = Some(waited + 1);
+                ctx.request_repaint_after(std::time::Duration::from_millis(PASTE_POLL_MS));
             }
         }
     }
@@ -276,11 +465,10 @@ impl AnonApp {
             Effect::Analyze(paths) => {
                 let Some(engine) = self.engine.clone() else {
                     self.anonymize.busy = None;
-                    self.notice = Some((
-                        BannerKind::Info,
-                        "Le moteur termine son chargement : relancez l'analyse dans un instant."
-                            .to_owned(),
-                    ));
+                    self.toast(
+                        ToastKind::Info,
+                        "Le moteur termine son chargement : relancez l'analyse dans un instant.",
+                    );
                     return;
                 };
                 let opts = self.anonymize.analyze_options();
@@ -330,7 +518,7 @@ impl AnonApp {
                 let session = job.session.unwrap_or_else(|| self.session.clone());
                 self.runner.spawn(move |progress| {
                     let mut session = session;
-                    let report = anonymize_batch(
+                    let report = anonymize_batch_tracked(
                         &engine,
                         &job.inputs,
                         &job.analysis,
@@ -340,6 +528,7 @@ impl AnonApp {
                         &job.protection,
                         &job.out_dir,
                         progress,
+                        &|i| progress.mark_failed(i),
                     );
                     drop(job.protection);
                     Msg::Anonymized {
@@ -354,6 +543,9 @@ impl AnonApp {
             Effect::PickMap => {
                 if let Some(path) = self.platform.pick_map() {
                     let _ = self.deanonymize.choose_map(path);
+                    ui.ctx().memory_mut(|m| {
+                        m.request_focus(field_id(screens::deanonymize::PASSWORD_FIELD))
+                    });
                 }
             }
             Effect::Unlock => {
@@ -368,7 +560,14 @@ impl AnonApp {
             }
             Effect::PickResponses => {
                 let files = self.platform.pick_responses();
+                let n = files.len();
                 self.deanonymize.add_input_files(files);
+                if n > 0 {
+                    self.toast(
+                        ToastKind::Success,
+                        count_label(n, "fichier ajouté", "fichiers ajoutés"),
+                    );
+                }
             }
             Effect::PickRestoreDir => {
                 if let Some(dir) = self
@@ -379,6 +578,22 @@ impl AnonApp {
                 }
             }
             Effect::Restore => self.restore(),
+            Effect::PasteAndRestore => {
+                if let Some(reason) = self.deanonymize.paste_blocker() {
+                    self.toast(ToastKind::Warning, reason);
+                    return;
+                }
+                let ctx = ui.ctx();
+                // Le texte collé ne doit pas aller dans un champ qui aurait le focus.
+                ctx.memory_mut(|m| {
+                    if let Some(f) = m.focused() {
+                        m.surrender_focus(f);
+                    }
+                });
+                ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                self.paste_wait = Some(0);
+                ctx.request_repaint();
+            }
             Effect::FreeAnonymize => {
                 let Some(engine) = self.engine.clone() else {
                     self.free_text.notice = Some(FreeTextNotice::EngineLoading);
@@ -404,12 +619,9 @@ impl AnonApp {
                 });
             }
             Effect::OpenFolder(dir) => self.platform.open_folder(&dir),
-            Effect::Copy(text) => {
+            Effect::Copy { text, toast } => {
                 ui.ctx().copy_text(text);
-                self.notice = Some((
-                    BannerKind::Success,
-                    "Copié dans le presse-papiers.".to_owned(),
-                ));
+                self.toast(ToastKind::Success, toast);
             }
             Effect::Cancel => self.runner.shared.request_cancel(),
             Effect::NewSession => {
@@ -418,12 +630,21 @@ impl AnonApp {
                 self.anonymize.always.clear();
                 self.deanonymize.lock();
                 self.free_text = FreeTextState::default();
-                self.notice = Some((
-                    BannerKind::Info,
-                    "Nouvelle session : les correspondances en mémoire ont été oubliées."
-                        .to_owned(),
-                ));
+                self.toast(
+                    ToastKind::Info,
+                    "Nouvelle session : les correspondances en mémoire ont été oubliées.",
+                );
             }
+            Effect::AcceptOfferedMap => {
+                if self.anonymize.accept_offered_map() {
+                    self.toast(
+                        ToastKind::Success,
+                        "Table retenue : elle sera reprise à l'étape Protéger, avec son mot de passe.",
+                    );
+                }
+            }
+            Effect::DismissWelcome => self.prefs.welcome_seen = true,
+            Effect::ShowShortcuts => self.show_shortcuts = true,
         }
     }
 
@@ -432,12 +653,12 @@ impl AnonApp {
             return;
         };
         match self.deanonymize.mode {
-            super::state::deanonymize::InputMode::Paste => {
+            InputMode::Paste => {
                 let _ = self
                     .deanonymize
                     .restore_text(|t, s| engine.restore_text(t, s));
             }
-            super::state::deanonymize::InputMode::File => {
+            InputMode::File => {
                 if let Ok(job) = self.deanonymize.begin_restore_files() {
                     self.runner.spawn(move |progress| {
                         let (inputs, unreadable) = read_inputs(&job.paths);
@@ -454,11 +675,46 @@ impl AnonApp {
         }
     }
 
-    /// Message pour les fichiers écartés d'un ajout.
+    /// Notifications d'un ajout de fichiers ; une table déposée est proposée.
     fn report_added(&mut self, report: &AddReport) {
-        if let Some(msg) = report.outputs_message() {
-            self.notice = Some((BannerKind::Info, msg));
+        if report.added > 0 {
+            self.toast(
+                ToastKind::Success,
+                count_label(report.added, "fichier ajouté", "fichiers ajoutés"),
+            );
         }
+        if let Some(msg) = report.outputs_message() {
+            self.toast(ToastKind::Info, msg);
+        }
+        if report.refused > 0 {
+            self.toast(
+                ToastKind::Warning,
+                format!(
+                    "{} : la raison est indiquée sous la liste.",
+                    count_label(report.refused, "fichier refusé", "fichiers refusés")
+                ),
+            );
+        }
+        if let Some(map) = &report.map {
+            self.anonymize.offered_map = Some(map.clone());
+        }
+    }
+
+    /// Notification pour le texte libre (le bandeau a laissé place aux notifications).
+    fn free_text_notice(&mut self) {
+        let Some(n) = self.free_text.notice.take() else {
+            return;
+        };
+        // La copie a déjà sa notification (« Texte copié »).
+        if n == FreeTextNotice::Copied {
+            return;
+        }
+        let kind = if n.is_problem() {
+            ToastKind::Warning
+        } else {
+            ToastKind::Success
+        };
+        self.toast(kind, n.message());
     }
 
     /// Charge les exemples fictifs, en un clic : toujours le même dossier
@@ -484,25 +740,25 @@ impl AnonApp {
         match service::prepare_examples(dir) {
             Ok(ready) => {
                 let supported = self.supported();
+                let total = ready.documents.len();
                 let report = self
                     .anonymize
                     .add_files(ready.documents.into_iter().map(file_entry), &supported);
-                self.notice = Some((
-                    BannerKind::Success,
+                let msg = if report.added == 0 && total > 0 {
+                    "Exemples prêts : ils sont déjà dans la liste.".to_owned()
+                } else {
                     format!(
-                        "{} documents d'exemple, entièrement fictifs, chargés depuis {}. LISEZMOI.md y propose un scénario guidé ; reponse-ia-exemple.md sert à l'onglet Désanonymiser.",
-                        report.added,
+                        "Exemples prêts : {} fictifs, dans {}.",
+                        count_label(report.added, "document", "documents"),
                         examples_place(dir)
-                    ),
-                ));
+                    )
+                };
+                self.toast(ToastKind::Success, msg);
             }
-            Err(_) => {
-                self.notice = Some((
-                    BannerKind::Error,
-                    "Préparation des exemples impossible : le dossier Documents n'est pas accessible en écriture."
-                        .to_owned(),
-                ));
-            }
+            Err(_) => self.toast(
+                ToastKind::Error,
+                "Préparation des exemples impossible : le dossier Documents n'est pas accessible en écriture.",
+            ),
         }
     }
 
@@ -520,22 +776,23 @@ impl AnonApp {
         let Some(path) = self.platform.save_markdown(start.as_deref(), &suggested) else {
             return;
         };
-        self.notice = Some(match engine.export_text(&input, &self.session) {
+        let (kind, msg) = match engine.export_text(&input, &self.session) {
             Ok(text) => match std::fs::write(&path, text) {
                 Ok(()) => (
-                    BannerKind::Success,
+                    ToastKind::Success,
                     format!(
                         "Texte anonymisé enregistré : {}.",
                         service::file_name(&path)
                     ),
                 ),
                 Err(_) => (
-                    BannerKind::Error,
+                    ToastKind::Error,
                     "Écriture impossible à cet endroit.".to_owned(),
                 ),
             },
-            Err(e) => (BannerKind::Error, service::sentence(&e.to_string())),
-        });
+            Err(e) => (ToastKind::Error, service::sentence(&e.to_string())),
+        };
+        self.toast(kind, msg);
     }
 
     fn header(&mut self, ui: &mut Ui) {
@@ -567,11 +824,11 @@ impl AnonApp {
                         (Icon::LockOpen, Tab::Deanonymize.label()),
                         (Icon::FileText, Tab::FreeText.label()),
                     ];
-                    if let Some(i) = TabBar::new(&tabs).show(ui, self.tab.index())
+                    let hints: Vec<String> = shortcuts::TABS.iter().map(|s| s.label()).collect();
+                    if let Some(i) = TabBar::new(&tabs).hints(&hints).show(ui, self.tab.index())
                         && let Some(tab) = Tab::from_index(i)
                     {
                         self.tab = tab;
-                        self.notice = None;
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         theme_button(ui, &mut self.prefs.theme);
@@ -594,7 +851,7 @@ impl AnonApp {
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
                     ui.set_min_height(CONTROL_SM);
-                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.spacing_mut().item_spacing.x = p.space(2);
                     Icon::ShieldCheck.show(ui, p.accent, 16.0);
                     let small = |t: &str| {
                         RichText::new(t)
@@ -610,38 +867,162 @@ impl AnonApp {
                     ui.label(small(ia));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let busy = self.runner.is_busy();
-                        if ui
+                        let r = ui
                             .add(
                                 PillButton::ghost("Nouvelle session")
                                     .icon(Icon::RefreshCw)
                                     .small()
                                     .enabled(!busy),
                             )
-                            .on_hover_text(
-                                "Oublie les correspondances en mémoire et recommence à zéro.",
+                            .on_hover_text(if busy {
+                                "Attendez la fin du traitement en cours."
+                            } else {
+                                "Oublie les correspondances en mémoire et recommence à zéro."
+                            });
+                        if r.clicked() {
+                            effects.push(Effect::NewSession);
+                        }
+                        let keys = format!("Raccourcis ({})", shortcuts::HELP.label());
+                        if ui
+                            .add(
+                                PillButton::ghost(&keys)
+                                    .icon(Icon::Keyboard)
+                                    .small()
+                                    .accessible_label("Raccourcis clavier"),
                             )
+                            .on_hover_text("Liste des raccourcis clavier")
                             .clicked()
                         {
-                            effects.push(Effect::NewSession);
+                            effects.push(Effect::ShowShortcuts);
                         }
                     });
                 });
             });
     }
 
+    /// Voile sur toute la fenêtre quand des fichiers la survolent.
+    fn drop_overlay(&self, ui: &Ui) {
+        let (paths, count) = ui.input(|i| {
+            (
+                i.raw
+                    .hovered_files
+                    .iter()
+                    .filter_map(|f| f.path.clone())
+                    .collect::<Vec<_>>(),
+                i.raw.hovered_files.len(),
+            )
+        });
+        if count == 0 {
+            return;
+        }
+        let p = palette();
+        let busy = self.runner.is_busy()
+            || self.anonymize.busy.is_some()
+            || self.deanonymize.busy.is_some();
+        let hint = drop_hint(self.tab, self.anonymize.step, busy, &paths, count);
+        let screen = ui.ctx().content_rect();
+        egui::Area::new(egui::Id::unique("voile-depot"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ui.ctx(), |ui| {
+                let (rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                let painter = ui.painter();
+                painter.rect_filled(rect, 0.0, with_alpha(p.page, 0.95));
+                painter.rect_stroke(
+                    rect.shrink(16.0),
+                    radius(p.radius_xl),
+                    Stroke::new(2.0, p.accent),
+                    StrokeKind::Inside,
+                );
+                let c = rect.center();
+                painter.circle_filled(c - vec2(0.0, 40.0), 32.0, p.primary_subtle);
+                Icon::Upload.paint(
+                    ui,
+                    egui::Rect::from_center_size(c - vec2(0.0, 40.0), vec2(32.0, 32.0)),
+                    p.accent,
+                );
+                let r = ui.put(
+                    egui::Rect::from_center_size(
+                        c + vec2(0.0, 24.0),
+                        vec2(rect.width() - 96.0, 40.0),
+                    ),
+                    egui::Label::new(
+                        RichText::new(&hint)
+                            .font(font(Weight::Semibold, p.text_lg))
+                            .color(p.heading),
+                    ),
+                );
+                let _ = r;
+            });
+    }
+
+    /// Panneau « Raccourcis clavier ».
+    fn shortcuts_panel(&mut self, ui: &Ui) {
+        let p = palette();
+        let modal = egui::Modal::new(egui::Id::unique("raccourcis"))
+            .backdrop_color(with_alpha(egui::Color32::BLACK, 0.4))
+            .frame(
+                Frame::new()
+                    .fill(p.surface)
+                    .stroke(Stroke::new(1.0, p.border))
+                    .corner_radius(radius(p.radius_xl))
+                    .shadow(p.shadow_xl)
+                    .inner_margin(Margin::same(24)),
+            )
+            .show(ui.ctx(), |ui| {
+                ui.set_width(520.0);
+                ui.spacing_mut().item_spacing.y = p.space(3);
+                ui.horizontal(|ui| {
+                    Icon::Keyboard.show(ui, p.accent, 20.0);
+                    ui.label(
+                        RichText::new("Raccourcis clavier")
+                            .font(font(Weight::Semibold, p.text_md))
+                            .color(p.heading),
+                    );
+                });
+                egui::Grid::new("liste-raccourcis")
+                    .num_columns(2)
+                    .spacing(vec2(p.space(4), p.space(3)))
+                    .show(ui, |ui| {
+                        for (keys, action) in shortcuts::help_rows() {
+                            super::widgets::keycap(ui, &keys);
+                            ui.label(
+                                RichText::new(action)
+                                    .font(font(Weight::Regular, p.text_sm))
+                                    .color(p.text),
+                            );
+                            ui.end_row();
+                        }
+                    });
+                let mut close = false;
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    close = ui.add(PillButton::secondary("Fermer").small()).clicked();
+                });
+                close
+            });
+        if modal.inner || modal.should_close() {
+            self.show_shortcuts = false;
+        }
+    }
+
     /// Construit toute l'interface dans `ui`.
     pub fn show(&mut self, ui: &mut Ui) {
+        self.now = ui.input(|i| i.time);
         self.apply_theme(ui.ctx());
         theme::sync(ui);
         let p = palette();
         self.poll();
+        self.receive_paste(ui.ctx());
         self.take_dropped_files(ui);
+        let mut effects = Vec::new();
+        let commands = shortcuts::read(ui.ctx());
+        self.run_commands(ui.ctx(), commands, &mut effects);
         if self.runner.is_busy() {
             // L'avancement est lu dans l'état partagé : on redessine régulièrement.
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
-        let mut effects = Vec::new();
         self.header(ui);
         self.footer(ui, &mut effects);
 
@@ -663,9 +1044,6 @@ impl AnonApp {
                             ui.vertical(|ui| {
                                 ui.set_width(width);
                                 ui.spacing_mut().item_spacing.y = p.space(4);
-                                if let Some((kind, text)) = &self.notice {
-                                    Banner::new(*kind, text).show(ui);
-                                }
                                 let shared = Arc::clone(&self.runner.shared);
                                 match self.tab {
                                     Tab::Anonymize => screens::anonymize::show(
@@ -673,6 +1051,7 @@ impl AnonApp {
                                         &mut self.anonymize,
                                         &self.session,
                                         &shared,
+                                        !self.prefs.welcome_seen,
                                         &mut effects,
                                     ),
                                     Tab::Deanonymize => screens::deanonymize::show(
@@ -693,9 +1072,15 @@ impl AnonApp {
                         ui.add_space(p.space(10));
                     });
             });
+        if self.show_shortcuts {
+            self.shortcuts_panel(ui);
+        }
         self.apply(ui, effects);
         // Traitements synchrones (tests) : résultat visible dès cette image.
         self.poll();
+        self.free_text_notice();
+        toast::show(ui, &mut self.toasts, self.now, FOOTER_H);
+        self.drop_overlay(ui);
         self.track_prefs(ui.ctx());
     }
 }

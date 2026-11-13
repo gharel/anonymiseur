@@ -234,6 +234,8 @@ fn anonymize_busy() {
         app.anonymize
             .add_files(FICHIERS.iter().map(|n| file_entry(exemple(n))), &supported);
         app.anonymize.busy = Some(Busy::Analyzing);
+        // Deuxième fichier en cours : un terminé, deux en attente.
+        app.progress().step(1, 4, "fichier-clients.xlsx");
     });
 }
 
@@ -352,14 +354,23 @@ fn dropped_files_are_listed_or_refused() {
     assert_eq!(harness.state().anonymize.files.len(), 1);
     assert_eq!(harness.state().anonymize.rejected.len(), 1);
     harness.get_by_label("notes.txt");
-    // Les fichiers produits par l'outil sont écartés, avec un message.
-    let notice = harness.state().notice.clone().map(|(_, t)| t);
+    // Les fichiers produits par l'outil sont écartés, avec une notification ;
+    // la table déposée est proposée à la reprise.
+    let toasts: Vec<String> = harness
+        .state()
+        .toasts
+        .texts()
+        .iter()
+        .map(|t| (*t).to_owned())
+        .collect();
     assert!(
-        notice
-            .as_deref()
-            .is_some_and(|t| t.starts_with("2 fichiers déjà anonymisés ignorés")),
-        "{notice:?}"
+        toasts
+            .iter()
+            .any(|t| t.starts_with("1 fichier déjà anonymisé ignoré")),
+        "{toasts:?}"
     );
+    assert!(toasts.iter().any(|t| t == "1 fichier ajouté"), "{toasts:?}");
+    assert!(harness.state().anonymize.offered_map.is_some());
 }
 
 #[test]
@@ -753,4 +764,314 @@ fn choix_du_theme_depuis_l_en_tete() {
     assert_eq!(h.state().prefs.theme, ThemeChoice::Dark);
     assert_eq!(h.ctx.theme(), egui::Theme::Dark);
     h.get_by_label("Thème : Sombre");
+}
+
+// --- Lot 2 : retours, raccourcis, tableau, dépôt, collage, accueil ---------
+
+use anon_engine::Progress as _;
+use anonymiseur::ui::screens::anonymize::TABLE_ID;
+use anonymiseur::ui::widgets::DataTable;
+use anonymiseur::ui::widgets::field::field_id;
+use egui::accesskit::Role;
+use egui::{Key, Modifiers};
+
+fn hover_files(harness: &mut Harness<'_, AnonApp>, paths: &[PathBuf]) {
+    for p in paths {
+        harness.input_mut().hovered_files.push(egui::HoveredFile {
+            path: Some(p.clone()),
+            ..Default::default()
+        });
+    }
+}
+
+#[test]
+fn copie_avec_notification_et_libelle_copie() {
+    let mut h = app(1280.0, 1600.0, |app| {
+        anonymize_all(app, out_dir("copie"));
+        neutralize_paths(app);
+    });
+    h.run();
+    h.get_by_label("Copier la consigne pour l'IA").click();
+    h.run();
+    h.get_by_label("Copié");
+    assert_eq!(h.state().toasts.texts(), ["Consigne copiée"]);
+    h.get_by_role_and_label(Role::Status, "Consigne copiée");
+    // Fermeture de la notification.
+    h.get_by_label("Fermer la notification : Consigne copiée")
+        .click();
+    h.run();
+    assert!(h.state().toasts.is_empty());
+}
+
+#[test]
+fn action_desactivee_dit_pourquoi() {
+    let mut h = app(1280.0, 1600.0, |app| {
+        analyze_these(app, Profile::Standard, &["notes.txt"]);
+        app.anonymize.confirm_review().unwrap();
+    });
+    h.run();
+    h.get_by_label("Choisissez un mot de passe pour la table.");
+    let mut h = app(1280.0, 800.0, |app| app.tab = Tab::Deanonymize);
+    h.run();
+    h.get_by_label("Ouvrez d'abord une table de correspondance.");
+}
+
+#[test]
+fn raccourcis_clavier() {
+    let mut h = app(1280.0, 1600.0, |app| {
+        let supported = app.engine.as_ref().unwrap().supported_extensions();
+        app.anonymize
+            .add_files([file_entry(exemple("notes.txt"))], &supported);
+    });
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Num2);
+    h.run();
+    assert_eq!(h.state().tab, Tab::Deanonymize);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Num1);
+    h.run();
+    assert_eq!(h.state().tab, Tab::Anonymize);
+    // Action principale : analyse.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    h.run();
+    assert_eq!(h.state().anonymize.step, Step::Review);
+    // Recherche dans le tableau.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.run();
+    assert_eq!(
+        h.ctx.memory(|m| m.focused()),
+        Some(field_id(anonymiseur::ui::app::SEARCH_FIELD))
+    );
+    // Échap quitte d'abord le champ, puis revient à l'étape précédente.
+    h.key_press(Key::Escape);
+    h.run();
+    h.key_press(Key::Escape);
+    h.run();
+    assert_eq!(h.state().anonymize.step, Step::Drop);
+    // F1 : panneau des raccourcis.
+    h.key_press(Key::F1);
+    h.run();
+    assert!(h.state().show_shortcuts);
+    h.get_by_label("Fermer").click();
+    h.run();
+    assert!(!h.state().show_shortcuts);
+    // Raccourci rappelé dans l'infobulle des onglets (texte construit ici).
+    assert_eq!(
+        anonymiseur::ui::shortcuts::TABS[0].label_for(false),
+        "Ctrl+1"
+    );
+}
+
+#[test]
+fn tableau_tri_recherche_et_clavier() {
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, Profile::Standard, &["notes.txt"]);
+    });
+    h.run();
+    // Tri au clic sur l'en-tête.
+    h.get_by_label("Trier par Valeur").click();
+    h.run();
+    let sort = h.state().anonymize.sort.unwrap();
+    assert!(sort.ascending);
+    h.get_by_label("Trier par Valeur : croissant");
+    // Résumé.
+    let summary = h.state().anonymize.review_summary();
+    h.get_by_label(&summary);
+    // Clavier : ↓ passe à la ligne suivante, Espace la coche ou la décoche.
+    let visible = h.state().anonymize.visible();
+    let name = |i: usize| {
+        let st = &h.state().anonymize;
+        format!("Sélectionner {}", st.candidate(visible[i]).unwrap().value)
+    };
+    let first = name(0);
+    h.get_by_label(&first).focus();
+    h.run();
+    h.key_press(Key::ArrowDown);
+    h.run();
+    assert_eq!(
+        h.ctx.memory(|m| m.focused()),
+        Some(DataTable::row_check_id(TABLE_ID, 1))
+    );
+    let before = h.state().anonymize.candidate(visible[1]).unwrap().selected;
+    h.key_press(Key::Space);
+    h.run();
+    assert_ne!(
+        h.state().anonymize.candidate(visible[1]).unwrap().selected,
+        before
+    );
+    // Recherche : seules les lignes correspondantes restent.
+    h.state_mut().anonymize.search = "example.com".into();
+    h.run();
+    let found = h.state().anonymize.visible();
+    assert!(!found.is_empty() && found.len() < visible.len());
+}
+
+#[test]
+fn voile_de_depot_et_table_deposee() {
+    // Anonymiser : le voile annonce ce qui va se passer.
+    let mut h = app(1280.0, 800.0, |_| {});
+    h.run();
+    hover_files(&mut h, &[exemple("notes.txt"), exemple("brief.md")]);
+    // egui redessine sans cesse pendant le survol : quelques images suffisent.
+    h.run_steps(3);
+    h.get_by_label("Déposez pour ajouter 2 fichiers");
+    h.input_mut().hovered_files.clear();
+    // Une table déposée est proposée à la reprise.
+    h.input_mut()
+        .dropped_files
+        .push(Arc::new(Dropped(PathBuf::from(
+            "C:/d/table_anonymiseur.anonmap",
+        ))));
+    h.run();
+    h.get_by_label("Reprendre cette table").click();
+    h.run();
+    assert_eq!(
+        h.state().anonymize.protect.mode,
+        anonymiseur::ui::state::anonymize::ProtectMode::ExistingTable
+    );
+
+    // Désanonymiser : la table s'ouvre, les documents s'ajoutent.
+    let mut h = app(1280.0, 800.0, |app| app.tab = Tab::Deanonymize);
+    h.run();
+    hover_files(&mut h, &[exemple("notes.txt")]);
+    h.run_steps(3);
+    h.get_by_label("Déposez la table de correspondance ou les fichiers à restaurer");
+    h.input_mut().hovered_files.clear();
+    for p in [
+        PathBuf::from("C:/d/table_anonymiseur.anonmap"),
+        exemple("notes.txt"),
+    ] {
+        h.input_mut().dropped_files.push(Arc::new(Dropped(p)));
+    }
+    h.run();
+    assert!(matches!(
+        h.state().deanonymize.map,
+        anonymiseur::ui::state::deanonymize::MapStatus::Locked { .. }
+    ));
+    assert_eq!(h.state().deanonymize.input_files.len(), 1);
+}
+
+/// Table ouverte dans Désanonymiser, après une vraie anonymisation.
+fn unlocked(app: &mut AnonApp, tag: &str) {
+    anonymize_all(app, out_dir(tag));
+    let map = app
+        .anonymize
+        .report
+        .as_ref()
+        .unwrap()
+        .map_path
+        .clone()
+        .unwrap();
+    app.tab = Tab::Deanonymize;
+    let d = &mut app.deanonymize;
+    d.choose_map(map).unwrap();
+    d.password = PASSWORD.into();
+    let (path, pw) = d.begin_unlock().unwrap();
+    let opened = anon_vault::open(&std::fs::read(path).unwrap(), &pw).map_err(|e| e.to_string());
+    d.unlock_done(opened);
+}
+
+#[test]
+fn coller_et_restaurer_en_un_geste() {
+    let mut h = app(1280.0, 1600.0, |app| unlocked(app, "coller"));
+    h.run();
+    h.get_by_label("Coller depuis le presse-papiers").click();
+    h.run();
+    let reponse = std::fs::read_to_string(exemple("reponse-ia-exemple.md")).unwrap();
+    h.input_mut().events.push(egui::Event::Paste(reponse));
+    h.run();
+    let (text, report) = h.state().deanonymize.text_result.clone().unwrap();
+    assert!(!text.contains("[PERSONNE_1]"));
+    assert_eq!(report.unknown, vec!["[PERSONNE_99]".to_owned()]);
+    // Balise inconnue signalée par son nombre.
+    h.get_by_label("1 BALISE INCONNUE");
+    h.get_by_label("Copier le résultat").click();
+    h.run();
+    h.get_by_label("Copié");
+    assert!(h.state().toasts.texts().contains(&"Résultat copié"));
+}
+
+#[test]
+fn avancement_par_fichier() {
+    let mut h = app(1280.0, 1600.0, |app| {
+        let supported = app.engine.as_ref().unwrap().supported_extensions();
+        app.anonymize
+            .add_files(FICHIERS.iter().map(|n| file_entry(exemple(n))), &supported);
+        app.anonymize.busy = Some(Busy::Analyzing);
+        app.progress().step(1, 4, "fichier-clients.xlsx");
+    });
+    h.run();
+    h.get_by_label("Terminé");
+    h.get_by_label("En cours");
+    assert_eq!(h.get_all_by_label("En attente").count(), 2);
+    h.get_by_label("Temps écoulé : 0 s");
+    h.get_by_label("Annuler");
+}
+
+#[test]
+fn bandeau_d_accueil_refermable() {
+    let mut h = app(1280.0, 800.0, |_| {});
+    h.run();
+    h.get_by_label_contains("Bienvenue");
+    h.get_by_label("Fermer le message d'accueil").click();
+    h.run();
+    assert!(h.state().prefs.welcome_seen);
+    assert!(h.query_by_label_contains("Bienvenue").is_none());
+}
+
+#[test]
+fn chaque_bouton_a_un_nom() {
+    let screens: [fn(&mut AnonApp); 4] = [
+        |_| {},
+        |app| analyze_these(app, Profile::Standard, &["notes.txt"]),
+        |app| app.tab = Tab::Deanonymize,
+        |app| app.tab = Tab::FreeText,
+    ];
+    for setup in screens {
+        let mut h = app(1280.0, 2400.0, setup);
+        h.run();
+        for n in h.get_all_by_role(Role::Button) {
+            let label = n.accesskit_node().label().unwrap_or_default();
+            assert!(!label.trim().is_empty(), "bouton sans nom : {n:?}");
+        }
+    }
+}
+
+#[test]
+fn anonymize_drop_overlay() {
+    // Voile pendant le survol de fichiers, en clair et en sombre.
+    let mut results = SnapshotResults::new();
+    for (theme, label) in [
+        (ThemeChoice::Light, "1280x800"),
+        (ThemeChoice::Dark, "sombre_1280x800"),
+    ] {
+        let mut h = app(1280.0, 800.0, |app| {
+            app.prefs.theme = theme;
+            app.prefs.welcome_seen = true;
+            let supported = app.engine.as_ref().unwrap().supported_extensions();
+            app.anonymize
+                .add_files([file_entry(exemple("notes.txt"))], &supported);
+            app.toasts = Default::default();
+        });
+        h.run();
+        hover_files(
+            &mut h,
+            &[
+                exemple("brief.md"),
+                exemple("export.csv"),
+                exemple("notes_anonymise.txt"),
+            ],
+        );
+        h.run_steps(3);
+        h.snapshot(format!("anonymiser_1d_voile_de_depot_{label}"));
+        results.extend_harness(&mut h);
+    }
+    results.unwrap();
+}
+
+#[test]
+fn shortcuts_panel() {
+    snap("raccourcis", |app| {
+        app.show_shortcuts = true;
+        app.prefs.welcome_seen = true;
+    });
 }

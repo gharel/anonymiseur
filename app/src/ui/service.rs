@@ -316,6 +316,35 @@ pub fn anonymize_batch(
     out_dir: &Path,
     progress: &dyn Progress,
 ) -> BatchReport {
+    anonymize_batch_tracked(
+        engine,
+        inputs,
+        analysis,
+        never,
+        masks,
+        session,
+        protection,
+        out_dir,
+        progress,
+        &|_| {},
+    )
+}
+
+/// Comme [`anonymize_batch`], en signalant chaque fichier en échec
+/// (`failed(indice)`) dès qu'il est connu : la liste d'avancement l'affiche.
+#[allow(clippy::too_many_arguments)]
+pub fn anonymize_batch_tracked(
+    engine: &Engine,
+    inputs: &[InputFile],
+    analysis: &Analysis,
+    never: &[String],
+    masks: &[FileMask],
+    session: &mut Session,
+    protection: &Protection,
+    out_dir: &Path,
+    progress: &dyn Progress,
+    failed: &dyn Fn(usize),
+) -> BatchReport {
     session.irreversible = matches!(protection, Protection::Irreversible);
     engine.apply_selection(analysis, session);
     for n in never {
@@ -365,6 +394,9 @@ pub fn anonymize_batch(
                 }
             }
         };
+        if matches!(outcome, Outcome::Leak { .. } | Outcome::Failed(_)) {
+            failed(i);
+        }
         report.files.push(FileOutcome {
             name: file.name.clone(),
             outcome,

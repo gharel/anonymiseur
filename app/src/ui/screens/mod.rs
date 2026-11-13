@@ -6,10 +6,11 @@ pub mod deanonymize;
 pub mod freetext;
 pub mod images;
 
+use super::shortcuts::{self, with_shortcut};
 use super::state::files::{FileEntry, FileFormat, human_size};
 use super::theme::Tinted;
 use super::theme::{CONTROL_MD, Weight, font, palette, radius};
-use super::widgets::{Icon, heading, muted};
+use super::widgets::{Icon, PillButton, heading, muted};
 use egui::{Rect, Response, RichText, Sense, Ui, Vec2, vec2};
 
 /// Icône et couleurs d'un format.
@@ -94,6 +95,88 @@ pub fn truncated_text(ui: &mut Ui, width: f32, height: f32, text: RichText) -> R
     )
     .inner
     .on_hover_text(full)
+}
+
+/// Bouton principal d'une étape : désactivé avec sa raison en infobulle,
+/// sinon son raccourci (Ctrl+Entrée).
+pub fn primary_button(ui: &mut Ui, button: PillButton<'_>, blocker: Option<&str>) -> Response {
+    let r = ui.add(button.enabled(blocker.is_none()));
+    match blocker {
+        Some(why) => r.on_hover_text(why),
+        None => r.on_hover_text(with_shortcut("Action principale", shortcuts::PRIMARY)),
+    }
+}
+
+/// Petite ligne d'aide sous le bouton principal : ce qui manque pour continuer.
+pub fn blocker_line(ui: &mut Ui, blocker: Option<&str>) {
+    let Some(why) = blocker else { return };
+    let p = palette();
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = p.space(1);
+        ui.label(
+            RichText::new(why)
+                .font(font(Weight::Medium, p.text_xs))
+                .color(p.text_secondary),
+        );
+        Icon::Info.show(ui, p.text_secondary, 14.0);
+    });
+}
+
+/// Durée pendant laquelle un bouton Copier affiche « Copié », en secondes.
+const COPIED_SECONDS: f64 = 1.5;
+
+/// Bouton Copier qui passe brièvement à « Copié » après un clic. `available` :
+/// il y a quelque chose à copier (sinon pas de « Copié »).
+pub fn copy_button(
+    ui: &mut Ui,
+    id_salt: &str,
+    button: PillButton<'_>,
+    available: bool,
+) -> Response {
+    let id = egui::Id::unique(("copie", id_salt));
+    let now = ui.input(|i| i.time);
+    let since: Option<f64> = ui.data(|d| d.get_temp(id));
+    let copied = since.is_some_and(|t| now - t < COPIED_SECONDS);
+    let r = if copied {
+        if let Some(t) = since {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(
+                    (t + COPIED_SECONDS - now).max(0.05),
+                ));
+        }
+        ui.add(button.label("Copié").icon(Icon::Check))
+    } else {
+        ui.add(button)
+    };
+    if r.clicked() && available {
+        ui.data_mut(|d| d.insert_temp(id, now));
+    }
+    r
+}
+
+/// État vide : icône, phrase, une seule action. Renvoie vrai si l'action est cliquée.
+pub fn empty_state(ui: &mut Ui, icon: Icon, text: &str, action: Option<(&str, Icon)>) -> bool {
+    let p = palette();
+    let mut clicked = false;
+    ui.vertical_centered(|ui| {
+        ui.spacing_mut().item_spacing.y = p.space(3);
+        ui.add_space(p.space(4));
+        let (rect, _) = ui.allocate_exact_size(vec2(48.0, 48.0), Sense::hover());
+        ui.painter().circle_filled(rect.center(), 24.0, p.muted);
+        icon.paint(
+            ui,
+            Rect::from_center_size(rect.center(), Vec2::splat(24.0)),
+            p.text_secondary,
+        );
+        muted(ui, text);
+        if let Some((label, icon)) = action {
+            clicked = ui
+                .add(PillButton::secondary(label).icon(icon).small())
+                .clicked();
+        }
+        ui.add_space(p.space(2));
+    });
+    clicked
 }
 
 /// Titre d'écran et sous-titre.

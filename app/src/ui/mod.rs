@@ -16,6 +16,7 @@ pub mod prefs;
 pub mod runner;
 pub mod screens;
 pub mod service;
+pub mod shortcuts;
 pub mod state;
 pub mod theme;
 pub mod widgets;

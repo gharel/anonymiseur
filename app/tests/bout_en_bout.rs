@@ -622,7 +622,8 @@ fn fichiers_produits_jamais_reanonymises() {
         &engine().supported_extensions(),
     );
     assert_eq!(report.added, 2);
-    assert_eq!(report.outputs, 3, "deux fichiers et la table");
+    assert_eq!(report.outputs, 2, "deux fichiers anonymisés");
+    assert!(report.map.is_some(), "la table est proposée à la reprise");
     let mut names: Vec<&str> = st.files.iter().map(|f| f.name.as_str()).collect();
     names.sort();
     assert_eq!(names, ["export.csv", "notes.txt"]);

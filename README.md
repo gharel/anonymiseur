@@ -70,9 +70,23 @@ Détails sur les données et leur protection : [CONFIDENTIALITE.md](CONFIDENTIAL
 
 Le bouton « Essayer avec des exemples » charge en un clic de faux fichiers, entièrement fictifs, dans chaque format. Ils sont placés dans `Documents\Anonymiseur\Exemples` (sous macOS, `Documents/Anonymiseur/Exemples`) : le même dossier est réutilisé à chaque clic, seuls les fichiers d'exemple manquants sont recréés et aucun fichier existant n'est remplacé. Le fichier `LISEZMOI.md` de ce dossier propose un scénario guidé ; `reponse-ia-exemple.md` simule la réponse d'une IA pour l'onglet Désanonymiser. Les mêmes fichiers sont dans le dossier `exemples/` du dépôt.
 
+## Raccourcis clavier
+
+| Touches | Action |
+|---|---|
+| Ctrl+O | Ajouter des fichiers (Anonymiser) ou ouvrir une table (Désanonymiser) |
+| Ctrl+Entrée | Action principale de l'étape (analyser, continuer, anonymiser, ouvrir la table, restaurer) |
+| Échap | Annuler le traitement en cours, sinon revenir à l'étape précédente |
+| Ctrl+1, Ctrl+2, Ctrl+3 | Onglets Anonymiser, Désanonymiser, Texte libre |
+| Ctrl+F | Rechercher dans le tableau de vérification |
+| ↑ ↓, Espace | Parcourir le tableau, cocher ou décocher la ligne |
+| F1 | Afficher les raccourcis (aussi en pied de page) |
+
+Sous macOS, Cmd remplace Ctrl.
+
 ## Thème et préférences
 
-Le bouton en haut à droite choisit le thème : Système (par défaut, suit le réglage de l'ordinateur), Clair ou Sombre. Le thème, le dernier niveau de protection (Standard ou Renforcé) et la taille de la fenêtre sont retenus d'une session à l'autre dans un petit fichier `preferences.json` du dossier de configuration (`%APPDATA%\Anonymiseur` sous Windows, `~/Library/Application Support/Anonymiseur` sous macOS). Ce fichier ne contient aucun chemin de fichier ni aucun contenu de vos documents.
+Le bouton en haut à droite choisit le thème : Système (par défaut, suit le réglage de l'ordinateur), Clair ou Sombre. Le thème, le dernier niveau de protection (Standard ou Renforcé), la taille de la fenêtre et le bandeau d'accueil refermé sont retenus d'une session à l'autre dans un petit fichier `preferences.json` du dossier de configuration (`%APPDATA%\Anonymiseur` sous Windows, `~/Library/Application Support/Anonymiseur` sous macOS). Ce fichier ne contient aucun chemin de fichier ni aucun contenu de vos documents.
 
 ## Compiler depuis les sources
 

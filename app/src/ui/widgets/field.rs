@@ -385,6 +385,41 @@ pub fn mono_job(text: &str, color: egui::Color32, wrap_width: f32) -> egui::text
     job
 }
 
+/// Comme [`mono_job`], avec les plages `marks` (octets) surlignées : fond
+/// d'avertissement et texte foncé, pour les balises inconnues.
+pub fn mono_job_marked(
+    text: &str,
+    marks: &[std::ops::Range<usize>],
+    wrap_width: f32,
+) -> egui::text::LayoutJob {
+    let p = palette();
+    let mut job = egui::text::LayoutJob::default();
+    let normal = egui::TextFormat {
+        font_id: mono_font(),
+        color: p.text,
+        line_height: Some(area_line_height()),
+        ..Default::default()
+    };
+    let marked = egui::TextFormat {
+        background: p.data.fill,
+        color: p.data.ink,
+        underline: egui::Stroke::new(1.5, p.warning),
+        ..normal.clone()
+    };
+    let mut at = 0;
+    for m in marks {
+        let (Some(before), Some(tag)) = (text.get(at..m.start), text.get(m.clone())) else {
+            continue;
+        };
+        job.append(before, 0.0, normal.clone());
+        job.append(tag, 0.0, marked.clone());
+        at = m.end;
+    }
+    job.append(text.get(at..).unwrap_or_default(), 0.0, normal);
+    job.wrap.max_width = wrap_width;
+    job
+}
+
 /// Police à chasse fixe d'une balise isolée dans un tableau (taille du texte courant).
 pub fn tag_font() -> egui::FontId {
     egui::FontId::monospace(palette().text_sm - 1.0)

@@ -1,10 +1,15 @@
 //! Onglet « Anonymiser » : Déposer → Vérifier → Protéger → Terminé.
 
 use super::images::images_card;
-use super::{action_bar, card_title, control_row, file_row, file_tile, page_title, truncated_text};
-use crate::ui::app::Effect;
-use crate::ui::runner::Shared;
+use super::{
+    action_bar, blocker_line, card_title, control_row, copy_button, empty_state, file_row,
+    file_tile, page_title, truncated_text,
+};
+use crate::ui::app::{Effect, SEARCH_FIELD};
+use crate::ui::runner::{FileStatus, Shared, duration_label};
 use crate::ui::service::{BatchReport, Outcome, Rejected, file_name};
+use crate::ui::shortcuts::{self, with_shortcut};
+use crate::ui::state::anonymize::SortKey;
 use crate::ui::state::anonymize::{AnonymizeState, ProtectMode, Step, needs_confirmation};
 use crate::ui::state::files::{FileFormat, human_size};
 use crate::ui::state::generalize::rule_label;
@@ -27,6 +32,7 @@ pub fn show(
     st: &mut AnonymizeState,
     session: &Session,
     progress: &Shared,
+    welcome: bool,
     fx: &mut Vec<Effect>,
 ) {
     page_title(
@@ -37,19 +43,40 @@ pub fn show(
     let labels: Vec<&str> = Step::ALL.iter().map(|s| s.label()).collect();
     Stepper::new(&labels, st.step.index()).show(ui);
     if let Some(busy) = st.busy {
-        busy_card(ui, busy.label(), progress, fx);
+        let names: Vec<String> = match busy {
+            crate::ui::state::anonymize::Busy::OpeningTable => Vec::new(),
+            _ => st.files.iter().map(|f| f.name.clone()).collect(),
+        };
+        busy_card(ui, busy.label(), &names, progress, fx);
         return;
     }
     match st.step {
-        Step::Drop => drop_step(ui, st, fx),
+        Step::Drop => {
+            if welcome {
+                welcome_card(ui, fx);
+            }
+            drop_step(ui, st, fx);
+        }
         Step::Review => review_step(ui, st, session, fx),
         Step::Protect => protect_step(ui, st, fx),
         Step::Done => done_step(ui, st, fx),
     }
 }
 
-/// Carte d'avancement avec bouton Annuler.
-pub fn busy_card(ui: &mut Ui, title: &str, progress: &Shared, fx: &mut Vec<Effect>) {
+/// Hauteur d'une ligne de la liste d'avancement.
+const STATUS_ROW_H: f32 = 32.0;
+/// Hauteur maximale de la liste d'avancement avant défilement.
+const STATUS_LIST_MAX_H: f32 = 288.0;
+
+/// Carte d'avancement : barre, fichier courant, liste des fichiers avec leur
+/// état, temps écoulé, bouton Annuler (Échap).
+pub fn busy_card(
+    ui: &mut Ui,
+    title: &str,
+    names: &[String],
+    progress: &Shared,
+    fx: &mut Vec<Effect>,
+) {
     let p = palette();
     Card::new().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(3);
@@ -60,17 +87,173 @@ pub fn busy_card(ui: &mut Ui, title: &str, progress: &Shared, fx: &mut Vec<Effec
             format!("{title} : {label}")
         };
         ui.add(ProgressBar::new(progress.fraction(), &line));
+        if !names.is_empty() {
+            let list_h = (names.len() as f32 * STATUS_ROW_H).min(STATUS_LIST_MAX_H);
+            egui::ScrollArea::vertical()
+                .id_salt("avancement")
+                .max_height(STATUS_LIST_MAX_H)
+                .min_scrolled_height(list_h)
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    for (i, name) in names.iter().enumerate() {
+                        status_row(ui, name, progress.status(i));
+                    }
+                });
+        }
         control_row(ui, CONTROL_SM, |ui| {
+            ui.spacing_mut().item_spacing.x = p.space(3);
             if progress.is_cancel_requested() {
                 muted(ui, "Annulation demandée : le fichier en cours se termine.");
             } else if ui
                 .add(PillButton::secondary("Annuler").icon(Icon::X).small())
+                .on_hover_text(with_shortcut("Annuler le traitement", shortcuts::BACK))
                 .clicked()
             {
                 fx.push(Effect::Cancel);
             }
+            muted(
+                ui,
+                &format!("Temps écoulé : {}", duration_label(progress.elapsed_secs())),
+            );
         });
     });
+}
+
+/// Ligne de la liste d'avancement : icône d'état, nom, état en toutes lettres.
+fn status_row(ui: &mut Ui, name: &str, status: FileStatus) {
+    let p = palette();
+    let (icon, color) = match status {
+        FileStatus::Pending => (Icon::Clock, p.text_secondary),
+        FileStatus::Running => (Icon::LoaderCircle, p.accent),
+        FileStatus::Done => (Icon::CircleCheck, p.accent),
+        FileStatus::Failed => (Icon::CircleX, p.error),
+    };
+    control_row(ui, STATUS_ROW_H, |ui| {
+        ui.spacing_mut().item_spacing.x = p.space(2);
+        icon.show(ui, color, 16.0);
+        let weight = if status == FileStatus::Running {
+            Weight::Semibold
+        } else {
+            Weight::Regular
+        };
+        let w = (ui.available_width() - 120.0).max(80.0);
+        truncated_text(
+            ui,
+            w,
+            STATUS_ROW_H,
+            RichText::new(name)
+                .font(font(weight, p.text_sm))
+                .color(p.text),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let ink = match status {
+                FileStatus::Failed => p.error,
+                FileStatus::Running => p.accent,
+                _ => p.text_secondary,
+            };
+            ui.label(
+                RichText::new(status.label())
+                    .font(font(Weight::Medium, p.text_xs))
+                    .color(ink),
+            );
+        });
+    });
+}
+
+/// Bandeau d'accueil du premier lancement, refermable.
+fn welcome_card(ui: &mut Ui, fx: &mut Vec<Effect>) {
+    let p = palette();
+    Card::new().accent(p.primary).show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = p.space(3);
+        control_row(ui, CONTROL_SM, |ui| {
+            ui.label(
+                RichText::new("Bienvenue : trois étapes, tout reste sur votre ordinateur")
+                    .font(font(Weight::Semibold, p.text_md))
+                    .color(p.heading),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if icon_button(ui, Icon::X, "Fermer le message d'accueil", p.text_secondary)
+                    .clicked()
+                {
+                    fx.push(Effect::DismissWelcome);
+                }
+            });
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(p.space(3), p.space(2));
+            let steps = [
+                "Anonymisez vos fichiers",
+                "Envoyez-les à l'IA avec la consigne",
+                "Désanonymisez sa réponse",
+            ];
+            for (i, s) in steps.iter().enumerate() {
+                if i > 0 {
+                    Icon::ChevronRight.show(ui, p.text_secondary, 16.0);
+                }
+                step_disc(ui, i + 1);
+                ui.label(
+                    RichText::new(*s)
+                        .font(font(Weight::Medium, p.text_sm))
+                        .color(p.text),
+                );
+            }
+        });
+    });
+}
+
+/// Pastille numérotée (bandeau d'accueil).
+fn step_disc(ui: &mut Ui, n: usize) {
+    let p = palette();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), Sense::hover());
+    ui.painter()
+        .circle_filled(rect.center(), 12.0, p.primary_dark);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        n.to_string(),
+        font(Weight::Bold, p.text_xs),
+        p.on_primary,
+    );
+}
+
+/// Table `.anonmap` déposée à l'étape Déposer : la reprendre ou l'ignorer.
+fn offered_map_card(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
+    let Some(path) = st.offered_map.clone() else {
+        return;
+    };
+    let p = palette();
+    let mut ignore = false;
+    Card::new().show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = p.space(3);
+        card_title(ui, Icon::KeyRound, "Table de correspondance déposée");
+        muted(
+            ui,
+            &format!(
+                "« {} » : une table n'est pas anonymisée. Reprenez-la pour garder les mêmes balises ; son mot de passe vous sera demandé à l'étape Protéger.",
+                file_name(&path)
+            ),
+        );
+        control_row(ui, CONTROL_SM, |ui| {
+            ui.spacing_mut().item_spacing.x = p.space(3);
+            if ui
+                .add(
+                    PillButton::secondary("Reprendre cette table")
+                        .icon(Icon::KeyRound)
+                        .small(),
+                )
+                .clicked()
+            {
+                fx.push(Effect::AcceptOfferedMap);
+            }
+            if ui.add(PillButton::ghost("Ignorer").small()).clicked() {
+                ignore = true;
+            }
+        });
+    });
+    if ignore {
+        st.offered_map = None;
+    }
 }
 
 fn rejected_banner(ui: &mut Ui, rejected: &[Rejected]) -> bool {
@@ -93,10 +276,12 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
     let p = palette();
     Card::new().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(4);
-        let zone = ui.add(DropZone::new(
-            "Déposez vos fichiers ici ou cliquez pour les choisir",
-            "Word, Excel, PowerPoint, OpenDocument, PDF, texte, CSV, images",
-        ));
+        let zone = ui
+            .add(DropZone::new(
+                "Déposez vos fichiers ici ou cliquez pour les choisir",
+                "Word, Excel, PowerPoint, OpenDocument, PDF, texte, CSV, images",
+            ))
+            .on_hover_text(with_shortcut("Ajouter des fichiers", shortcuts::OPEN));
         if zone.clicked() {
             fx.push(Effect::PickDocuments);
         }
@@ -121,7 +306,13 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
             );
         });
         if !st.files.is_empty() {
-            overline(ui, &format!("{} fichiers prêts", st.files.len()));
+            let n = st.files.len();
+            let ready = if n == 1 {
+                "1 fichier prêt".to_owned()
+            } else {
+                format!("{n} fichiers prêts")
+            };
+            overline(ui, &ready);
             let mut remove = None;
             for (i, f) in st.files.iter().enumerate() {
                 file_row(ui, f, |ui| {
@@ -137,6 +328,7 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
         }
     });
 
+    offered_map_card(ui, st, fx);
     always_card(ui, st, fx);
     if rejected_banner(ui, &st.rejected) {
         st.dismiss_rejected();
@@ -166,10 +358,11 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
             }
         },
         |ui, st| {
-            let go = ui.add(
-                PillButton::primary("Analyser les fichiers")
-                    .icon(Icon::Search)
-                    .enabled(!st.files.is_empty()),
+            let blocker = st.analyze_blocker();
+            let go = super::primary_button(
+                ui,
+                PillButton::primary("Analyser les fichiers").icon(Icon::Search),
+                blocker,
             );
             if go.clicked()
                 && let Ok(paths) = st.begin_analysis()
@@ -178,6 +371,7 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
             }
         },
     );
+    blocker_line(ui, st.analyze_blocker());
 }
 
 /// Liste « toujours anonymiser » : termes cherchés dans chaque analyse.
@@ -369,6 +563,7 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
 
     Card::new().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(3);
+        review_toolbar(ui, st, session);
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(p.space(2), p.space(2));
             let all = st.family_filter.is_empty();
@@ -389,14 +584,25 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
         });
 
         let columns = [
-            Column::fixed("Type", 190.0),
-            Column::fill("Valeur", 1.0),
+            Column::fixed("Type", 190.0).sortable(),
+            Column::fill("Valeur", 1.0).sortable(),
             Column::fill("Contexte", 1.2),
-            Column::fixed("Occ.", 60.0),
+            Column::fixed("Occ.", 76.0).right().sortable(),
             Column::fixed("Casse", 64.0),
             Column::fixed("Balise", 176.0),
             Column::fixed("", 44.0),
         ];
+        let sorted = st.sort.map(|s| {
+            let col = match s.key {
+                SortKey::Kind => 0,
+                SortKey::Value => 1,
+                SortKey::Occurrences => 3,
+            };
+            (col, s.ascending)
+        });
+        let jump = std::mem::take(&mut st.jump)
+            .then_some(st.focus_row)
+            .flatten();
         let visible = st.visible();
         let (checked, total) = st.header_state();
         let header = if checked == 0 {
@@ -412,8 +618,10 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
         let mut general_change: Option<(usize, bool)> = None;
         let out = {
             let row_of = |i: usize| visible.get(i).and_then(|id| st.candidate(*id));
-            DataTable::new("detections", &columns)
+            DataTable::new(TABLE_ID, &columns)
                 .checkable(header)
+                .sorted(sorted)
+                .focus_row(jump)
                 .max_height(44.0 * 9.0)
                 .show(
                     ui,
@@ -550,6 +758,17 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
         if out.header_toggled {
             st.set_all_visible(header != CheckState::Checked, session);
         }
+        if let Some(col) = out.sort_clicked {
+            let key = match col {
+                0 => Some(SortKey::Kind),
+                1 => Some(SortKey::Value),
+                3 => Some(SortKey::Occurrences),
+                _ => None,
+            };
+            if let Some(k) = key {
+                st.toggle_sort(k);
+            }
+        }
         for i in out.toggled_rows {
             if let Some(id) = visible.get(i) {
                 st.toggle(*id, session);
@@ -568,7 +787,27 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
             st.set_generalized(id, on, session);
         }
         if visible.is_empty() {
-            muted(ui, "Aucune donnée sensible détectée dans ces fichiers.");
+            let filtered = !st.search.trim().is_empty() || !st.family_filter.is_empty();
+            if filtered {
+                if empty_state(
+                    ui,
+                    Icon::Search,
+                    "Aucune ligne ne correspond à la recherche ou au filtre.",
+                    Some(("Tout afficher", Icon::RefreshCw)),
+                ) {
+                    st.search.clear();
+                    st.clear_filter();
+                }
+            } else if empty_state(
+                ui,
+                Icon::Inbox,
+                "Aucune donnée sensible détectée dans ces fichiers.",
+                Some(("Ajouter un terme", Icon::Plus)),
+            ) {
+                ui.memory_mut(|m| {
+                    m.request_focus(crate::ui::widgets::field::field_id("terme-manuel"));
+                });
+            }
         }
 
         // Ajout manuel.
@@ -639,16 +878,82 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
             muted(ui, &line);
         },
         |ui, st| {
-            let go = ui.add(
-                PillButton::primary("Continuer")
-                    .icon(Icon::ChevronRight)
-                    .enabled(st.selected_count() > 0),
+            let go = super::primary_button(
+                ui,
+                PillButton::primary("Continuer").icon(Icon::ChevronRight),
+                st.review_blocker(),
             );
             if go.clicked() {
                 let _ = st.confirm_review();
             }
         },
     );
+    blocker_line(ui, st.review_blocker());
+}
+
+/// Identifiant du tableau de vérification.
+pub const TABLE_ID: &str = "detections";
+
+/// Recherche, résumé, ligne suivante à confirmer, cocher les lignes affichées.
+fn review_toolbar(ui: &mut Ui, st: &mut AnonymizeState, session: &Session) {
+    let p = palette();
+    control_row(ui, CONTROL_MD, |ui| {
+        ui.spacing_mut().item_spacing.x = p.space(3);
+        let w = (ui.available_width() * 0.45).clamp(220.0, 380.0);
+        TextField::new("Rechercher dans le tableau", &mut st.search)
+            .placeholder("Rechercher une valeur ou un contexte")
+            .id_salt(SEARCH_FIELD)
+            .hide_label()
+            .width(w)
+            .show_control(ui)
+            .on_hover_text(with_shortcut("Rechercher dans le tableau", shortcuts::FIND));
+        if !st.search.is_empty()
+            && icon_button(ui, Icon::X, "Effacer la recherche", p.text_secondary).clicked()
+        {
+            st.search.clear();
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = p.space(2);
+            if st.pending_confirmations() > 0
+                && ui
+                    .add(
+                        PillButton::secondary("Suivante à confirmer")
+                            .icon(Icon::ArrowDown)
+                            .small(),
+                    )
+                    .on_hover_text("Montre la prochaine valeur surlignée en jaune")
+                    .clicked()
+            {
+                st.focus_next_pending();
+                st.jump = true;
+            }
+        });
+    });
+    control_row(ui, CONTROL_SM, |ui| {
+        ui.spacing_mut().item_spacing.x = p.space(2);
+        ui.label(
+            RichText::new(st.review_summary())
+                .font(font(Weight::Medium, p.text_sm))
+                .color(p.text),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = p.space(1);
+            if ui
+                .add(PillButton::ghost("Tout décocher").small())
+                .on_hover_text("Décoche les lignes affichées (après recherche et filtre)")
+                .clicked()
+            {
+                st.set_all_visible(false, session);
+            }
+            if ui
+                .add(PillButton::ghost("Tout cocher").small())
+                .on_hover_text("Coche les lignes affichées (après recherche et filtre)")
+                .clicked()
+            {
+                st.set_all_visible(true, session);
+            }
+        });
+    });
 }
 
 fn protect_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
@@ -819,16 +1124,17 @@ créé à côté de vos fichiers ; un fichier existant n'est jamais remplacé.",
             } else {
                 format!("Anonymiser {n} fichiers")
             };
-            let go = ui.add(
-                PillButton::primary(&label)
-                    .icon(Icon::Lock)
-                    .enabled(st.protect.can_proceed() && st.out_dir.is_some()),
+            let go = super::primary_button(
+                ui,
+                PillButton::primary(&label).icon(Icon::Lock),
+                st.protect_blocker(),
             );
             if go.clicked() {
                 fx.push(Effect::Anonymize);
             }
         },
     );
+    blocker_line(ui, st.protect_blocker());
 }
 
 fn done_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
@@ -845,11 +1151,18 @@ fn done_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
         {
             fx.push(Effect::OpenFolder(report.out_dir.clone()));
         }
-        if ui
-            .add(PillButton::secondary("Copier la consigne pour l'IA").icon(Icon::Clipboard))
-            .clicked()
+        if copy_button(
+            ui,
+            "copier-consigne",
+            PillButton::secondary("Copier la consigne pour l'IA").icon(Icon::Clipboard),
+            true,
+        )
+        .clicked()
         {
-            fx.push(Effect::Copy(anon_engine::ai_instruction().to_owned()));
+            fx.push(Effect::Copy {
+                text: anon_engine::ai_instruction().to_owned(),
+                toast: "Consigne copiée",
+            });
         }
         if ui
             .add(PillButton::ghost("Anonymiser d'autres fichiers").icon(Icon::RefreshCw))

@@ -135,6 +135,26 @@ impl Default for DeanonymizeState {
     }
 }
 
+/// Plages (en octets) des balises `tags` dans `text`, triées, sans chevauchement.
+pub fn tag_ranges(text: &str, tags: &[String]) -> Vec<std::ops::Range<usize>> {
+    let mut out: Vec<std::ops::Range<usize>> = Vec::new();
+    for tag in tags.iter().filter(|t| !t.is_empty()) {
+        out.extend(
+            text.match_indices(tag.as_str())
+                .map(|(i, m)| i..i + m.len()),
+        );
+    }
+    out.sort_by_key(|r| r.start);
+    let mut merged: Vec<std::ops::Range<usize>> = Vec::new();
+    for r in out {
+        match merged.last_mut() {
+            Some(last) if r.start < last.end => last.end = last.end.max(r.end),
+            _ => merged.push(r),
+        }
+    }
+    merged
+}
+
 /// Vrai pour un chemin `.anonmap`.
 pub fn is_map(path: &std::path::Path) -> bool {
     path.extension()
@@ -287,6 +307,44 @@ impl DeanonymizeState {
         self.file_results = results;
     }
 
+    /// Ce qui manque pour restaurer, en une phrase.
+    pub fn restore_blocker(&self) -> Option<&'static str> {
+        if self.busy.is_some() {
+            Some("Un traitement est déjà en cours.")
+        } else if !self.is_unlocked() {
+            Some("Ouvrez d'abord une table de correspondance.")
+        } else if !self.has_input() {
+            Some(match self.mode {
+                InputMode::Paste => "Collez d'abord la réponse de l'IA.",
+                InputMode::File => "Ajoutez d'abord les fichiers à restaurer.",
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Ce qui manque pour coller et restaurer en un geste.
+    pub fn paste_blocker(&self) -> Option<&'static str> {
+        if self.busy.is_some() {
+            Some("Un traitement est déjà en cours.")
+        } else if !self.is_unlocked() {
+            Some("Ouvrez d'abord une table de correspondance.")
+        } else {
+            None
+        }
+    }
+
+    /// Ce qui manque pour ouvrir la table.
+    pub fn unlock_blocker(&self) -> Option<&'static str> {
+        match &self.map {
+            MapStatus::None => Some("Choisissez d'abord une table de correspondance."),
+            MapStatus::Locked { .. } if self.password.is_empty() => {
+                Some("Saisissez le mot de passe de la table.")
+            }
+            _ => None,
+        }
+    }
+
     /// Referme la table et oublie tout.
     pub fn lock(&mut self) {
         *self = Self::default();
@@ -349,6 +407,52 @@ mod tests {
         assert!(r.is_some_and(|(_, rep)| rep.unknown == vec!["[PERSONNE_9]".to_owned()]));
         s.lock();
         assert_eq!(s, DeanonymizeState::default());
+    }
+
+    #[test]
+    fn unknown_tags_are_located() {
+        let text = "Bonjour [PERSONNE_9], voir [PERSONNE_9] et [LIEU_4].";
+        let r = tag_ranges(
+            text,
+            &["[PERSONNE_9]".into(), "[LIEU_4]".into(), String::new()],
+        );
+        assert_eq!(r.len(), 3);
+        assert_eq!(&text[r[0].clone()], "[PERSONNE_9]");
+        assert_eq!(&text[r[2].clone()], "[LIEU_4]");
+        assert!(tag_ranges(text, &[]).is_empty());
+    }
+
+    #[test]
+    fn restore_says_what_is_missing() {
+        let mut s = DeanonymizeState::default();
+        assert_eq!(
+            s.unlock_blocker(),
+            Some("Choisissez d'abord une table de correspondance.")
+        );
+        assert_eq!(
+            s.restore_blocker(),
+            Some("Ouvrez d'abord une table de correspondance.")
+        );
+        let _ = s.choose_map("t.anonmap".into());
+        assert_eq!(
+            s.unlock_blocker(),
+            Some("Saisissez le mot de passe de la table.")
+        );
+        s.password = "x".into();
+        assert_eq!(s.unlock_blocker(), None);
+        s.unlock_done(Ok(session()));
+        assert_eq!(
+            s.restore_blocker(),
+            Some("Collez d'abord la réponse de l'IA.")
+        );
+        s.mode = InputMode::File;
+        assert_eq!(
+            s.restore_blocker(),
+            Some("Ajoutez d'abord les fichiers à restaurer.")
+        );
+        s.mode = InputMode::Paste;
+        s.pasted = "[PERSONNE_1]".into();
+        assert_eq!(s.restore_blocker(), None);
     }
 
     #[test]

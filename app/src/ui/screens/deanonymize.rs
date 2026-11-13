@@ -1,14 +1,19 @@
 //! Onglet « Désanonymiser » : table + mot de passe, réponse de l'IA, résultat.
 
 use super::anonymize::busy_card;
-use super::{card_title, control_row, file_row, page_title, truncated_text};
+use super::{
+    blocker_line, card_title, control_row, copy_button, file_row, page_title, primary_button,
+    truncated_text,
+};
 use crate::ui::app::Effect;
 use crate::ui::runner::Shared;
 use crate::ui::service::{file_name, unused_tags};
-use crate::ui::state::deanonymize::{Busy, DeanonymizeState, InputMode, MapStatus};
+use crate::ui::shortcuts::{self, with_shortcut};
+use crate::ui::state::deanonymize::{Busy, DeanonymizeState, InputMode, MapStatus, tag_ranges};
+use crate::ui::state::toasts::count_label;
 use crate::ui::theme::{CONTROL_MD, CONTROL_SM, Weight, font, palette, radius};
 use crate::ui::widgets::button::icon_button;
-use crate::ui::widgets::field::{area_height_for_rows, mono_job};
+use crate::ui::widgets::field::{area_height_for_rows, mono_job_marked};
 use crate::ui::widgets::nav::segmented;
 use crate::ui::widgets::{
     Badge, Banner, Card, DropZone, Icon, PillButton, TextField, body, caption, muted, overline,
@@ -21,6 +26,8 @@ use egui::{Frame, Margin, RichText, Ui};
 const TWO_COLUMNS: f32 = 760.0;
 /// Lignes visibles de la zone où coller la réponse de l'IA.
 const PASTE_ROWS: usize = 8;
+/// Identifiant du champ « mot de passe de la table » (focus après choix de la table).
+pub const PASSWORD_FIELD: &str = "mdp-table";
 
 pub fn show(ui: &mut Ui, st: &mut DeanonymizeState, progress: &Shared, fx: &mut Vec<Effect>) {
     page_title(
@@ -30,11 +37,12 @@ pub fn show(ui: &mut Ui, st: &mut DeanonymizeState, progress: &Shared, fx: &mut 
     );
     match st.busy {
         Some(Busy::Opening) => {
-            busy_card(ui, "Ouverture de la table", progress, fx);
+            busy_card(ui, "Ouverture de la table", &[], progress, fx);
             return;
         }
         Some(Busy::Restoring) => {
-            busy_card(ui, "Restauration des fichiers", progress, fx);
+            let names: Vec<String> = st.input_files.iter().map(|f| f.name.clone()).collect();
+            busy_card(ui, "Restauration des fichiers", &names, progress, fx);
             return;
         }
         None => {}
@@ -71,6 +79,7 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                 );
                 if ui
                     .add(PillButton::secondary("Choisir la table").icon(Icon::FolderOpen))
+                    .on_hover_text(with_shortcut("Choisir la table", shortcuts::OPEN))
                     .clicked()
                 {
                     fx.push(Effect::PickMap);
@@ -95,23 +104,25 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                 });
                 let error = st.unlock_error.as_deref();
                 let r = TextField::password("Mot de passe de la table", &mut st.password)
-                    .id_salt("mdp-table")
+                    .id_salt(PASSWORD_FIELD)
                     .error(error)
                     .show(ui);
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let blocker = st.unlock_blocker();
                 control_row(ui, CONTROL_MD, |ui| {
-                    let go = ui.add(
-                        PillButton::primary("Ouvrir la table")
-                            .icon(Icon::LockOpen)
-                            .enabled(!st.password.is_empty()),
+                    let go = primary_button(
+                        ui,
+                        PillButton::primary("Ouvrir la table").icon(Icon::LockOpen),
+                        blocker,
                     );
-                    if go.clicked() || enter {
+                    if (go.clicked() || enter) && blocker.is_none() {
                         fx.push(Effect::Unlock);
                     }
                     if ui.add(PillButton::ghost("Changer de table")).clicked() {
                         fx.push(Effect::PickMap);
                     }
                 });
+                blocker_line(ui, blocker);
             }
             MapStatus::Unlocked { name, entries, .. } => {
                 ui.horizontal(|ui| {
@@ -165,6 +176,21 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                     .area_height(area_height_for_rows(PASTE_ROWS))
                     .monospace()
                     .show(ui);
+                let paste_blocker = st.paste_blocker();
+                if ui
+                    .add(
+                        PillButton::secondary("Coller depuis le presse-papiers")
+                            .icon(Icon::ClipboardPaste)
+                            .small()
+                            .enabled(paste_blocker.is_none()),
+                    )
+                    .on_hover_text(
+                        paste_blocker.unwrap_or("Colle la réponse de l'IA et restaure en un geste"),
+                    )
+                    .clicked()
+                {
+                    fx.push(Effect::PasteAndRestore);
+                }
             }
             InputMode::File => {
                 if ui
@@ -214,14 +240,14 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                 }
             }
         }
-        let ready = st.is_unlocked() && st.has_input();
-        let go = ui.add(
-            PillButton::primary("Restaurer les valeurs")
-                .icon(Icon::Undo)
-                .enabled(ready),
+        let blocker = st.restore_blocker();
+        let go = primary_button(
+            ui,
+            PillButton::primary("Restaurer les valeurs").icon(Icon::Undo),
+            blocker,
         );
-        if !st.is_unlocked() {
-            caption(ui, "Ouvrez d'abord la table de correspondance.");
+        if let Some(why) = blocker {
+            caption(ui, why);
         }
         if go.clicked() {
             fx.push(Effect::Restore);
@@ -255,17 +281,33 @@ fn result_section(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) 
             ui.spacing_mut().item_spacing.y = p.space(3);
             control_row(ui, CONTROL_SM, |ui| {
                 subheading(ui, "Résultat");
-                ui.add(Badge::brand(&format!("{} balises restaurées", r.restored)));
+                ui.add(Badge::brand(&count_label(
+                    r.restored,
+                    "balise restaurée",
+                    "balises restaurées",
+                )));
+                if !r.unknown.is_empty() {
+                    ui.add(Badge::warning(&count_label(
+                        r.unknown.len(),
+                        "balise inconnue",
+                        "balises inconnues",
+                    )));
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add(
-                            PillButton::secondary("Copier le résultat")
-                                .icon(Icon::Copy)
-                                .small(),
-                        )
-                        .clicked()
+                    if copy_button(
+                        ui,
+                        "copier-resultat",
+                        PillButton::secondary("Copier le résultat")
+                            .icon(Icon::Copy)
+                            .small(),
+                        true,
+                    )
+                    .clicked()
                     {
-                        fx.push(Effect::Copy(text.clone()));
+                        fx.push(Effect::Copy {
+                            text: text.clone(),
+                            toast: "Résultat copié",
+                        });
                     }
                 });
             });
@@ -276,7 +318,8 @@ fn result_section(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) 
                 .inner_margin(Margin::same(16))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    let job = mono_job(text, p.text, ui.available_width());
+                    let marks = tag_ranges(text, &r.unknown);
+                    let job = mono_job_marked(text, &marks, ui.available_width());
                     ui.add(egui::Label::new(job).wrap().selectable(true));
                 });
             report_banners(ui, r);

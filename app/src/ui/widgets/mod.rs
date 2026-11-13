@@ -12,6 +12,7 @@ pub mod nav;
 pub mod progress;
 pub mod select;
 pub mod table;
+pub mod toast;
 
 pub use badge::{Badge, BadgeSize, family_colors, family_tint};
 pub use banner::{Banner, BannerKind};
@@ -99,6 +100,24 @@ pub fn caption(ui: &mut Ui, text: &str) -> egui::Response {
             .font(font(Weight::Regular, p.text_xs))
             .color(p.text_secondary),
     )
+}
+
+/// Touche de clavier (panneau des raccourcis) : texte à chasse fixe dans un cadre.
+pub fn keycap(ui: &mut Ui, keys: &str) -> egui::Response {
+    let p = palette();
+    egui::Frame::new()
+        .fill(p.muted)
+        .stroke(egui::Stroke::new(1.0, p.line_strong))
+        .corner_radius(crate::ui::theme::radius(p.radius_sm))
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(keys)
+                    .font(egui::FontId::monospace(p.text_sm - 1.0))
+                    .color(p.heading),
+            )
+        })
+        .inner
 }
 
 /// Libellé de groupe : petit, demi-gras, majuscules espacées.

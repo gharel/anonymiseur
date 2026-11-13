@@ -77,6 +77,12 @@ impl<'a> PillButton<'a> {
         Self::new(text).variant(ButtonVariant::Ghost)
     }
 
+    /// Remplace le texte du bouton (« Copié » après une copie).
+    pub fn label(mut self, text: &'a str) -> Self {
+        self.text = text;
+        self
+    }
+
     pub fn variant(mut self, variant: ButtonVariant) -> Self {
         self.variant = variant;
         self

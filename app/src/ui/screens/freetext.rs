@@ -1,8 +1,9 @@
 //! Onglet « Texte libre » : original à gauche, anonymisé à droite. Les deux
 //! zones occupent la hauteur de la fenêtre (au moins 12 lignes).
 
-use super::{control_row, page_title};
+use super::{control_row, copy_button, page_title};
 use crate::ui::app::Effect;
+use crate::ui::shortcuts::{self, with_shortcut};
 use crate::ui::state::freetext::FreeTextState;
 use crate::ui::theme::{CONTROL_MD, palette};
 use crate::ui::widgets::field::area_height_for_rows;
@@ -31,18 +32,9 @@ pub fn show(ui: &mut Ui, st: &mut FreeTextState, view_h: f32, fx: &mut Vec<Effec
         "Texte libre",
         "Anonymisez un court texte avant de le coller dans une IA, puis restaurez sa réponse.",
     );
-    if let Some(n) = st.notice {
-        let msg = n.message();
-        let banner = if n.is_problem() {
-            Banner::warning(&msg)
-        } else {
-            Banner::success(&msg)
-        };
-        banner.show(ui);
-    }
     let two = ui.available_width() >= TWO_COLUMNS;
     let h = if two {
-        area_height(view_h, st.notice.is_some())
+        area_height(view_h, false)
     } else {
         area_height_for_rows(MIN_ROWS)
     };
@@ -81,6 +73,7 @@ pub fn show(ui: &mut Ui, st: &mut FreeTextState, view_h: f32, fx: &mut Vec<Effec
             ui.spacing_mut().item_spacing.x = p.space(3);
             if ui
                 .add(PillButton::primary("Anonymiser").icon(Icon::Lock))
+                .on_hover_text(with_shortcut("Anonymiser le texte", shortcuts::PRIMARY))
                 .clicked()
             {
                 fx.push(Effect::FreeAnonymize);
@@ -91,12 +84,19 @@ pub fn show(ui: &mut Ui, st: &mut FreeTextState, view_h: f32, fx: &mut Vec<Effec
             {
                 fx.push(Effect::FreeRestore);
             }
-            if ui
-                .add(PillButton::ghost("Copier le texte anonymisé").icon(Icon::Copy))
-                .clicked()
+            if copy_button(
+                ui,
+                "copier-texte",
+                PillButton::ghost("Copier le texte anonymisé").icon(Icon::Copy),
+                !st.anonymized.is_empty(),
+            )
+            .clicked()
                 && let Some(text) = st.copy()
             {
-                fx.push(Effect::Copy(text));
+                fx.push(Effect::Copy {
+                    text,
+                    toast: "Texte copié",
+                });
             }
         });
     });

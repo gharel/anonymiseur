@@ -931,6 +931,8 @@ pub fn text_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
         ("titre sur surface", p.heading, p.surface),
         ("titre sur page", p.heading, p.page),
         ("titre sur ligne à confirmer", p.heading, p.attention_row),
+        ("touche du panneau des raccourcis", p.heading, p.muted),
+        ("état « en cours » sur surface", p.accent, p.surface),
         ("secondaire sur surface", p.text_secondary, p.surface),
         ("secondaire sur page", p.text_secondary, p.page),
         ("secondaire sur creux", p.text_secondary, p.sunken),

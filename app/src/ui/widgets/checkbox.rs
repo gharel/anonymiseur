@@ -37,6 +37,8 @@ pub struct Checkbox<'a> {
     label: Option<&'a str>,
     accessible: &'a str,
     enabled: bool,
+    /// Identifiant fixe (focus donné depuis l'extérieur, tableau).
+    id: Option<egui::Id>,
 }
 
 impl<'a> Checkbox<'a> {
@@ -46,6 +48,7 @@ impl<'a> Checkbox<'a> {
             label: Some(label),
             accessible: label,
             enabled: true,
+            id: None,
         }
     }
 
@@ -56,11 +59,17 @@ impl<'a> Checkbox<'a> {
             label: None,
             accessible,
             enabled: true,
+            id: None,
         }
     }
 
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+
+    pub fn id(mut self, id: egui::Id) -> Self {
+        self.id = Some(id);
         self
     }
 }
@@ -89,7 +98,13 @@ impl Widget for Checkbox<'_> {
         } else {
             Sense::hover()
         };
-        let (rect, response) = ui.allocate_exact_size(desired, sense);
+        let (rect, response) = match self.id {
+            Some(id) => {
+                let (_, rect) = ui.allocate_space(desired);
+                (rect, ui.interact(rect, id, sense))
+            }
+            None => ui.allocate_exact_size(desired, sense),
+        };
         let selected = self.state == CheckState::Checked;
         let accessible = self.accessible.to_owned();
         let enabled = self.enabled;
@@ -103,6 +118,11 @@ impl Widget for Checkbox<'_> {
                 Vec2::splat(BOX),
             );
             let hovered = enabled && response.hovered();
+            if enabled && response.is_pointer_button_down_on() {
+                painter.rect_filled(b.expand(4.0), radius(p.radius_sm + 2.0), p.hover_strong);
+            } else if hovered {
+                painter.rect_filled(b.expand(4.0), radius(p.radius_sm + 2.0), p.hover);
+            }
             let alpha = if enabled { 1.0 } else { 0.5 };
             match self.state {
                 CheckState::Unchecked => {
@@ -146,7 +166,11 @@ impl Widget for Checkbox<'_> {
                 painter.galley(pos, g, p.text);
             }
         }
-        response
+        if enabled {
+            response.on_hover_cursor(egui::CursorIcon::PointingHand)
+        } else {
+            response
+        }
     }
 }
 

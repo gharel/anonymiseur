@@ -11,6 +11,27 @@ use anon_vault::VaultError;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+/// État d'un fichier pendant un traitement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileStatus {
+    Pending,
+    Running,
+    Done,
+    Failed,
+}
+
+impl FileStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            FileStatus::Pending => "En attente",
+            FileStatus::Running => "En cours",
+            FileStatus::Done => "Terminé",
+            FileStatus::Failed => "Erreur",
+        }
+    }
+}
 
 /// Avancement partagé entre le fil de travail et l'interface.
 #[derive(Debug, Default)]
@@ -20,6 +41,10 @@ pub struct Shared {
     cancel: AtomicBool,
     /// Nom du fichier en cours (affichage seulement, jamais journalisé).
     label: Mutex<String>,
+    /// Fichiers en erreur (indices).
+    failed: Mutex<Vec<usize>>,
+    /// Début du traitement.
+    started: Mutex<Option<Instant>>,
 }
 
 impl Shared {
@@ -43,6 +68,39 @@ impl Shared {
         self.cancel.load(Ordering::Relaxed)
     }
 
+    /// Le fichier `index` a échoué (contrôle de fuite, format illisible…).
+    pub fn mark_failed(&self, index: usize) {
+        if let Ok(mut f) = self.failed.lock() {
+            f.push(index);
+        }
+    }
+
+    /// État du fichier `index` : terminé avant le fichier en cours, en cours,
+    /// en attente après lui.
+    pub fn status(&self, index: usize) -> FileStatus {
+        if self.failed.lock().is_ok_and(|f| f.contains(&index)) {
+            return FileStatus::Failed;
+        }
+        let done = self.done.load(Ordering::Relaxed);
+        let total = self.total.load(Ordering::Relaxed);
+        if index < done {
+            FileStatus::Done
+        } else if index == done && done < total {
+            FileStatus::Running
+        } else {
+            FileStatus::Pending
+        }
+    }
+
+    /// Secondes écoulées depuis le début du traitement (0 s'il n'a pas démarré).
+    pub fn elapsed_secs(&self) -> u64 {
+        self.started
+            .lock()
+            .ok()
+            .and_then(|s| *s)
+            .map_or(0, |t| t.elapsed().as_secs())
+    }
+
     fn reset(&self) {
         self.done.store(0, Ordering::Relaxed);
         self.total.store(0, Ordering::Relaxed);
@@ -50,6 +108,21 @@ impl Shared {
         if let Ok(mut l) = self.label.lock() {
             l.clear();
         }
+        if let Ok(mut f) = self.failed.lock() {
+            f.clear();
+        }
+        if let Ok(mut s) = self.started.lock() {
+            *s = Some(Instant::now());
+        }
+    }
+}
+
+/// Durée lisible : « 8 s », « 1 min 05 s ».
+pub fn duration_label(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs} s")
+    } else {
+        format!("{} min {:02} s", secs / 60, secs % 60)
     }
 }
 
@@ -191,6 +264,24 @@ mod tests {
         assert!(s.cancelled());
         s.reset();
         assert!(!s.cancelled());
+    }
+
+    #[test]
+    fn file_statuses() {
+        let s = Shared::default();
+        assert_eq!(s.status(0), FileStatus::Pending);
+        assert_eq!(s.elapsed_secs(), 0);
+        s.step(1, 3, "b.txt");
+        s.mark_failed(0);
+        assert_eq!(s.status(0), FileStatus::Failed);
+        assert_eq!(s.status(1), FileStatus::Running);
+        assert_eq!(s.status(2), FileStatus::Pending);
+        s.step(3, 3, "");
+        assert_eq!(s.status(2), FileStatus::Done);
+        s.reset();
+        assert_eq!(s.status(0), FileStatus::Pending);
+        assert_eq!(duration_label(8), "8 s");
+        assert_eq!(duration_label(65), "1 min 05 s");
     }
 
     #[test]

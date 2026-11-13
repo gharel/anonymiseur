@@ -12,11 +12,18 @@ use egui::{
 #[derive(Debug)]
 pub struct TabBar<'a> {
     tabs: &'a [(Icon, &'a str)],
+    /// Raccourci de chaque onglet, rappelé en infobulle.
+    hints: &'a [String],
 }
 
 impl<'a> TabBar<'a> {
     pub fn new(tabs: &'a [(Icon, &'a str)]) -> Self {
-        Self { tabs }
+        Self { tabs, hints: &[] }
+    }
+
+    pub fn hints(mut self, hints: &'a [String]) -> Self {
+        self.hints = hints;
+        self
     }
 
     /// Affiche les onglets ; renvoie l'index cliqué.
@@ -86,10 +93,12 @@ impl<'a> TabBar<'a> {
                         StrokeKind::Outside,
                     );
                 }
-                if response
-                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .clicked()
-                {
+                let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+                let response = match self.hints.get(i) {
+                    Some(h) => response.on_hover_text(format!("{label} ({h})")),
+                    None => response,
+                };
+                if response.clicked() {
                     clicked = Some(i);
                 }
             }
@@ -255,6 +264,8 @@ pub fn segmented<T: PartialEq + Copy>(
         let painter = ui.painter();
         if selected {
             painter.rect_filled(rect, radius(p.radius_full), p.primary_dark);
+        } else if r.is_pointer_button_down_on() {
+            painter.rect_filled(rect, radius(p.radius_full), p.line);
         } else if r.hovered() {
             painter.rect_filled(rect, radius(p.radius_full), p.hover_strong);
         }
@@ -308,6 +319,8 @@ pub fn filter_chip(
     let painter = ui.painter();
     let (fill, edge, ink) = if selected {
         (tint.fill, tint.ink, tint.ink)
+    } else if response.is_pointer_button_down_on() {
+        (p.hover_strong, p.line_strong, p.text)
     } else if response.hovered() {
         (p.hover, p.line_strong, p.text)
     } else {

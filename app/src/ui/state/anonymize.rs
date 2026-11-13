@@ -68,11 +68,11 @@ impl Busy {
 pub struct AddReport {
     /// Fichiers ajoutés à la liste.
     pub added: usize,
-    /// Fichiers produits par l'outil, écartés.
+    /// Fichiers produits par l'outil (hors tables), écartés.
     pub outputs: usize,
     /// Fichiers refusés (format non pris en charge).
     pub refused: usize,
-    /// Tables `.anonmap` parmi les fichiers écartés (dernière vue).
+    /// Table `.anonmap` déposée (la dernière) : proposée à la reprise.
     pub map: Option<PathBuf>,
 }
 
@@ -85,6 +85,23 @@ impl AddReport {
             n => Some(format!("{n} fichiers déjà anonymisés ignorés : les fichiers produits par l'outil ne sont pas anonymisés une seconde fois.")),
         }
     }
+}
+
+/// Forme de comparaison : minuscules, sans accents (recherche et tri).
+pub fn fold(s: &str) -> String {
+    s.chars()
+        .flat_map(char::to_lowercase)
+        .map(|c| match c {
+            'à' | 'â' | 'ä' | 'á' | 'ã' => 'a',
+            'ç' => 'c',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'î' | 'ï' | 'í' | 'ì' => 'i',
+            'ô' | 'ö' | 'ó' | 'ò' | 'õ' => 'o',
+            'û' | 'ü' | 'ú' | 'ù' => 'u',
+            'ÿ' => 'y',
+            other => other,
+        })
+        .collect()
 }
 
 /// Une ligne est « à confirmer » : valeur ambiguë ou confiance faible.
@@ -217,6 +234,35 @@ impl ProtectState {
         (self.confirm != self.password).then_some(PasswordIssue::Mismatch)
     }
 
+    /// Ce qui manque pour continuer, en une phrase.
+    pub fn blocker(&self) -> Option<&'static str> {
+        match self.mode {
+            ProtectMode::NewPassword => {
+                if self.password.is_empty() {
+                    Some("Choisissez un mot de passe pour la table.")
+                } else if !is_acceptable(self.strength()) {
+                    Some("Le mot de passe est trop faible.")
+                } else if self.confirm.is_empty() {
+                    Some("Confirmez le mot de passe.")
+                } else if self.confirm != self.password {
+                    Some("Les deux mots de passe diffèrent.")
+                } else {
+                    None
+                }
+            }
+            ProtectMode::ExistingTable => {
+                if self.existing_path.is_none() {
+                    Some("Choisissez la table à reprendre.")
+                } else if self.existing.is_none() {
+                    Some("Ouvrez d'abord la table à reprendre.")
+                } else {
+                    None
+                }
+            }
+            ProtectMode::Irreversible => None,
+        }
+    }
+
     pub fn can_proceed(&self) -> bool {
         match self.mode {
             ProtectMode::NewPassword => {
@@ -316,6 +362,30 @@ pub struct AnonymizeState {
     pub report: Option<BatchReport>,
     pub busy: Option<Busy>,
     pub error: Option<StepError>,
+    /// Recherche dans le tableau (valeur et contexte).
+    pub search: String,
+    /// Tri du tableau ; `None` : ordre de l'analyse.
+    pub sort: Option<Sort>,
+    /// Ligne mise en avant (« Suivante à confirmer »), indice dans [`AnonymizeState::visible`].
+    pub focus_row: Option<usize>,
+    /// Faire défiler le tableau jusqu'à `focus_row` à la prochaine image.
+    pub jump: bool,
+    /// Table `.anonmap` déposée à l'étape Déposer, proposée à la reprise.
+    pub offered_map: Option<PathBuf>,
+}
+
+/// Colonnes triables du tableau de vérification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortKey {
+    Kind,
+    Value,
+    Occurrences,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sort {
+    pub key: SortKey,
+    pub ascending: bool,
 }
 
 impl Default for AnonymizeState {
@@ -345,6 +415,11 @@ impl Default for AnonymizeState {
             report: None,
             busy: None,
             error: None,
+            search: String::new(),
+            sort: None,
+            focus_row: None,
+            jump: false,
+            offered_map: None,
         }
     }
 }
@@ -364,11 +439,12 @@ impl AnonymizeState {
             if self.files.iter().any(|f| f.path == e.path) {
                 continue;
             }
+            if crate::ui::state::deanonymize::is_map(&e.path) {
+                report.map = Some(e.path.clone());
+                continue;
+            }
             if is_tool_output(&e.path) {
                 report.outputs += 1;
-                if crate::ui::state::deanonymize::is_map(&e.path) {
-                    report.map = Some(e.path.clone());
-                }
                 continue;
             }
             let ext = crate::ui::service::extension(&e.path);
@@ -627,15 +703,124 @@ impl AnonymizeState {
             .unwrap_or(&[])
     }
 
-    /// Identifiants des lignes visibles (filtre par famille), dans l'ordre.
+    /// Identifiants des lignes visibles (filtre par famille, recherche dans
+    /// la valeur et le contexte), triées si un tri est choisi.
     pub fn visible(&self) -> Vec<usize> {
-        self.candidates()
+        let needle = fold(self.search.trim());
+        let mut rows: Vec<&Candidate> = self
+            .candidates()
             .iter()
             .filter(|c| {
                 self.family_filter.is_empty() || self.family_filter.contains(&c.kind.family())
             })
-            .map(|c| c.id)
-            .collect()
+            .filter(|c| {
+                needle.is_empty()
+                    || fold(&c.value).contains(&needle)
+                    || fold(&c.context).contains(&needle)
+            })
+            .collect();
+        if let Some(sort) = self.sort {
+            rows.sort_by(|a, b| {
+                let o = match sort.key {
+                    SortKey::Kind => a.kind.label().cmp(b.kind.label()),
+                    SortKey::Value => fold(&a.value).cmp(&fold(&b.value)),
+                    SortKey::Occurrences => a.occurrences.cmp(&b.occurrences),
+                };
+                if sort.ascending { o } else { o.reverse() }
+            });
+        }
+        rows.into_iter().map(|c| c.id).collect()
+    }
+
+    /// Clic sur un en-tête : tri croissant, puis décroissant.
+    pub fn toggle_sort(&mut self, key: SortKey) {
+        self.sort = Some(match self.sort {
+            Some(s) if s.key == key => Sort {
+                key,
+                ascending: !s.ascending,
+            },
+            _ => Sort {
+                key,
+                ascending: key != SortKey::Occurrences,
+            },
+        });
+        self.focus_row = None;
+    }
+
+    /// Résumé du tableau : « 42 valeurs cochées sur 57 · 3 à confirmer ».
+    pub fn review_summary(&self) -> String {
+        let total = self.candidates().len();
+        let checked = self.selected_count();
+        let mut s = if total == 1 {
+            format!("{checked} valeur cochée sur 1")
+        } else if checked <= 1 {
+            format!("{checked} valeur cochée sur {total}")
+        } else {
+            format!("{checked} valeurs cochées sur {total}")
+        };
+        let pending = self.pending_confirmations();
+        if pending > 0 {
+            s.push_str(&format!(" · {pending} à confirmer"));
+        }
+        s
+    }
+
+    /// Indice (dans [`AnonymizeState::visible`]) de la ligne à confirmer qui
+    /// suit `after`, en reprenant au début.
+    pub fn next_pending(&self, after: Option<usize>) -> Option<usize> {
+        let vis = self.visible();
+        let pending: Vec<usize> = vis
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| self.candidate(**id).is_some_and(needs_confirmation))
+            .map(|(i, _)| i)
+            .collect();
+        let start = after.map_or(0, |a| a + 1);
+        pending
+            .iter()
+            .copied()
+            .find(|i| *i >= start)
+            .or_else(|| pending.first().copied())
+    }
+
+    /// Met en avant la ligne à confirmer suivante (le tableau y défile).
+    pub fn focus_next_pending(&mut self) -> Option<usize> {
+        self.focus_row = self.next_pending(self.focus_row);
+        self.jump = self.focus_row.is_some();
+        self.focus_row
+    }
+
+    /// Raison pour laquelle l'analyse ne peut pas démarrer.
+    pub fn analyze_blocker(&self) -> Option<&'static str> {
+        self.files
+            .is_empty()
+            .then_some("Ajoutez au moins un fichier à anonymiser.")
+    }
+
+    /// Raison pour laquelle l'étape Vérifier ne peut pas être validée.
+    pub fn review_blocker(&self) -> Option<&'static str> {
+        (self.selected_count() == 0).then_some("Cochez au moins une valeur à anonymiser.")
+    }
+
+    /// Raison pour laquelle l'anonymisation ne peut pas démarrer.
+    pub fn protect_blocker(&self) -> Option<&'static str> {
+        self.protect.blocker().or_else(|| {
+            self.out_dir
+                .is_none()
+                .then_some("Choisissez le dossier de sortie.")
+        })
+    }
+
+    /// Une table déposée à l'étape Déposer : elle sera reprise à l'étape Protéger.
+    pub fn accept_offered_map(&mut self) -> bool {
+        let Some(path) = self.offered_map.take() else {
+            return false;
+        };
+        self.protect.mode = ProtectMode::ExistingTable;
+        self.protect.existing_path = Some(path);
+        self.protect.existing = None;
+        self.protect.existing_error = None;
+        true
     }
 
     pub fn candidate(&self, id: usize) -> Option<&Candidate> {
@@ -946,7 +1131,7 @@ mod tests {
             &["docx", "txt"],
         );
         assert_eq!(r.added, 1);
-        assert_eq!(r.outputs, 4);
+        assert_eq!(r.outputs, 3, "la table est comptée à part");
         assert_eq!(r.refused, 0, "une sortie n'est pas un refus");
         assert!(s.rejected.is_empty());
         assert_eq!(s.files.len(), 1);
@@ -957,7 +1142,7 @@ mod tests {
         );
         assert!(
             r.outputs_message()
-                .is_some_and(|m| m.starts_with("4 fichiers déjà anonymisés ignorés"))
+                .is_some_and(|m| m.starts_with("3 fichiers déjà anonymisés ignorés"))
         );
         let one = AddReport {
             outputs: 1,
@@ -1201,6 +1386,132 @@ mod tests {
         let (s, _) = reviewed(Profile::Standard);
         assert!(s.images().is_empty());
         assert!(s.auto_zones(0).is_empty());
+    }
+
+    #[test]
+    fn search_sort_and_summary() {
+        let (mut s, session) = reviewed(Profile::Standard);
+        let all = s.visible().len();
+        s.search = "KALOÏ".into();
+        let found = s.visible();
+        assert!(!found.is_empty() && found.len() < all);
+        // Sans accents : « KALOÏ » trouve aussi l'email « helene.kaloi@… ».
+        assert!(found.iter().all(|id| s.candidate(*id).is_some_and(|c| {
+            fold(&c.value).contains("kaloi") || fold(&c.context).contains("kaloi")
+        })));
+        assert!(
+            found
+                .iter()
+                .any(|id| s.candidate(*id).is_some_and(|c| c.value.contains("kaloi@")))
+        );
+        // Cocher ou décocher : seulement les lignes affichées.
+        s.set_all_visible(false, &session);
+        s.search.clear();
+        assert_eq!(s.selected_count(), all - found.len());
+        s.set_all_visible(true, &session);
+
+        s.toggle_sort(SortKey::Value);
+        let values: Vec<String> = s
+            .visible()
+            .iter()
+            .filter_map(|id| s.candidate(*id).map(|c| fold(&c.value)))
+            .collect();
+        let mut sorted = values.clone();
+        sorted.sort();
+        assert_eq!(values, sorted);
+        s.toggle_sort(SortKey::Value);
+        assert_eq!(s.sort.map(|x| x.ascending), Some(false));
+        s.toggle_sort(SortKey::Occurrences);
+        let occ: Vec<usize> = s
+            .visible()
+            .iter()
+            .filter_map(|id| s.candidate(*id).map(|c| c.occurrences))
+            .collect();
+        assert!(
+            occ.windows(2).all(|w| w[0] >= w[1]),
+            "plus fréquentes d'abord"
+        );
+
+        let summary = s.review_summary();
+        assert!(
+            summary.starts_with(&format!("{} valeurs cochées sur {all}", s.selected_count())),
+            "{summary}"
+        );
+    }
+
+    #[test]
+    fn next_pending_cycles() {
+        let (mut s, _) = reviewed(Profile::Renforce);
+        let pending = s.pending_confirmations();
+        if pending == 0 {
+            assert_eq!(s.next_pending(None), None);
+            return;
+        }
+        let first = s.focus_next_pending();
+        assert!(first.is_some());
+        let mut seen = vec![first];
+        for _ in 0..pending {
+            seen.push(s.focus_next_pending());
+        }
+        assert_eq!(seen.first(), seen.last(), "on revient au début");
+        assert!(
+            s.review_summary()
+                .ends_with(&format!("{pending} à confirmer"))
+        );
+    }
+
+    #[test]
+    fn disabled_actions_say_why() {
+        let mut s = AnonymizeState::default();
+        assert!(s.analyze_blocker().is_some());
+        s.add_files([entry("a.txt")], &["txt"]);
+        assert_eq!(s.analyze_blocker(), None);
+        let mut p = ProtectState::default();
+        assert_eq!(
+            p.blocker(),
+            Some("Choisissez un mot de passe pour la table.")
+        );
+        p.password = "court".into();
+        assert_eq!(p.blocker(), Some("Le mot de passe est trop faible."));
+        p.password = "Cheval-Agrafe-Batterie-47".into();
+        assert_eq!(p.blocker(), Some("Confirmez le mot de passe."));
+        p.confirm = "Cheval".into();
+        assert_eq!(p.blocker(), Some("Les deux mots de passe diffèrent."));
+        p.confirm = p.password.clone();
+        assert_eq!(p.blocker(), None);
+        p.mode = ProtectMode::ExistingTable;
+        assert_eq!(p.blocker(), Some("Choisissez la table à reprendre."));
+        p.existing_path = Some("t.anonmap".into());
+        assert_eq!(p.blocker(), Some("Ouvrez d'abord la table à reprendre."));
+        p.mode = ProtectMode::Irreversible;
+        assert_eq!(p.blocker(), None);
+        s.protect = p;
+        s.out_dir = None;
+        assert_eq!(
+            s.protect_blocker(),
+            Some("Choisissez le dossier de sortie.")
+        );
+        let (mut r, session) = reviewed(Profile::Standard);
+        assert_eq!(r.review_blocker(), None);
+        r.set_all_visible(false, &session);
+        assert_eq!(
+            r.review_blocker(),
+            Some("Cochez au moins une valeur à anonymiser.")
+        );
+    }
+
+    #[test]
+    fn dropped_map_is_offered_for_reuse() {
+        let mut s = AnonymizeState::default();
+        let r = s.add_files([entry("table_anonymiseur.anonmap")], &["txt"]);
+        assert_eq!(r.outputs, 0);
+        assert!(r.map.is_some());
+        assert!(!s.accept_offered_map(), "rien de proposé");
+        s.offered_map = r.map;
+        assert!(s.accept_offered_map());
+        assert_eq!(s.protect.mode, ProtectMode::ExistingTable);
+        assert!(s.protect.existing_path.is_some());
+        assert!(s.offered_map.is_none());
     }
 
     #[test]

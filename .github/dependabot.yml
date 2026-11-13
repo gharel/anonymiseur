@@ -1,10 +1,18 @@
 version: 2
 updates:
+  # Une seule pull request par semaine pour les mises à jour mineures et correctives ;
+  # une mise à jour majeure arrive seule, pour être relue à part.
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      cargo-mineures:
+        update-types: ["minor", "patch"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]

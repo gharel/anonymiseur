@@ -1,9 +1,10 @@
 name: CI
 
 on:
-  # Branches seulement : une étiquette (version, modèles) n'a pas à relancer la CI.
+  # main seulement : une étiquette (version, modèles) n'a pas à relancer la CI, et une
+  # branche de proposition (Dependabot…) est déjà vérifiée par sa pull request.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 permissions:

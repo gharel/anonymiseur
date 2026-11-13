@@ -1,5 +1,7 @@
 /target/
 /target-*/
+# Exécutables produits par tools/build-release.ps1
+/dist/
 **/target/
 tools/.venv/
 __pycache__/

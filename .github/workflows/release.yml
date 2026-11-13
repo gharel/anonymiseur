@@ -1,0 +1,200 @@
+name: Release
+
+# Une étiquette v* (ex. v0.2.0) construit et publie :
+#   Windows x64     : Anonymiseur.exe (complet) et Anonymiseur-Lite.exe, CRT statique, autonomes
+#   macOS arm64     : Anonymiseur (complet), paquet .app zippé
+#   macOS Intel     : Anonymiseur Lite (pas de binaires ONNX Runtime précompilés pour x86_64-apple-darwin)
+# Les modèles .onnx viennent de la release « modeles-v1 » du dépôt et sont vérifiés contre
+# assets/ner/SHA256SUMS.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  MODELES_RELEASE: modeles-v1
+  ORT_VERSION: "1.31.0"
+
+jobs:
+  windows:
+    name: Windows x64 (complet + Lite)
+    runs-on: windows-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer la chaîne d'outils
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: astral-sh/setup-uv@v6
+
+      # Même libclang que sur le poste de développement (tools/dev-env.ps1).
+      - name: libclang pour bindgen
+        shell: pwsh
+        run: |
+          uv venv tools/.venv
+          uv pip install --python tools/.venv libclang
+
+      - name: Récupérer les modèles
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$MODELES_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern '*.onnx' --dir assets/ner --clobber
+          cd assets/ner && sha256sum -c SHA256SUMS
+
+      - name: Cache ONNX Runtime (statique, /MT)
+        id: cache-ort
+        uses: actions/cache@v4
+        with:
+          path: target-ort/lib
+          key: ort-${{ env.ORT_VERSION }}-windows-x64-mt-${{ hashFiles('tools/build-ort.ps1') }}
+
+      - name: Compiler ONNX Runtime
+        if: steps.cache-ort.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./tools/build-ort.ps1 -Version $env:ORT_VERSION -Prune
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-crt-static
+          workspaces: ". -> target-dist"
+
+      - name: Construire les deux éditions
+        shell: pwsh
+        run: |
+          $env:ORT_LIB_PATH = "$PWD\target-ort\lib"
+          ./tools/build-release.ps1
+
+      - name: Tester l'IA avec ONNX Runtime statique
+        shell: pwsh
+        run: |
+          $env:ORT_LIB_PATH = "$PWD\target-ort\lib"
+          . ./tools/dev-env.ps1 -StaticCrt
+          cargo test -p anonymiseur --release --locked --target-dir target-dist --test moteur
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            dist/Anonymiseur.exe
+            dist/Anonymiseur-Lite.exe
+          if-no-files-found: error
+
+  macos-arm64:
+    name: macOS arm64 (complet)
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.4"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer la chaîne d'outils
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Récupérer les modèles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$MODELES_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern '*.onnx' --dir assets/ner --clobber
+          cd assets/ner && shasum -a 256 -c SHA256SUMS
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      # ONNX Runtime : binaires précompilés d'ort-sys (aarch64-apple-darwin), liés statiquement.
+      - name: Construire
+        run: cargo build -p anonymiseur --release --locked
+
+      - name: Tester l'IA
+        run: cargo test -p anonymiseur --release --locked --test moteur
+
+      - name: Paquet .app
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" packaging/macos/bundle.sh \
+            target/release/anonymiseur dist Anonymiseur-macos-arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: dist/Anonymiseur-macos-arm64.zip
+          if-no-files-found: error
+
+  macos-intel:
+    name: macOS Intel (Lite)
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.4"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer la chaîne d'outils
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-lite
+
+      - name: Construire
+        run: cargo build -p anonymiseur --release --locked --no-default-features
+
+      - name: Paquet .app
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" packaging/macos/bundle.sh \
+            target/release/anonymiseur dist Anonymiseur-Lite-macos-x64 Lite
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64
+          path: dist/Anonymiseur-Lite-macos-x64.zip
+          if-no-files-found: error
+
+  publier:
+    name: Publier la release
+    needs: [windows, macos-arm64, macos-intel]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: livrables
+          merge-multiple: true
+
+      - name: Empreintes SHA-256
+        working-directory: livrables
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+          {
+            echo "Exécutables non signés : voir la section « Premier lancement » du README."
+            echo
+            echo "| Fichier | SHA-256 |"
+            echo "|---|---|"
+            while read -r empreinte fichier; do
+              echo "| \`$fichier\` | \`$empreinte\` |"
+            done < SHA256SUMS
+          } > ../notes.md
+
+      - name: Créer la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" livrables/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Anonymiseur ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md

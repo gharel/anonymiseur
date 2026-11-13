@@ -16,7 +16,30 @@ uv run --project tools tools/make_examples.py            # régénérer les faux
 uv run --project tools tools/import_charte.py            # régénérer assets/charte depuis design-skazy
 ```
 
-Sous Windows, `mupdf-sys` a besoin de libclang : `$env:LIBCLANG_PATH = "<racine>\tools\.venv\Lib\site-packages\clang\native"` (créé par `uv venv tools/.venv` puis `uv pip install --python tools/.venv libclang`).
+Environnement Windows (PowerShell, à la racine) : `mupdf-sys` a besoin de libclang, sans LLVM installé.
+
+```powershell
+uv venv tools/.venv; uv pip install --python tools/.venv libclang   # une fois
+. .\tools\dev-env.ps1                                     # LIBCLANG_PATH, BINDGEN_EXTRA_CLANG_ARGS (CRT dynamique, développement)
+```
+
+Modèles de l'IA (`assets/ner/*.onnx`, non versionnés, requis par l'édition complète et par `cargo test --workspace`) :
+
+```bash
+uv run --project tools/model tools/model/prepare_assets.py                    # les préparer (réseau, voir assets/ner/LISEZMOI.md)
+gh release download modeles-v1 --pattern '*.onnx' --dir assets/ner --clobber  # ou les récupérer depuis la release du dépôt
+cd assets/ner && sha256sum -c SHA256SUMS                                      # vérifier les empreintes
+```
+
+Exécutables livrés (Windows, CRT statique, aucune DLL hors système) :
+
+```powershell
+.\tools\build-ort.ps1                      # ONNX Runtime 1.31 statique /MT, CPU seul, dans target-ort\ (30 à 60 min, une fois)
+.\tools\build-release.ps1                  # dist\Anonymiseur.exe (complet) et dist\Anonymiseur-Lite.exe ; taille, SHA-256, DLL
+.\tools\build-release.ps1 -Edition Lite    # Lite seule : ni ONNX Runtime ni modèles
+```
+
+`build-release.ps1` compile dans `target-dist\` (options d'édition de liens distinctes de `target\`). macOS : `packaging/macos/bundle.sh` (paquet `.app`), utilisé par `.github/workflows/release.yml` sur une étiquette `v*`.
 
 ## Architecture
 

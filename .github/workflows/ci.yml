@@ -15,6 +15,8 @@ env:
   CARGO_TERM_COLOR: always
   # Seuil de couverture (lignes, en %) pour la tâche coverage.
   COVERAGE_MIN: "80"
+  # Release GitHub du dépôt qui porte les modèles .onnx (non versionnés), vérifiés contre assets/ner/SHA256SUMS.
+  MODELES_RELEASE: modeles-v1
 
 jobs:
   lint:
@@ -25,6 +27,14 @@ jobs:
       LIBCLANG_PATH: C:\Program Files\LLVM\bin
     steps:
       - uses: actions/checkout@v4
+      # clippy --all-targets compile l'application complète : include_bytes! des modèles.
+      - name: Récupérer les modèles
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$MODELES_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern '*.onnx' --dir assets/ner --clobber
+          cd assets/ner && if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
       # La version de la chaîne d'outils vient de rust-toolchain.toml.
       - name: Installer la chaîne d'outils
         shell: bash
@@ -42,6 +52,14 @@ jobs:
         os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+      # Édition complète (fonctionnalité par défaut) : les modèles sont inclus dans le binaire.
+      - name: Récupérer les modèles
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$MODELES_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern '*.onnx' --dir assets/ner --clobber
+          cd assets/ner && if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
       - name: Installer la chaîne d'outils
         shell: bash
         run: rustup show active-toolchain || rustup toolchain install
@@ -64,6 +82,32 @@ jobs:
             echo "$status"
             exit 1
           fi
+
+  test-lite:
+    name: Test édition Lite (sans modèles)
+    # Aucun modèle téléchargé : l'édition Lite doit compiler et passer ses tests sans eux.
+    runs-on: windows-latest
+    env:
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer la chaîne d'outils
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: lite
+      - name: Aucun modèle présent
+        shell: bash
+        run: |
+          if ls assets/ner/*.onnx >/dev/null 2>&1; then
+            echo "::error::Des modèles .onnx sont présents : le test Lite ne prouverait rien."
+            exit 1
+          fi
+      - name: Tests de l'application (Lite)
+        run: cargo test -p anonymiseur --no-default-features
+        env:
+          INSTA_UPDATE: no
 
   deny:
     name: Cargo deny

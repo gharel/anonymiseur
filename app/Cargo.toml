@@ -25,10 +25,15 @@ anon-vault = { version = "0.1.0", path = "../crates/anon-vault" }
 eframe = { version = "0.37", features = ["glow"] }
 egui = "0.37"
 egui_extras = { version = "0.37", features = ["image", "svg"] }
-image = { version = "0.25.10", default-features = false, features = ["png"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp"] }
 rfd = "0.18"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["eframe", "snapshot", "wgpu"] }
+
+[build-dependencies]
+# Icône et informations de version de l'exécutable Windows (build.rs). MIT, aucun réseau :
+# appelle rc.exe du SDK Windows. Sans la fonctionnalité toml (métadonnées posées dans build.rs).
+winresource = { version = "0.1.34", default-features = false }

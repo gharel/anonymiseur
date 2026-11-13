@@ -1,0 +1,65 @@
+name: Pages
+
+# Publie le dossier site/ sur GitHub Pages.
+# Réglage requis une fois : Settings, Pages, Source = « GitHub Actions ».
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Après une release, seulement si elle a réussi.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      # Empreintes de la dernière release : jamais écrites en dur dans la page.
+      # Sans release, empreintes.json n'existe pas et la page affiche un message.
+      - name: Empreintes SHA-256 de la dernière release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/sums"
+          if gh release download --repo gharel/anonymiseur --pattern SHA256SUMS --dir "$RUNNER_TEMP/sums" --clobber; then
+            python3 - "$RUNNER_TEMP/sums/SHA256SUMS" site/empreintes.json <<'PY'
+          import json, sys
+          out = {}
+          for ligne in open(sys.argv[1], encoding="utf-8"):
+              parts = ligne.split()
+              if len(parts) == 2:
+                  out[parts[1].lstrip("*")] = parts[0].lower()
+          json.dump(out, open(sys.argv[2], "w", encoding="utf-8"), indent=2)
+          PY
+            cat site/empreintes.json
+          else
+            echo "Aucune release publiée : page sans empreintes."
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

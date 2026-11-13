@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anonymiseur : protégez vos données avant d'utiliser une IA</title>
+<meta name="description" content="Anonymiseur remplace les données sensibles d'un document par des balises, puis les remet dans la réponse de l'IA. Application libre de Skazy Formation, 100 % locale, pour Windows et macOS.">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" type="image/png" href="img/icon-256.png">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+<symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+  <path d="M7 11V7a5 5 0 0 1 10 0v4" /></symbol>
+<symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <polyline points="7 10 12 15 17 10" />
+  <line x1="12" x2="12" y1="15" y2="3" /></symbol>
+<symbol id="i-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
+  <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" /></symbol>
+<symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+  <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+  <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+  <path d="m2 2 20 20" /></symbol>
+<symbol id="i-file-text" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+  <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+  <path d="M10 9H8" />
+  <path d="M16 13H8" />
+  <path d="M16 17H8" /></symbol>
+<symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" /></symbol>
+<symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+  <path d="M20 3v4" />
+  <path d="M22 5h-4" />
+  <path d="M4 17v2" />
+  <path d="M5 18H3" /></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <polyline points="17 8 12 3 7 8" />
+  <line x1="12" x2="12" y1="3" y2="15" /></symbol>
+<symbol id="i-undo-2" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5" />
+  <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" /></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" />
+  <line x1="8" x2="16" y1="21" y2="21" />
+  <line x1="12" x2="12" y1="17" y2="21" /></symbol>
+<symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" /></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" />
+  <path d="M12 16v-4" />
+  <path d="M12 8h.01" /></symbol>
+<symbol id="i-clipboard-paste" viewBox="0 0 24 24"><path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z" />
+  <path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2M11 14h10" />
+  <path d="m17 10 4 4-4 4" /></symbol>
+</svg>
+<a class="skip" href="#contenu">Aller au contenu</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="https://formation.skazy.nc/" aria-label="Skazy Formation">
+      <img class="l" src="img/logo-color.png" width="122" height="40" alt="Skazy Formation">
+      <img class="d" src="img/logo-white-color.png" width="122" height="40" alt="Skazy Formation">
+    </a>
+    <a class="btn small" href="#telechargement"><svg class="i sm" aria-hidden="true"><use href="#i-download"/></svg>Télécharger</a>
+  </div>
+</header>
+
+<main id="contenu">
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <span class="badge">Libre et gratuit</span>
+      <h1>Anonymiseur</h1>
+      <p class="lead">Masquez les noms, adresses, numéros et montants d'un document avant de l'envoyer à une IA, puis remettez les vraies valeurs dans sa réponse. Tout se passe sur votre ordinateur.</p>
+      <p><a class="btn" href="#telechargement"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Télécharger</a></p>
+      <p class="sub" id="hero-os">Pour Windows et macOS. Aucune installation, aucune connexion à Internet.</p>
+    </div>
+    <figure class="shot">
+      <img src="captures/anonymiser_2_verifier_1280x800.png" width="1280" height="800" alt="Écran de vérification de l'application : la liste des données détectées, avec leur type, leur balise (par exemple [PERSONNE_1]) et le niveau de protection Standard ou Renforcé.">
+      <figcaption>Vous relisez et validez la liste avant toute anonymisation.</figcaption>
+    </figure>
+  </div>
+</div>
+
+<section id="principe" aria-labelledby="t-principe">
+  <div class="wrap">
+    <h2 id="t-principe">Le principe en trois étapes</h2>
+    <p class="intro">Anonymiseur s'adresse aux apprenants et aux formateurs qui veulent se faire aider par une IA sur des documents contenant des données personnelles.</p>
+    <div class="grid c3">
+      <div class="card">
+        <h3><span class="step-n" aria-hidden="true">1</span>Anonymiser</h3>
+        <p>Déposez votre fichier. L'application propose une liste de données à masquer ; vous la relisez, la corrigez et la validez. Elle produit un fichier anonymisé et une table de correspondance protégée par un mot de passe que vous choisissez.</p>
+      </div>
+      <div class="card">
+        <h3><span class="step-n" aria-hidden="true">2</span>Envoyer à l'IA</h3>
+        <p>Donnez à l'IA le fichier anonymisé avec la consigne fournie par l'application. Elle demande à l'IA de conserver les balises telles quelles.</p>
+      </div>
+      <div class="card">
+        <h3><span class="step-n" aria-hidden="true">3</span>Désanonymiser</h3>
+        <p>Collez la réponse de l'IA et ouvrez votre table avec son mot de passe : les balises redeviennent les vraies valeurs. Une balise légèrement abîmée par l'IA est reconnue ; une balise inconnue est signalée et laissée intacte.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:40px">Un exemple</h3>
+    <div class="ba">
+      <div class="card">
+        <span class="lab">Votre texte</span>
+        <p><mark>Jean Dupont</mark> (<mark>jean.dupont@example.com</mark>) a signé le contrat avec <mark>Lagon Conseil</mark>.</p>
+      </div>
+      <div class="arrow" aria-hidden="true"><svg class="i lg"><use href="#i-lock"/></svg></div>
+      <div class="card">
+        <span class="lab">Envoyé à l'IA</span>
+        <p><span class="tag">[PERSONNE_1]</span> (<span class="tag">[EMAIL_1]</span>) a signé le contrat avec <span class="tag">[SOCIETE_1]</span>.</p>
+      </div>
+    </div>
+    <p class="note" style="margin-top:12px">L'IA répond en réutilisant les balises ; Anonymiseur les remplace par les vraies valeurs. Les noms de cet exemple sont fictifs.</p>
+
+    <figure class="shot" style="margin-top:32px">
+      <img src="captures/desanonymiser_3_resultat_1280x800.png" width="1280" height="800" loading="lazy" alt="Écran de désanonymisation : la table de correspondance est ouverte et la réponse de l'IA, avec ses balises, est collée à droite.">
+      <figcaption>Désanonymisation : la table est ouverte, la réponse de l'IA est collée.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="alt" id="protege" aria-labelledby="t-protege">
+  <div class="wrap">
+    <h2 id="t-protege">Ce qui est protégé</h2>
+    <div class="grid c2">
+      <div class="card">
+        <h3>Données reconnues</h3>
+        <ul class="tags">
+          <li>Noms et prénoms</li><li>Sociétés</li><li>Lieux</li><li>Adresses</li><li>Emails</li><li>Téléphones</li><li>IBAN</li><li>Numéros de sécurité sociale</li><li>SIRET et SIREN</li><li>RIDET</li><li>Cartes bancaires</li><li>Adresses IP</li><li>Liens</li><li>Dates de naissance</li><li>Plaques d'immatriculation</li><li>Matricules et identifiants</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Deux profils</h3>
+        <ul class="clean">
+          <li><strong>Standard</strong> : les identifiants directs (nom, email, téléphone, IBAN, etc.).</li>
+          <li><strong>Renforcé</strong> : le profil Standard, plus les informations indirectes qui peuvent désigner une personne par recoupement : dates, âges, fonctions, lieux, montants, matricules.</li>
+        </ul>
+        <p style="margin-top:12px">À la fin, un rapport de risque (Faible, Modéré, Élevé) vous conseille d'après ce qui reste visible.</p>
+      </div>
+      <div class="card">
+        <h3>Formats pris en charge</h3>
+        <ul class="clean">
+          <li>Word (<code>.docx</code>), Excel (<code>.xlsx</code>), PowerPoint (<code>.pptx</code>)</li>
+          <li>OpenDocument (<code>.odt</code>, <code>.ods</code>, <code>.odp</code>)</li>
+          <li>PDF, y compris scanné (lu par reconnaissance de texte)</li>
+          <li>Images (<code>.png</code>, <code>.jpg</code>, <code>.webp</code> et autres)</li>
+          <li>Texte (<code>.txt</code>, <code>.md</code>, <code>.csv</code>)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Google Docs, Sheets, Slides</h3>
+        <p>Dans Google, choisissez Fichier, Télécharger, puis le format Microsoft Office ou OpenDocument, et déposez ce fichier dans l'application. Un raccourci <code>.gdoc</code> ou <code>.gsheet</code> ne contient pas le document.</p>
+        <p>Les anciens formats <code>.doc</code>, <code>.xls</code>, <code>.ppt</code> sont à réenregistrer au format moderne.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="confidentialite" aria-labelledby="t-conf">
+  <div class="wrap">
+    <h2 id="t-conf">Confidentialité</h2>
+    <div class="grid c2">
+      <div class="card">
+        <h3><svg class="i lg" aria-hidden="true"><use href="#i-shield-check"/></svg>Tout reste chez vous</h3>
+        <ul class="clean">
+          <li>Vos documents ne quittent jamais votre ordinateur : l'application ne se connecte pas à Internet. L'IA de noms de l'édition complète est un modèle embarqué qui tourne localement.</li>
+          <li>La table de correspondance est chiffrée par votre mot de passe (Argon2id, AES-256-GCM). Il n'est pas récupérable : personne, Skazy Formation comprise, ne peut ouvrir la table sans lui.</li>
+          <li>Contrôle de fuite avant livraison : si une valeur validée subsiste dans le fichier produit, il n'est pas créé.</li>
+          <li>Vous pouvez choisir le mode irréversible : aucune table n'est enregistrée.</li>
+        </ul>
+        <p style="margin-top:12px"><a href="https://github.com/gharel/anonymiseur/blob/main/CONFIDENTIALITE.md">Lire le détail de la confidentialité</a></p>
+      </div>
+      <div class="card">
+        <h3><svg class="i lg" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Ce que l'outil ne garantit pas</h3>
+        <ul class="clean">
+          <li>Ce n'est pas une anonymisation au sens du RGPD. C'est une pseudonymisation réversible : avec la table et le mot de passe, tout se retrouve, et un document peut rester identifiable par recoupement.</li>
+          <li>Aucune détection n'est complète. Relisez toujours l'écran de validation : un nom rare ou une faute de frappe peuvent passer.</li>
+          <li>La lecture des scans peut manquer du texte, surtout manuscrit : vérifiez à l'œil.</li>
+          <li>Les balises protègent les données remplacées, pas le reste du contenu que vous envoyez à l'IA.</li>
+          <li>L'application n'a pas encore été testée sur macOS, ni avec Microsoft Office lui-même.</li>
+        </ul>
+      </div>
+    </div>
+    <figure class="shot" style="margin-top:32px">
+      <img src="captures/anonymiser_4_termine_1280x800.png" width="1280" height="800" loading="lazy" alt="Écran de fin d'anonymisation : pour chaque fichier, le nombre de remplacements, le résultat du contrôle de fuite et le risque de ré-identification.">
+      <figcaption>Pour chaque fichier : contrôle de fuite et rapport de risque.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="alt" id="telechargement" aria-labelledby="t-dl">
+  <div class="wrap">
+    <h2 id="t-dl">Téléchargements</h2>
+    <p class="intro"><strong>Complète</strong> : règles, dictionnaires et IA de noms (modèles embarqués) ; <strong>Lite</strong> : règles et dictionnaires seulement, plus petite, sans IA de noms. Les liens pointent toujours vers la dernière version publiée.</p>
+
+    <div class="dl">
+      <div class="card" data-os="windows">
+        <span class="badge reco-badge">Recommandé pour votre ordinateur</span>
+        <h3>Windows (64 bits)</h3>
+
+        <div data-file="Anonymiseur.exe">
+          <p><strong>Édition complète</strong></p>
+          <p><a class="btn" href="https://github.com/gharel/anonymiseur/releases/latest/download/Anonymiseur.exe"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Télécharger</a></p>
+          <p class="fname">Anonymiseur.exe</p>
+          <details class="verif"><summary>Vérifier le fichier</summary>
+            <p class="empty">Empreintes disponibles à la publication de la première version. <a href="https://github.com/gharel/anonymiseur/releases">Page des versions</a></p>
+            <div class="hash" hidden><code class="hash-val" id="h-exe"></code><button type="button" class="btn sec small copy" data-target="h-exe"><svg class="i sm" aria-hidden="true"><use href="#i-clipboard-paste"/></svg><span class="t">Copier</span></button></div>
+            <p><a class="vt" hidden rel="noopener" href="#">Analyser avec VirusTotal</a></p>
+            <p>Pour recalculer l'empreinte (PowerShell) :</p>
+            <code class="cmd">Get-FileHash .\Anonymiseur.exe -Algorithm SHA256</code>
+            <p>ou, dans l'invite de commandes :</p>
+            <code class="cmd">certutil -hashfile Anonymiseur.exe SHA256</code>
+          </details>
+        </div>
+
+        <div data-file="Anonymiseur-Lite.exe">
+          <p><strong>Édition Lite</strong></p>
+          <p><a class="btn sec" href="https://github.com/gharel/anonymiseur/releases/latest/download/Anonymiseur-Lite.exe"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Télécharger la Lite</a></p>
+          <p class="fname">Anonymiseur-Lite.exe</p>
+          <details class="verif"><summary>Vérifier le fichier</summary>
+            <p class="empty">Empreintes disponibles à la publication de la première version. <a href="https://github.com/gharel/anonymiseur/releases">Page des versions</a></p>
+            <div class="hash" hidden><code class="hash-val" id="h-lite"></code><button type="button" class="btn sec small copy" data-target="h-lite"><svg class="i sm" aria-hidden="true"><use href="#i-clipboard-paste"/></svg><span class="t">Copier</span></button></div>
+            <p><a class="vt" hidden rel="noopener" href="#">Analyser avec VirusTotal</a></p>
+            <p>Pour recalculer l'empreinte (PowerShell) :</p>
+            <code class="cmd">Get-FileHash .\Anonymiseur-Lite.exe -Algorithm SHA256</code>
+            <p>ou, dans l'invite de commandes :</p>
+            <code class="cmd">certutil -hashfile Anonymiseur-Lite.exe SHA256</code>
+          </details>
+        </div>
+      </div>
+
+      <div class="card" data-os="mac">
+        <span class="badge reco-badge">Recommandé pour votre ordinateur</span>
+        <h3>macOS</h3>
+
+        <div data-file="Anonymiseur-macos-arm64.zip">
+          <p><strong>Apple Silicon (M1 et suivants), édition complète</strong></p>
+          <p><a class="btn" href="https://github.com/gharel/anonymiseur/releases/latest/download/Anonymiseur-macos-arm64.zip"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Télécharger</a></p>
+          <p class="fname">Anonymiseur-macos-arm64.zip</p>
+          <details class="verif"><summary>Vérifier le fichier</summary>
+            <p class="empty">Empreintes disponibles à la publication de la première version. <a href="https://github.com/gharel/anonymiseur/releases">Page des versions</a></p>
+            <div class="hash" hidden><code class="hash-val" id="h-arm"></code><button type="button" class="btn sec small copy" data-target="h-arm"><svg class="i sm" aria-hidden="true"><use href="#i-clipboard-paste"/></svg><span class="t">Copier</span></button></div>
+            <p><a class="vt" hidden rel="noopener" href="#">Analyser avec VirusTotal</a></p>
+            <p>Pour recalculer l'empreinte (Terminal) :</p>
+            <code class="cmd">shasum -a 256 Anonymiseur-macos-arm64.zip</code>
+          </details>
+        </div>
+
+        <div data-file="Anonymiseur-Lite-macos-x64.zip">
+          <p><strong>Mac Intel, édition Lite</strong> (seule édition prévue pour Intel)</p>
+          <p><a class="btn sec" href="https://github.com/gharel/anonymiseur/releases/latest/download/Anonymiseur-Lite-macos-x64.zip"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Télécharger la Lite</a></p>
+          <p class="fname">Anonymiseur-Lite-macos-x64.zip</p>
+          <details class="verif"><summary>Vérifier le fichier</summary>
+            <p class="empty">Empreintes disponibles à la publication de la première version. <a href="https://github.com/gharel/anonymiseur/releases">Page des versions</a></p>
+            <div class="hash" hidden><code class="hash-val" id="h-x64"></code><button type="button" class="btn sec small copy" data-target="h-x64"><svg class="i sm" aria-hidden="true"><use href="#i-clipboard-paste"/></svg><span class="t">Copier</span></button></div>
+            <p><a class="vt" hidden rel="noopener" href="#">Analyser avec VirusTotal</a></p>
+            <p>Pour recalculer l'empreinte (Terminal) :</p>
+            <code class="cmd">shasum -a 256 Anonymiseur-Lite-macos-x64.zip</code>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <div class="links">
+      <a href="https://github.com/gharel/anonymiseur/releases">Toutes les versions</a>
+      <a href="https://github.com/gharel/anonymiseur/releases/latest/download/SHA256SUMS">Empreintes SHA-256 (SHA256SUMS)</a>
+    </div>
+    <p class="note" style="margin-top:12px">Comparez l'empreinte de votre fichier à celle affichée ici : si elles diffèrent, ne l'ouvrez pas. Le lien VirusTotal ouvre le rapport d'analyse de ce fichier sur le site de VirusTotal.</p>
+  </div>
+</section>
+
+<section id="lancement" aria-labelledby="t-lancement">
+  <div class="wrap">
+    <h2 id="t-lancement">Premier lancement</h2>
+    <p class="intro">L'application n'est pas signée : votre système affichera un avertissement. C'est attendu, voici comment continuer.</p>
+    <div class="grid c2">
+      <div class="card">
+        <h3><svg class="i lg" aria-hidden="true"><use href="#i-monitor"/></svg>Windows</h3>
+        <ol class="pas">
+          <li>À l'avertissement SmartScreen, cliquez sur « Informations complémentaires », puis sur « Exécuter quand même ».</li>
+          <li>Si Smart App Control bloque le fichier : clic droit sur le fichier, Propriétés, cochez « Débloquer », puis validez.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3><svg class="i lg" aria-hidden="true"><use href="#i-monitor"/></svg>macOS 15 et suivants</h3>
+        <ol class="pas">
+          <li>Ouvrez Réglages Système, puis Confidentialité et sécurité.</li>
+          <li>Cliquez sur « Ouvrir quand même » à côté du message concernant l'application.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Anonymiseur est un logiciel libre de <a href="https://formation.skazy.nc/">Skazy Formation</a>, distribué sous licence <a href="https://github.com/gharel/anonymiseur/blob/main/LICENSE">AGPL-3.0</a>. <a href="https://github.com/gharel/anonymiseur">Code source sur GitHub</a>.</p>
+    <p class="muted">Les logos et la marque Skazy Formation ne sont pas couverts par cette licence. Cette page ne charge aucune ressource extérieure et n'utilise aucun traceur.</p>
+  </div>
+</footer>
+</body>
+</html>

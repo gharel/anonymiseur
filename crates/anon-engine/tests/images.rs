@@ -445,3 +445,63 @@ fn fuite_simulee_dans_une_image() {
     // Rien n'est gardé quand le fichier n'est pas rendu.
     assert!(session.media.is_empty());
 }
+
+/// Aperçu à l'écran de validation : octets et mots de l'image, zones prévues
+/// pour la sélection courante, identiques à celles de l'anonymisation.
+#[test]
+fn apercu_des_images_analysees() {
+    let (engine, calls) = engine(false);
+    let (file, original_image) = pack();
+    let mut analysis = engine.analyze(
+        std::slice::from_ref(&file),
+        &AnalyzeOptions::default(),
+        &Session::new(),
+        &NoProgress,
+    );
+    let images: Vec<_> = analysis.images().collect();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].file, "rapport.pack");
+    assert_eq!(images[0].name, "media/image1.png");
+    assert_eq!(images[0].bytes, original_image.as_slice());
+    assert_eq!(images[0].ocr.words.len(), 4);
+    assert!(!images[0].low_confidence());
+    let debug = format!("{:?}", images[0]);
+    assert!(
+        !debug.contains("Olivier") && !debug.contains("rapport"),
+        "{debug}"
+    );
+    assert!(analysis.image("rapport.pack", "media/image1.png").is_some());
+    assert!(analysis.image("autre.pack", "media/image1.png").is_none());
+
+    let session = Session::new();
+    let zones = analysis.mask_previews(&session);
+    assert_eq!(zones.len(), 1);
+    assert!(zones[0].contains(&widened(60, 0, 50, 10)), "{:?}", zones[0]);
+    assert!(zones[0].contains(&widened(0, 20, 200, 10)));
+    assert!(!zones[0].contains(&widened(0, 0, 50, 10)), "« Contact »");
+    assert!(session.entities.is_empty(), "session non modifiée");
+
+    // Une personne décochée n'est plus masquée.
+    let person = analysis
+        .candidates
+        .iter()
+        .find(|c| c.kind == EntityKind::Personne)
+        .map(|c| c.id)
+        .unwrap();
+    analysis.set_selected(person, false);
+    let zones = analysis.mask_previews(&session);
+    assert!(!zones[0].contains(&widened(60, 0, 50, 10)));
+    assert!(zones[0].contains(&widened(0, 20, 200, 10)));
+
+    // L'anonymisation masque exactement les zones annoncées.
+    let mut session = Session::new();
+    engine.apply_selection(&analysis, &mut session);
+    engine
+        .anonymize(&file, &analysis, &mut session, &AnonymizeOptions::default())
+        .unwrap();
+    let masked: Vec<PixelRect> = calls.lock().unwrap().masks[0]
+        .iter()
+        .map(|r| r.rect)
+        .collect();
+    assert_eq!(masked, zones[0]);
+}

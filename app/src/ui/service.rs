@@ -5,6 +5,7 @@
 //! Aucun contenu utilisateur n'est journalisé : les messages ne citent que des
 //! noms de fichiers choisis par l'utilisateur et des balises.
 
+use crate::ui::state::images::FileMask;
 use anon_core::{EntityKind, Session, Warning};
 use anon_engine::{
     Analysis, AnonymizeOptions, Anonymized, Engine, EngineError, InputFile, Progress,
@@ -19,6 +20,96 @@ use std::path::{Path, PathBuf};
 const MAX_NAME_ATTEMPTS: u32 = 9999;
 /// Nom de base de la table de correspondance écrite à côté des fichiers.
 pub const MAP_BASENAME: &str = "table_anonymiseur.anonmap";
+
+/// Fichier d'exemple embarqué dans l'exécutable.
+#[derive(Debug, Clone, Copy)]
+pub struct ExampleFile {
+    pub name: &'static str,
+    pub bytes: &'static [u8],
+    /// Document à anonymiser (chargé dans la liste) ; sinon notice ou réponse
+    /// d'IA simulée, seulement copiée.
+    pub document: bool,
+}
+
+macro_rules! example {
+    ($name:literal, $document:literal) => {
+        ExampleFile {
+            name: $name,
+            bytes: include_bytes!(concat!("../../../exemples/", $name)),
+            document: $document,
+        }
+    };
+}
+
+/// Fichiers fictifs de `exemples/` (sans `attendu.json`, réservé aux tests).
+pub const EXAMPLES: &[ExampleFile] = &[
+    example!("LISEZMOI.md", false),
+    example!("brief.md", true),
+    example!("carte-visite.png", true),
+    example!("compte-rendu.odt", true),
+    example!("contrat-prestation.docx", true),
+    example!("courrier-scanne.pdf", true),
+    example!("export.csv", true),
+    example!("facture.pdf", true),
+    example!("fichier-clients.xlsx", true),
+    example!("informe-es.txt", true),
+    example!("notes.txt", true),
+    example!("planning.ods", true),
+    example!("presentation-projet.pptx", true),
+    example!("reponse-ia-exemple.md", false),
+    example!("report-en.docx", true),
+    example!("support.odp", true),
+];
+
+/// Nom du dossier créé pour les exemples.
+pub const EXAMPLES_DIR: &str = "Exemples Anonymiseur";
+
+/// Crée `parent/name`, ou `name_2`, `name_3`… si le nom est pris.
+pub fn create_new_dir(parent: &Path, name: &str) -> std::io::Result<PathBuf> {
+    for n in 1..=MAX_NAME_ATTEMPTS {
+        let candidate = if n == 1 {
+            name.to_owned()
+        } else {
+            format!("{name}_{n}")
+        };
+        let path = parent.join(candidate);
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "aucun nom libre",
+    ))
+}
+
+/// Exemples copiés : dossier créé et documents à charger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopiedExamples {
+    pub dir: PathBuf,
+    pub documents: Vec<PathBuf>,
+    pub copied: usize,
+}
+
+/// Copie les exemples dans un nouveau dossier de `parent`. Rien n'est jamais
+/// remplacé : le dossier est neuf, chaque fichier est créé en exclusivité.
+pub fn copy_examples(parent: &Path) -> std::io::Result<CopiedExamples> {
+    let dir = create_new_dir(parent, EXAMPLES_DIR)?;
+    let mut documents = Vec::new();
+    for e in EXAMPLES {
+        let path = write_new(&dir, e.name, e.bytes)?;
+        if e.document {
+            documents.push(path);
+        }
+    }
+    Ok(CopiedExamples {
+        dir,
+        documents,
+        copied: EXAMPLES.len(),
+    })
+}
 
 /// Fichier refusé ou illisible, avec la raison en clair.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,12 +277,15 @@ impl BatchReport {
 /// traité en mémoire (contrôle de fuite bloquant), puis la table est scellée et
 /// écrite **avant** les fichiers : un fichier anonymisé n'existe jamais sans sa
 /// table. En cas d'annulation, ce qui est déjà traité est livré avec sa table.
+///
+/// `masks` : zones tracées à la main, transmises au fichier qu'elles concernent.
 #[allow(clippy::too_many_arguments)]
 pub fn anonymize_batch(
     engine: &Engine,
     inputs: &[InputFile],
     analysis: &Analysis,
     never: &[String],
+    masks: &[FileMask],
     session: &mut Session,
     protection: &Protection,
     out_dir: &Path,
@@ -226,21 +320,24 @@ pub fn anonymize_batch(
             .map(|e| sentence(&e.to_string()));
         let outcome = match analysis_error {
             Some(msg) => Outcome::Failed(msg),
-            None => match engine.anonymize(file, analysis, session, &AnonymizeOptions::default()) {
-                Ok(out) => {
-                    ready.push((report.files.len(), out));
-                    // Remplacé après écriture.
-                    Outcome::Cancelled
+            None => {
+                match engine.anonymize(file, analysis, session, &options_for(masks, &file.name)) {
+                    Ok(out) => {
+                        ready.push((report.files.len(), out));
+                        // Remplacé après écriture.
+                        Outcome::Cancelled
+                    }
+                    Err(EngineError::Leak { leaks }) => {
+                        let mut tags: Vec<String> =
+                            leaks.iter().map(|l| l.tag.to_string()).collect();
+                        tags.dedup();
+                        let mut parts: Vec<String> = leaks.iter().map(|l| l.part.clone()).collect();
+                        parts.dedup();
+                        Outcome::Leak { tags, parts }
+                    }
+                    Err(e) => Outcome::Failed(sentence(&e.to_string())),
                 }
-                Err(EngineError::Leak { leaks }) => {
-                    let mut tags: Vec<String> = leaks.iter().map(|l| l.tag.to_string()).collect();
-                    tags.dedup();
-                    let mut parts: Vec<String> = leaks.iter().map(|l| l.part.clone()).collect();
-                    parts.dedup();
-                    Outcome::Leak { tags, parts }
-                }
-                Err(e) => Outcome::Failed(sentence(&e.to_string())),
-            },
+            }
         };
         report.files.push(FileOutcome {
             name: file.name.clone(),
@@ -292,6 +389,16 @@ pub fn anonymize_batch(
         }
     }
     report
+}
+
+fn options_for(masks: &[FileMask], file: &str) -> AnonymizeOptions {
+    AnonymizeOptions {
+        manual_masks: masks
+            .iter()
+            .filter(|m| m.file == file)
+            .map(|m| m.mask.clone())
+            .collect(),
+    }
 }
 
 fn mark_unwritten(report: &mut BatchReport, ready: &[(usize, Anonymized)]) {
@@ -385,6 +492,31 @@ mod tests {
             Some(b"un".to_vec())
         );
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn new_dirs_are_never_reused() {
+        let d = temp_dir("dossiers");
+        let a = create_new_dir(&d, "Exemples");
+        let b = create_new_dir(&d, "Exemples");
+        assert_eq!(a.ok(), Some(d.join("Exemples")));
+        assert_eq!(b.ok(), Some(d.join("Exemples_2")));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn masks_go_to_their_file() {
+        let mut m = crate::ui::state::images::ManualMasks::default();
+        let r = anon_core::PixelRect {
+            x: 0,
+            y: 0,
+            w: 5,
+            h: 5,
+        };
+        m.add("a.png", "image", r);
+        m.add("b.png", "image", r);
+        assert_eq!(options_for(&m.masks, "a.png").manual_masks.len(), 1);
+        assert!(options_for(&m.masks, "c.png").manual_masks.is_empty());
     }
 
     #[test]

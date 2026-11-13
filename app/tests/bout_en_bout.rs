@@ -97,6 +97,7 @@ fn anonymize(st: &mut AnonymizeState, session: &mut Session, progress: &dyn Prog
         &job.inputs,
         &job.analysis,
         &job.never,
+        &job.masks,
         session,
         &job.protection,
         &job.out_dir,
@@ -329,6 +330,7 @@ fn fuite_simulee_bloque_le_fichier() {
         &inputs,
         &analysis,
         &[],
+        &[],
         &mut session,
         &Protection::Password(PASSWORD.into()),
         &work,
@@ -444,6 +446,7 @@ fn reprise_d_une_table_existante_garde_les_balises() {
         &job.inputs,
         &job.analysis,
         &job.never,
+        &job.masks,
         &mut session,
         &job.protection,
         &job.out_dir,
@@ -511,5 +514,223 @@ fn annulation() {
     assert_eq!(report.delivered(), 1);
     assert!(report.map_path.is_some());
     assert!(matches!(report.files[1].outcome, Outcome::Cancelled));
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+// --- Exemples, liste « toujours », généralisation, zones manuelles ----------
+
+#[test]
+fn exemples_copies_sans_ecrasement() {
+    use anonymiseur::ui::service::{EXAMPLES, EXAMPLES_DIR, copy_examples};
+    // Tous les fichiers de `exemples/` sont embarqués, sauf la vérité terrain.
+    let mut on_disk: Vec<String> = std::fs::read_dir(exemples())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .filter(|n| n != "attendu.json")
+        .collect();
+    on_disk.sort();
+    let mut embedded: Vec<String> = EXAMPLES.iter().map(|e| e.name.to_owned()).collect();
+    embedded.sort();
+    assert_eq!(embedded, on_disk);
+
+    let parent = temp_dir("exemples");
+    // Un dossier du même nom existe déjà, avec un fichier de l'utilisateur.
+    std::fs::create_dir_all(parent.join(EXAMPLES_DIR)).unwrap();
+    std::fs::write(parent.join(EXAMPLES_DIR).join("notes.txt"), "à garder").unwrap();
+    let first = copy_examples(&parent).unwrap();
+    let second = copy_examples(&parent).unwrap();
+    assert_eq!(first.dir, parent.join(format!("{EXAMPLES_DIR}_2")));
+    assert_eq!(second.dir, parent.join(format!("{EXAMPLES_DIR}_3")));
+    assert_eq!(
+        std::fs::read_to_string(parent.join(EXAMPLES_DIR).join("notes.txt")).unwrap(),
+        "à garder",
+        "rien n'est remplacé"
+    );
+    for e in EXAMPLES {
+        assert_eq!(
+            std::fs::read(first.dir.join(e.name)).unwrap(),
+            std::fs::read(exemples().join(e.name)).unwrap(),
+            "{}",
+            e.name
+        );
+    }
+    assert_eq!(first.copied, EXAMPLES.len());
+    // Documents chargés : tout sauf la notice et la réponse d'IA simulée.
+    let names: Vec<String> = first
+        .documents
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+        .collect();
+    assert!(!names.contains(&"LISEZMOI.md".to_owned()));
+    assert!(!names.contains(&"reponse-ia-exemple.md".to_owned()));
+    assert_eq!(names.len(), EXAMPLES.len() - 2);
+    // Tous sont acceptés par le moteur livré.
+    let mut st = AnonymizeState::default();
+    st.add_files(
+        first.documents.iter().cloned().map(file_entry),
+        &engine().supported_extensions(),
+    );
+    assert_eq!(st.files.len(), names.len());
+    assert!(st.rejected.is_empty(), "{:?}", st.rejected);
+    let _ = std::fs::remove_dir_all(&parent);
+}
+
+#[test]
+fn terme_toujours_retrouve_et_remplace() {
+    let work = temp_dir("toujours");
+    let file = work.join("notes.txt");
+    std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
+    let mut session = Session::new();
+    let mut st = analyzed(vec![file], &session, &NoProgress);
+    let found = |st: &AnonymizeState| {
+        st.analysis
+            .as_ref()
+            .unwrap()
+            .candidates
+            .iter()
+            .find(|c| c.value == "Martinique")
+            .map(|c| (c.selected, c.occurrences))
+    };
+    // Piège à faux positif : au plus proposé décoché.
+    assert!(
+        matches!(found(&st), None | Some((false, _))),
+        "{:?}",
+        found(&st)
+    );
+
+    // Ajout à l'écran de vérification : l'analyse est relancée.
+    st.always_term = "Martinique".into();
+    st.always_kind = anon_core::EntityKind::Autre;
+    let paths = st.add_always().unwrap().expect("analyse relancée");
+    let (inputs, rejected) = read_inputs(&paths);
+    let analysis = engine().analyze(&inputs, &st.analyze_options(), &session, &NoProgress);
+    st.analysis_done(inputs, rejected, analysis, &session);
+    assert_eq!(found(&st), Some((true, 1)));
+
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut session, &NoProgress);
+    let report = st.report.unwrap();
+    let Outcome::Written { path, .. } = &report.files[0].outcome else {
+        panic!("{:?}", report.files[0].outcome);
+    };
+    let out = std::fs::read_to_string(path).unwrap();
+    assert!(!out.contains("Martinique"), "{out}");
+    assert!(out.contains("[AUTRE_1]"));
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+#[test]
+fn ligne_generalisee_non_restauree() {
+    let work = temp_dir("generalisation");
+    let file = work.join("notes.txt");
+    std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
+    let mut session = Session::new();
+    let mut st = AnonymizeState {
+        profile: anon_core::Profile::Renforce,
+        ..Default::default()
+    };
+    st.add_files([file_entry(file)], &engine().supported_extensions());
+    let to_read = st.begin_analysis().unwrap();
+    let (inputs, rejected) = read_inputs(&to_read);
+    let analysis = engine().analyze(&inputs, &st.analyze_options(), &session, &NoProgress);
+    st.analysis_done(inputs, rejected, analysis, &session);
+    let age = st
+        .visible()
+        .into_iter()
+        .find(|id| st.candidate(*id).is_some_and(|c| c.value == "62 ans"))
+        .expect("âge détecté en Renforcé");
+    assert!(st.set_generalized(age, true, &session));
+    assert_eq!(st.generalized(age), Some("60-69 ans"));
+
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut session, &NoProgress);
+    let report = st.report.unwrap();
+    let Outcome::Written { path, .. } = &report.files[0].outcome else {
+        panic!("{:?}", report.files[0].outcome);
+    };
+    let out = std::fs::read_to_string(path).unwrap();
+    assert!(
+        out.contains("60-69 ans") && !out.contains("62 ans"),
+        "{out}"
+    );
+
+    // Restauration : les balises reviennent, la valeur généralisée reste.
+    let back = work.join("retour");
+    std::fs::create_dir_all(&back).unwrap();
+    let (inputs, _) = read_inputs(std::slice::from_ref(path));
+    let results = restore_batch(engine(), &inputs, &session, &back, &NoProgress);
+    let (restored, _) = results[0].result.as_ref().unwrap();
+    let restored = std::fs::read_to_string(restored).unwrap();
+    assert!(restored.contains("Pierre Garnier"), "{restored}");
+    assert!(restored.contains("60-69 ans"));
+    assert!(!restored.contains("62 ans"));
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+#[test]
+fn zone_manuelle_masquee_sur_la_carte_de_visite() {
+    use anon_core::{ImageProcessor, PixelRect};
+    let work = temp_dir("zone-manuelle");
+    let file = work.join("carte-visite.png");
+    std::fs::copy(exemples().join("carte-visite.png"), &file).unwrap();
+    let mut session = Session::new();
+    // Profil Standard : la fonction (« responsable commerciale ») n'est pas détectée.
+    let mut st = analyzed(vec![file], &session, &NoProgress);
+    let images = st.images();
+    assert_eq!(images.len(), 1, "{images:?}");
+    let info = images[0].clone();
+    let target = {
+        let image = st
+            .analysis
+            .as_ref()
+            .unwrap()
+            .image(&info.file, &info.name)
+            .unwrap();
+        assert!(!image.bytes.is_empty());
+        image
+            .ocr
+            .words
+            .iter()
+            .find(|w| w.text.to_lowercase().contains("commerciale"))
+            .map(|w| w.rect)
+            .expect("mot lu par l'OCR")
+    };
+    let auto = st.auto_zones(0).to_vec();
+    assert!(!auto.is_empty(), "nom, email et téléphone masqués");
+    assert!(
+        !auto.iter().any(|r| r.x <= target.x
+            && r.y <= target.y
+            && r.x + r.w >= target.x + target.w
+            && r.y + r.h >= target.y + target.h),
+        "la fonction n'est pas masquée automatiquement"
+    );
+    // Zone tracée à la main, un peu plus large que le mot.
+    let pad = 6;
+    st.masks.add(
+        &info.file,
+        &info.name,
+        PixelRect {
+            x: target.x.saturating_sub(pad),
+            y: target.y.saturating_sub(pad),
+            w: target.w + 2 * pad,
+            h: target.h + 2 * pad,
+        },
+    );
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut session, &NoProgress);
+    let report = st.report.unwrap();
+    let Outcome::Written { path, .. } = &report.files[0].outcome else {
+        panic!("{:?}", report.files[0].outcome);
+    };
+    // Ré-OCR de la sortie : le mot visé n'est plus lu.
+    let page = anon_pdf::MupdfImageProcessor::new()
+        .ocr(&std::fs::read(path).unwrap())
+        .unwrap();
+    let text = page.text_with_spans().0.to_lowercase();
+    assert!(!text.contains("commerciale"), "{text}");
+    assert!(!text.contains("vaitiare"));
     let _ = std::fs::remove_dir_all(&work);
 }

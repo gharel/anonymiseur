@@ -220,15 +220,21 @@ pub struct OcrPage {
 }
 
 impl OcrPage {
-    /// Texte reconstitué (mots séparés par une espace) et, pour chaque mot,
-    /// son intervalle d'octets dans ce texte. Sert à relier un `Replacement`
-    /// aux rectangles à masquer.
+    /// Texte reconstitué et, pour chaque mot, son intervalle d'octets dans ce
+    /// texte. Sert à relier un `Replacement` aux rectangles à masquer.
+    ///
+    /// Deux mots de la même ligne sont séparés par une espace ; un mot qui
+    /// commence une nouvelle ligne (plus bas, ou revenu à gauche) est précédé
+    /// d'un saut de ligne. Sans cela, « … Bougainville SAS » et « Tél : … » de
+    /// la ligne suivante se liraient « SAS Tél », pris à tort pour une société.
     pub fn text_with_spans(&self) -> (String, Vec<std::ops::Range<usize>>) {
         let mut text = String::new();
         let mut spans = Vec::with_capacity(self.words.len());
         for (i, w) in self.words.iter().enumerate() {
-            if i > 0 {
-                text.push(' ');
+            if let Some(prev) = i.checked_sub(1).and_then(|p| self.words.get(p)) {
+                let below = w.rect.y >= prev.rect.y.saturating_add(prev.rect.h / 2);
+                let back_left = w.rect.x.saturating_add(w.rect.w) <= prev.rect.x;
+                text.push(if below || back_left { '\n' } else { ' ' });
             }
             let start = text.len();
             text.push_str(&w.text);
@@ -299,5 +305,27 @@ mod tests {
         assert_eq!(text, "Jean Dupont");
         assert_eq!(&text[spans[1].clone()], "Dupont");
         assert!((page.mean_confidence() - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ocr_text_keeps_line_breaks() {
+        let mot = |t: &str, x: u32, y: u32| OcrWord {
+            text: t.into(),
+            rect: PixelRect { x, y, w: 40, h: 20 },
+            confidence: 0.9,
+        };
+        let page = OcrPage {
+            width: 400,
+            height: 100,
+            words: vec![
+                mot("Bougainville", 10, 10),
+                mot("SAS", 60, 12),
+                mot("Tél", 10, 50),
+                mot(":", 60, 50),
+            ],
+        };
+        let (text, spans) = page.text_with_spans();
+        assert_eq!(text, "Bougainville SAS\nTél :");
+        assert_eq!(&text[spans[2].clone()], "Tél");
     }
 }

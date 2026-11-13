@@ -28,6 +28,7 @@ const FOOTER_H: f32 = 40.0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     PickDocuments,
+    TryExamples,
     Analyze(Vec<PathBuf>),
     PickExistingMap,
     OpenExistingMap,
@@ -203,6 +204,7 @@ impl AnonApp {
                 let supported = self.supported();
                 self.anonymize.add_files(files, &supported);
             }
+            Effect::TryExamples => self.try_examples(),
             Effect::Analyze(paths) => {
                 let Some(engine) = self.engine.clone() else {
                     self.anonymize.busy = None;
@@ -265,6 +267,7 @@ impl AnonApp {
                         &job.inputs,
                         &job.analysis,
                         &job.never,
+                        &job.masks,
                         &mut session,
                         &job.protection,
                         &job.out_dir,
@@ -344,6 +347,7 @@ impl AnonApp {
             Effect::NewSession => {
                 self.session = Session::new();
                 self.anonymize.reset();
+                self.anonymize.always.clear();
                 self.deanonymize.lock();
                 self.free_text = FreeTextState::default();
                 self.notice = Some((
@@ -378,6 +382,46 @@ impl AnonApp {
                         Msg::Restored(results)
                     });
                 }
+            }
+        }
+    }
+
+    /// Copie les exemples fictifs dans un dossier choisi et les charge dans la liste.
+    fn try_examples(&mut self) {
+        if self.anonymize.step != Step::Drop || self.anonymize.busy.is_some() {
+            return;
+        }
+        let Some(parent) = self.platform.pick_examples_folder() else {
+            return;
+        };
+        self.load_examples(&parent);
+    }
+
+    /// Copie les exemples dans un nouveau dossier de `parent` et les charge.
+    pub fn load_examples(&mut self, parent: &std::path::Path) {
+        match service::copy_examples(parent) {
+            Ok(copied) => {
+                let supported = self.supported();
+                if self.anonymize.files.is_empty() {
+                    self.anonymize.out_dir = Some(copied.dir.clone());
+                }
+                self.anonymize
+                    .add_files(copied.documents.into_iter().map(file_entry), &supported);
+                self.notice = Some((
+                    BannerKind::Success,
+                    format!(
+                        "{} fichiers d'exemple, entièrement fictifs, copiés dans le dossier « {} ». Lisez LISEZMOI.md pour le scénario guidé ; reponse-ia-exemple.md sert à l'onglet Désanonymiser.",
+                        copied.copied,
+                        service::file_name(&copied.dir)
+                    ),
+                ));
+            }
+            Err(_) => {
+                self.notice = Some((
+                    BannerKind::Error,
+                    "Copie des exemples impossible dans ce dossier : choisissez-en un autre."
+                        .to_owned(),
+                ));
             }
         }
     }

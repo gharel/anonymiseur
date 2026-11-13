@@ -18,8 +18,8 @@ mod media;
 mod risk;
 
 pub use analysis::{
-    Analysis, AnalyzeOptions, CONTEXT_CHARS, Candidate, FileAnalysis, SELECT_MIN_CONFIDENCE,
-    is_ambiguous,
+    Analysis, AnalyzeOptions, AnalyzedImage, CONTEXT_CHARS, Candidate, FileAnalysis,
+    SELECT_MIN_CONFIDENCE, is_ambiguous,
 };
 pub use engine::{
     AnonymizeOptions, Anonymized, Engine, EngineBuilder, FileReport, HandlerLookup, InputFile,

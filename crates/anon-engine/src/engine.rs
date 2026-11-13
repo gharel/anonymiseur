@@ -334,6 +334,7 @@ impl Engine {
                             images.push(ImageData {
                                 name: m.name.clone(),
                                 sha256: sha256_hex(&m.bytes),
+                                bytes: m.bytes.clone(),
                                 ocr: page,
                             });
                         }

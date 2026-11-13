@@ -8,6 +8,7 @@ use crate::ui::service::{file_name, unused_tags};
 use crate::ui::state::deanonymize::{Busy, DeanonymizeState, InputMode, MapStatus};
 use crate::ui::theme::{Weight, font, palette, radius};
 use crate::ui::widgets::button::icon_button;
+use crate::ui::widgets::field::mono_font;
 use crate::ui::widgets::nav::segmented;
 use crate::ui::widgets::{
     Badge, Banner, Card, DropZone, Icon, PillButton, TextField, body, caption, muted, overline,
@@ -158,6 +159,7 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                     .placeholder("Collez ici la réponse qui contient des balises [PERSONNE_1]…")
                     .id_salt("reponse-ia")
                     .multiline(6)
+                    .monospace()
                     .show(ui);
             }
             InputMode::File => {
@@ -262,13 +264,9 @@ fn result_section(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) 
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.add(
-                        egui::Label::new(
-                            RichText::new(text)
-                                .font(font(Weight::Regular, p.text_sm))
-                                .color(p.text),
-                        )
-                        .wrap()
-                        .selectable(true),
+                        egui::Label::new(RichText::new(text).font(mono_font()).color(p.text))
+                            .wrap()
+                            .selectable(true),
                     );
                 });
             report_banners(ui, r);

@@ -25,6 +25,7 @@ pub fn show(ui: &mut Ui, st: &mut FreeTextState, fx: &mut Vec<Effect>) {
                 .placeholder("Saisissez ou collez votre texte…")
                 .id_salt("texte-original")
                 .multiline(ROWS)
+                .monospace()
                 .show(ui);
         };
         let anonymized = |ui: &mut Ui, st: &mut FreeTextState| {
@@ -32,6 +33,7 @@ pub fn show(ui: &mut Ui, st: &mut FreeTextState, fx: &mut Vec<Effect>) {
                 .placeholder("Le texte anonymisé apparaît ici. Collez-y la réponse de l'IA pour la restaurer.")
                 .id_salt("texte-anonymise")
                 .multiline(ROWS)
+                .monospace()
                 .show(ui);
         };
         if ui.available_width() >= TWO_COLUMNS {

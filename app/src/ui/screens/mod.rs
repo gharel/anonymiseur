@@ -4,6 +4,7 @@
 pub mod anonymize;
 pub mod deanonymize;
 pub mod freetext;
+pub mod images;
 
 use super::state::files::{FileEntry, FileFormat, human_size};
 use super::theme::{Tinted, Weight, font, palette, radius};

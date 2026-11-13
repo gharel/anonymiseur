@@ -4,7 +4,7 @@
 //! Mise à jour : `UPDATE_SNAPSHOTS=force cargo test -p anonymiseur --test snapshots`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use anon_core::{Profile, Session};
+use anon_core::{EntityKind, PixelRect, Profile, Session};
 use anon_engine::{Engine, NoProgress};
 use anonymiseur::moteur::IaStatus;
 use anonymiseur::ui::gallery::{self, GalleryState};
@@ -107,8 +107,12 @@ fn snap(name: &str, setup: impl Fn(&mut AnonApp)) {
 
 /// Dépose les fichiers et lance une vraie analyse.
 fn analyze(app: &mut AnonApp, profile: Profile) {
+    analyze_these(app, profile, &FICHIERS);
+}
+
+fn analyze_these(app: &mut AnonApp, profile: Profile, names: &[&str]) {
     let engine = app.engine.clone().unwrap();
-    let paths: Vec<PathBuf> = FICHIERS.iter().map(|n| exemple(n)).collect();
+    let paths: Vec<PathBuf> = names.iter().map(|n| exemple(n)).collect();
     app.anonymize.profile = profile;
     app.anonymize.add_files(
         paths.into_iter().map(file_entry),
@@ -148,6 +152,7 @@ fn anonymize_all(app: &mut AnonApp, dir: PathBuf) {
         &job.inputs,
         &job.analysis,
         &job.never,
+        &job.masks,
         &mut app.session,
         &job.protection,
         &job.out_dir,
@@ -380,4 +385,136 @@ fn free_text_buttons_use_the_session() {
     harness.get_by_label("Nouvelle session").click();
     harness.run();
     assert!(harness.state().session.entities.is_empty());
+}
+
+#[test]
+fn anonymize_examples_and_always() {
+    snap("anonymiser_1c_exemples", |app| {
+        app.load_examples(&out_dir("exemples"));
+        assert_eq!(app.anonymize.files.len(), 14);
+        // Quelques fichiers seulement, pour voir la liste « toujours » sous la liste.
+        app.anonymize.files.truncate(3);
+        app.anonymize.always = vec![
+            ("Martinique".into(), EntityKind::Lieu),
+            ("Projet Corail".into(), EntityKind::Autre),
+        ];
+        app.anonymize.always_kind = EntityKind::Lieu;
+    });
+}
+
+#[test]
+fn anonymize_generalization() {
+    snap("anonymiser_2b_generalisation", |app| {
+        analyze_these(app, Profile::Renforce, &["notes.txt"]);
+        let session = app.session.clone();
+        let st = &mut app.anonymize;
+        for id in st.visible() {
+            let generalize = st
+                .candidate(id)
+                .is_some_and(|c| matches!(c.kind, EntityKind::Age | EntityKind::Montant));
+            if generalize {
+                assert!(st.set_generalized(id, true, &session));
+            }
+        }
+        st.always = vec![("Martinique".into(), EntityKind::Lieu)];
+    });
+}
+
+#[test]
+fn anonymize_images() {
+    snap("anonymiser_2c_images", |app| {
+        analyze_these(
+            app,
+            Profile::Standard,
+            &["carte-visite.png", "courrier-scanne.pdf"],
+        );
+        let info = app.anonymize.images()[0].clone();
+        app.anonymize.masks.add(
+            &info.file,
+            &info.name,
+            PixelRect {
+                x: 50,
+                y: 160,
+                w: 500,
+                h: 70,
+            },
+        );
+    });
+}
+
+#[test]
+fn tracer_puis_retirer_une_zone() {
+    let mut harness = app(1280.0, 2400.0, |app| {
+        analyze_these(app, Profile::Standard, &["carte-visite.png"]);
+    });
+    harness.run();
+    let canvas = harness
+        .get_by_label("Aperçu de carte-visite.png : tracez un rectangle pour masquer une zone")
+        .rect();
+    let a = canvas.min + egui::vec2(20.0, 20.0);
+    let b = canvas.min + egui::vec2(120.0, 60.0);
+    harness.hover_at(a);
+    harness.run();
+    harness.drag_at(a);
+    harness.run();
+    harness.hover_at(b);
+    harness.run();
+    harness.drop_at(b);
+    harness.run();
+    let masks = harness.state().anonymize.masks.masks.clone();
+    assert_eq!(masks.len(), 1, "{masks:?}");
+    let r = masks[0].mask.rect;
+    assert!(r.w > 0 && r.h > 0 && r.w > r.h, "{r:?}");
+    harness.get_by_label("Retirer la zone 1").click();
+    harness.run();
+    assert!(harness.state().anonymize.masks.is_empty());
+}
+
+/// Avertissement du moteur pour une image masquée qu'un format ne conserve pas
+/// à l'identique (cas d'un PDF scanné) : on l'ajoute au rapport du PDF.
+fn with_unrestorable_warning(app: &mut AnonApp, tag: &str) {
+    // Un dossier par test : deux tests en parallèle dans le même dossier se
+    // marcheraient dessus et les fichiers seraient numérotés « _2 ».
+    anonymize_all(app, out_dir(tag));
+    let report = app.anonymize.report.as_mut().unwrap();
+    let pdf = report
+        .files
+        .iter_mut()
+        .find(|f| f.name == "courrier-scanne.pdf")
+        .unwrap();
+    let Outcome::Written { warnings, .. } = &mut pdf.outcome else {
+        panic!("PDF non livré");
+    };
+    warnings.push(anon_core::Warning::new(
+        anon_core::WarningCode::ImageNotRestorable,
+        "pdf",
+        "1 image(s) masquée(s) ne pourront pas être remises à la restauration dans ce format : conservez le fichier d'origine.",
+    ));
+}
+
+#[test]
+fn anonymize_done_unrestorable() {
+    snap("anonymiser_4b_image_non_restaurable", |app| {
+        with_unrestorable_warning(app, "non-restaurables")
+    });
+}
+
+#[test]
+fn rapport_signale_les_images_non_restaurables() {
+    let mut harness = app(1280.0, 2400.0, |app| {
+        with_unrestorable_warning(app, "non-restaurables-rapport");
+        neutralize_paths(app);
+    });
+    harness.run();
+    harness.get_by_label("Images masquées non restaurables");
+}
+
+#[test]
+fn bouton_exemples_demande_un_dossier() {
+    let mut harness = app(1280.0, 800.0, |_| {});
+    harness.run();
+    harness.get_by_label("Essayer avec des exemples").click();
+    harness.run();
+    // Dialogue annulé (plateforme factice) : rien n'est chargé.
+    assert!(harness.state().anonymize.files.is_empty());
 }

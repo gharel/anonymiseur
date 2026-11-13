@@ -17,7 +17,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - **Rapport de risque** (Faible, Modéré, Élevé) et conseils, à partir des informations indirectes restées visibles.
 - **Consigne à donner à l'IA** pour qu'elle conserve les balises.
 - **Messages utiles** pour les anciens formats Office (`.doc`, `.xls`, `.ppt`) et les raccourcis Google (`.gdoc`, `.gsheet`, `.gslides`).
-- **Interface** à la charte Skazy Formation, en français, avec trois onglets.
+- **Interface** à la charte Skazy Formation, en français, avec trois onglets : Anonymiser, Désanonymiser, Texte libre. Bouton « Essayer avec des exemples », reprise d'une table existante pour garder les mêmes balises, bouton « Nouvelle session ».
+- **Images et pages scannées** : aperçu des zones qui seront masquées, et tracé à la souris de zones supplémentaires quand la lecture a manqué quelque chose (signature, tampon, écriture manuscrite). L'image d'origine revient à la restauration.
+- **Généralisation** en profil Renforcé : une date remplacée par son année, un âge par sa tranche de dix ans, un montant par son ordre de grandeur. Irréversible.
+- **Exécutables Windows autonomes** : `Anonymiseur.exe` (complet) et `Anonymiseur-Lite.exe`, sans aucune bibliothèque à installer. Paquet macOS et publication automatique préparés.
 - **Documents** : `README.md`, `CONFIDENTIALITE.md`, `THIRD-PARTY.md`, `LICENSE` (AGPL-3.0), `CONTRIBUTING.md` ; faux fichiers d'exemple dans `exemples/` avec un scénario guidé.
 - **Garde-fous** : aucune dépendance réseau, vérifiée automatiquement à chaque modification du code.
 
@@ -26,7 +29,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - L'OCR lit mal l'écriture manuscrite.
 - Une variante de casse est restaurée sous sa forme canonique.
 - Les noms de feuilles de tableur ne sont pas modifiés.
-- Mesure sur les exemples fictifs, sans correction humaine : en profil Standard, 0 valeur encore lisible sur 188 ; en profil Renforcé, 1 sur 281 (une ville espagnole). Un titre de tableau comme « Responsable technique » peut être pris pour une fonction. Les noms seuls dans une cellule sont parfois manqués par l'IA de noms.
-- Non vérifié : fonctionnement sur macOS, ouverture des fichiers produits dans Word, Excel et PowerPoint (relus seulement avec des bibliothèques tierces), glisser-déposer réel, lecteurs d'écran, pages PDF tournées et champs de formulaire PDF.
+- Mesure sur les exemples fictifs, PDF et images compris, sans correction humaine : en profil Standard, 0 valeur encore lisible sur 220 ; en profil Renforcé, 1 sur 327 en édition Lite (une ville espagnole) et 0 en édition complète. Ces fichiers ont servi à régler les détecteurs : le chiffre garantit la non-régression, pas le résultat sur vos documents.
+- Sur un jeu de contrôle indépendant de 109 phrases, l'IA de noms fait passer le rappel des personnes de 85,5 % à 96,4 % en français, et de 71-78 % à 100 % dans les autres langues. Elle ajoute des faux positifs, surtout des lieux.
+- Un titre de tableau comme « Responsable technique » peut être pris pour une fonction, et l'en-tête de colonne « Ville » pour un lieu : ils se décochent à l'écran de validation.
+- Non vérifié : fonctionnement sur macOS, publication par GitHub Actions, ouverture des fichiers produits dans Word, Excel et PowerPoint (relus seulement avec des bibliothèques tierces), glisser-déposer et tracé de zones dans la vraie fenêtre (testés par événements simulés), lecteurs d'écran, pages PDF tournées et champs de formulaire PDF.
 - L'exécutable n'est pas signé : le système affiche un avertissement au premier lancement.
 - macOS avec processeur Intel : édition Lite seulement.

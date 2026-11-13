@@ -4,8 +4,10 @@
 //! reçoit leurs résultats par les méthodes `*_done`.
 
 use super::files::FileEntry;
+use super::generalize::{generalize, is_generalizable};
+use super::images::{FileMask, ManualMasks};
 use crate::ui::service::{BatchReport, Protection, Rejected, unsupported_reason};
-use anon_core::{DetectOptions, EntityKind, Family, Profile, Session, Tag};
+use anon_core::{DetectOptions, EntityKind, Family, PixelRect, Profile, Session, Tag, Treatment};
 use anon_engine::{Analysis, AnalyzeOptions, Candidate, InputFile, SELECT_MIN_CONFIDENCE};
 use anon_vault::{PasswordStrength, password_strength};
 use std::collections::HashMap;
@@ -70,13 +72,35 @@ pub fn needs_confirmation(c: &Candidate) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManualTermError {
     Empty,
+    AlreadyListed,
 }
 
 impl ManualTermError {
     pub fn message(self) -> &'static str {
         match self {
             ManualTermError::Empty => "Saisissez un terme à anonymiser.",
+            ManualTermError::AlreadyListed => "Ce terme est déjà dans la liste.",
         }
+    }
+}
+
+/// Image analysée, telle que listée à l'écran de validation.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ImageInfo {
+    pub file: String,
+    pub name: String,
+    /// Dimensions lues par l'OCR (0 si inconnues).
+    pub width: u32,
+    pub height: u32,
+    pub low_confidence: bool,
+}
+
+impl std::fmt::Debug for ImageInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImageInfo")
+            .field("name", &self.name)
+            .field("low_confidence", &self.low_confidence)
+            .finish_non_exhaustive()
     }
 }
 
@@ -225,6 +249,8 @@ pub struct AnonymizeJob {
     pub inputs: Vec<InputFile>,
     pub analysis: Analysis,
     pub never: Vec<String>,
+    /// Zones tracées à la main sur les images.
+    pub masks: Vec<FileMask>,
     pub protection: Protection,
     pub out_dir: PathBuf,
     /// Session de départ : table reprise, ou session courante.
@@ -248,8 +274,19 @@ pub struct AnonymizeState {
     pub manual_error: Option<ManualTermError>,
     /// Liste « ne jamais anonymiser » de cette session.
     pub never: Vec<String>,
+    /// Liste « toujours anonymiser » : terme et type, cherchés à chaque analyse.
+    pub always: Vec<(String, EntityKind)>,
+    pub always_term: String,
+    pub always_kind: EntityKind,
+    pub always_error: Option<ManualTermError>,
     /// Balise prévue par candidat coché.
     pub tag_preview: HashMap<usize, Tag>,
+    /// Zones tracées à la main sur les images.
+    pub masks: ManualMasks,
+    /// Image affichée dans l'aperçu (indice dans [`AnonymizeState::images`]).
+    pub image_index: usize,
+    /// Zones masquées automatiquement par image, pour la sélection courante.
+    pub mask_preview: Vec<Vec<PixelRect>>,
     pub protect: ProtectState,
     pub out_dir: Option<PathBuf>,
     pub report: Option<BatchReport>,
@@ -271,7 +308,14 @@ impl Default for AnonymizeState {
             manual_kind: EntityKind::Autre,
             manual_error: None,
             never: Vec::new(),
+            always: Vec::new(),
+            always_term: String::new(),
+            always_kind: EntityKind::Personne,
+            always_error: None,
             tag_preview: HashMap::new(),
+            masks: ManualMasks::default(),
+            image_index: 0,
+            mask_preview: Vec::new(),
             protect: ProtectState::default(),
             out_dir: None,
             report: None,
@@ -322,8 +366,52 @@ impl AnonymizeState {
                 profile: self.profile,
                 ..DetectOptions::default()
             },
-            always: Vec::new(),
+            always: self.always.clone(),
             never: self.never.clone(),
+        }
+    }
+
+    /// Ajoute le terme saisi à la liste « toujours anonymiser ». Si une analyse
+    /// est affichée, elle est relancée : renvoie les chemins à relire.
+    pub fn add_always(&mut self) -> Result<Option<Vec<PathBuf>>, ManualTermError> {
+        let term = self.always_term.trim().to_owned();
+        let r = if term.is_empty() {
+            Err(ManualTermError::Empty)
+        } else if self
+            .always
+            .iter()
+            .any(|(t, k)| *k == self.always_kind && t.to_lowercase() == term.to_lowercase())
+        {
+            Err(ManualTermError::AlreadyListed)
+        } else {
+            self.always.push((term, self.always_kind));
+            self.always_term.clear();
+            Ok(self.reanalyze())
+        };
+        self.always_error = r.as_ref().err().copied();
+        r
+    }
+
+    /// Retire un terme de la liste « toujours anonymiser » ; relance l'analyse
+    /// si elle est affichée.
+    pub fn remove_always(&mut self, index: usize) -> Option<Vec<PathBuf>> {
+        if index >= self.always.len() {
+            return None;
+        }
+        self.always.remove(index);
+        self.reanalyze()
+    }
+
+    /// Le type choisi n'est cherché qu'en profil Renforcé.
+    pub fn always_kind_needs_renforce(&self) -> bool {
+        self.profile == Profile::Standard && self.always_kind.is_quasi_identifier()
+    }
+
+    fn reanalyze(&mut self) -> Option<Vec<PathBuf>> {
+        if self.analysis.is_some() && self.step == Step::Review {
+            self.begin_analysis().ok()
+        } else {
+            None
         }
     }
 
@@ -384,6 +472,12 @@ impl AnonymizeState {
         }
         self.analysis = Some(analysis);
         self.step = Step::Review;
+        let images = self.images();
+        self.masks
+            .retain_images(|f, m| images.iter().any(|i| i.file == f && i.name == m));
+        if self.image_index >= images.len() {
+            self.image_index = 0;
+        }
         self.refresh_preview(session);
     }
 
@@ -406,6 +500,83 @@ impl AnonymizeState {
             .as_ref()
             .map(|a| a.preview_tags(session).into_iter().collect())
             .unwrap_or_default();
+        self.mask_preview = self
+            .analysis
+            .as_ref()
+            .filter(|a| a.images().next().is_some())
+            .map(|a| a.mask_previews(session))
+            .unwrap_or_default();
+    }
+
+    /// Images analysées (fichiers image, pages scannées, images des documents).
+    pub fn images(&self) -> Vec<ImageInfo> {
+        self.analysis
+            .as_ref()
+            .map(|a| {
+                a.images()
+                    .map(|i| ImageInfo {
+                        file: i.file.to_owned(),
+                        name: i.name.to_owned(),
+                        width: i.ocr.width,
+                        height: i.ocr.height,
+                        low_confidence: i.low_confidence(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Zones automatiques prévues pour l'image `index`.
+    pub fn auto_zones(&self, index: usize) -> &[PixelRect] {
+        self.mask_preview
+            .get(index)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Généralisation proposée pour cette ligne (profil Renforcé, type daté
+    /// ou chiffré, valeur lisible, pas encore dans la table).
+    pub fn generalization_for(&self, id: usize) -> Option<String> {
+        if self.profile != Profile::Renforce {
+            return None;
+        }
+        let c = self.candidate(id)?;
+        if !is_generalizable(c.kind) || c.existing_tag.is_some() {
+            return None;
+        }
+        generalize(c.kind, &c.value)
+    }
+
+    /// Valeur généralisée retenue pour cette ligne.
+    pub fn generalized(&self, id: usize) -> Option<&str> {
+        match &self.candidate(id)?.treatment {
+            Treatment::Generalize(g) => Some(g.as_str()),
+            Treatment::Tag => None,
+        }
+    }
+
+    /// Choisit balise (`false`) ou valeur généralisée (`true`). Renvoie faux si
+    /// la généralisation n'est pas possible pour cette ligne.
+    pub fn set_generalized(&mut self, id: usize, on: bool, session: &Session) -> bool {
+        let treatment = if on {
+            match self.generalization_for(id) {
+                Some(g) => Treatment::Generalize(g),
+                None => return false,
+            }
+        } else {
+            Treatment::Tag
+        };
+        let mut ok = false;
+        self.with_analysis(session, |a| ok = a.set_treatment(id, treatment));
+        ok
+    }
+
+    /// Nombre de lignes cochées dont la valeur sera généralisée.
+    pub fn generalized_count(&self) -> usize {
+        self.candidates()
+            .iter()
+            .filter(|c| c.selected && matches!(c.treatment, Treatment::Generalize(_)))
+            .count()
     }
 
     fn candidates(&self) -> &[Candidate] {
@@ -464,9 +635,14 @@ impl AnonymizeState {
     }
 
     pub fn set_kind(&mut self, id: usize, kind: EntityKind, session: &Session) {
+        let generalized = self.generalized(id).is_some();
         self.with_analysis(session, |a| {
             a.set_kind(id, kind);
         });
+        // La généralisation dépend du type : recalculée, ou abandonnée.
+        if generalized && !self.set_generalized(id, true, session) {
+            self.set_generalized(id, false, session);
+        }
     }
 
     pub fn set_case_sensitive(&mut self, id: usize, on: bool, session: &Session) {
@@ -595,6 +771,7 @@ impl AnonymizeState {
                         inputs: std::mem::take(&mut self.inputs),
                         analysis,
                         never: self.never.clone(),
+                        masks: self.masks.masks.clone(),
                         protection: self.protect.protection(),
                         out_dir,
                         session: self
@@ -641,11 +818,14 @@ impl AnonymizeState {
         self.error = None;
     }
 
-    /// Recommence (les fichiers déposés sont oubliés).
+    /// Recommence (les fichiers déposés sont oubliés). Le profil et la liste
+    /// « toujours anonymiser » de la session sont gardés.
     pub fn reset(&mut self) {
         let profile = self.profile;
+        let always = std::mem::take(&mut self.always);
         *self = Self::default();
         self.profile = profile;
+        self.always = always;
     }
 
     /// Fichier d'entrée par nom (export du texte d'un fichier bloqué).
@@ -853,6 +1033,89 @@ mod tests {
         assert!(s.analysis.is_some());
         s.reset();
         assert_eq!(s.step, Step::Drop);
+    }
+
+    #[test]
+    fn always_list() {
+        let mut s = AnonymizeState::default();
+        s.add_files([entry("lettre.txt")], &["txt"]);
+        assert_eq!(s.add_always(), Err(ManualTermError::Empty));
+        s.always_term = "  Nautilus ".into();
+        s.always_kind = EntityKind::Societe;
+        assert_eq!(s.add_always(), Ok(None), "pas d'analyse à relancer");
+        assert!(s.always_term.is_empty());
+        s.always_term = "nautilus".into();
+        assert_eq!(s.add_always(), Err(ManualTermError::AlreadyListed));
+        assert_eq!(s.always_error, Some(ManualTermError::AlreadyListed));
+        assert_eq!(
+            s.analyze_options().always,
+            vec![("Nautilus".to_owned(), EntityKind::Societe)]
+        );
+        s.always_kind = EntityKind::Lieu;
+        assert!(s.always_kind_needs_renforce());
+        s.profile = Profile::Renforce;
+        assert!(!s.always_kind_needs_renforce());
+        // Gardée par « Anonymiser d'autres fichiers ».
+        s.reset();
+        assert_eq!(s.always.len(), 1);
+    }
+
+    #[test]
+    fn always_list_relaunches_the_analysis() {
+        let (mut s, _) = reviewed(Profile::Standard);
+        s.always_term = "Pacifique".into();
+        s.always_kind = EntityKind::Societe;
+        let paths = s.add_always();
+        assert_eq!(paths.map(|p| p.map(|v| v.len())), Ok(Some(1)));
+        assert_eq!(s.busy, Some(Busy::Analyzing));
+        s.busy = None;
+        assert_eq!(s.remove_always(5), None);
+        assert_eq!(s.remove_always(0).map(|v| v.len()), Some(1));
+        assert!(s.always.is_empty());
+    }
+
+    #[test]
+    fn generalization_in_renforce() {
+        let (mut s, session) = reviewed(Profile::Renforce);
+        let age = s
+            .visible()
+            .into_iter()
+            .find(|id| s.candidate(*id).is_some_and(|c| c.kind == EntityKind::Age));
+        let Some(age) = age else {
+            panic!("âge non détecté");
+        };
+        assert_eq!(s.generalization_for(age).as_deref(), Some("40-49 ans"));
+        assert_eq!(s.generalized(age), None);
+        assert!(s.set_generalized(age, true, &session));
+        assert_eq!(s.generalized(age), Some("40-49 ans"));
+        assert_eq!(s.generalized_count(), 1);
+        // Un type non chiffré abandonne la généralisation.
+        s.set_kind(age, EntityKind::Matricule, &session);
+        assert_eq!(s.generalized(age), None);
+        assert!(!s.set_generalized(age, true, &session));
+        // Une personne ne se généralise pas.
+        let person = s.visible().into_iter().find(|id| {
+            s.candidate(*id)
+                .is_some_and(|c| c.kind == EntityKind::Personne)
+        });
+        assert_eq!(person.and_then(|p| s.generalization_for(p)), None);
+    }
+
+    #[test]
+    fn no_generalization_in_standard() {
+        let (s, _) = reviewed(Profile::Standard);
+        assert!(
+            s.visible()
+                .iter()
+                .all(|id| s.generalization_for(*id).is_none())
+        );
+    }
+
+    #[test]
+    fn text_files_have_no_images() {
+        let (s, _) = reviewed(Profile::Standard);
+        assert!(s.images().is_empty());
+        assert!(s.auto_zones(0).is_empty());
     }
 
     #[test]

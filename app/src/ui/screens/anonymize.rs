@@ -1,14 +1,17 @@
 //! Onglet « Anonymiser » : Déposer → Vérifier → Protéger → Terminé.
 
+use super::images::images_card;
 use super::{action_bar, card_title, file_row, file_tile, page_title};
 use crate::ui::app::Effect;
 use crate::ui::runner::Shared;
 use crate::ui::service::{BatchReport, Outcome, Rejected, file_name};
 use crate::ui::state::anonymize::{AnonymizeState, ProtectMode, Step, needs_confirmation};
 use crate::ui::state::files::{FileFormat, human_size};
+use crate::ui::state::generalize::rule_label;
 use crate::ui::theme::{Weight, font, palette};
 use crate::ui::widgets::badge::{FAMILIES, family_label, family_tint};
 use crate::ui::widgets::button::icon_button;
+use crate::ui::widgets::field::mono_font;
 use crate::ui::widgets::nav::{filter_chip, segmented};
 use crate::ui::widgets::{
     Badge, Banner, Card, CheckState, Checkbox, Column, DataTable, DropZone, Icon, PillButton,
@@ -97,6 +100,24 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
         if zone.clicked() {
             fx.push(Effect::PickDocuments);
         }
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = p.space(3);
+            if ui
+                .add(
+                    PillButton::secondary("Essayer avec des exemples")
+                        .icon(Icon::Sparkles)
+                        .small(),
+                )
+                .on_hover_text("Copie des fichiers fictifs dans un dossier de votre choix.")
+                .clicked()
+            {
+                fx.push(Effect::TryExamples);
+            }
+            caption(
+                ui,
+                "Des documents fictifs (contrat, tableur, PDF scanné, carte de visite…) copiés dans un dossier de votre choix.",
+            );
+        });
         if !st.files.is_empty() {
             overline(ui, &format!("{} fichiers prêts", st.files.len()));
             let mut remove = None;
@@ -114,6 +135,7 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
         }
     });
 
+    always_card(ui, st, fx);
     if rejected_banner(ui, &st.rejected) {
         st.dismiss_rejected();
     }
@@ -154,6 +176,98 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
             }
         },
     );
+}
+
+/// Liste « toujours anonymiser » : termes cherchés dans chaque analyse.
+fn always_card(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
+    let p = palette();
+    Card::new().show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = p.space(3);
+        card_title(ui, Icon::Plus, "Toujours anonymiser");
+        let note = if st.step == Step::Review {
+            "Termes cherchés dans tous les fichiers, même si la détection les manque (nom de projet, client, lieu-dit). L'analyse est relancée à chaque modification."
+        } else {
+            "Termes cherchés dans tous les fichiers, même si la détection les manque (nom de projet, client, lieu-dit)."
+        };
+        muted(ui, note);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = p.space(2);
+            let error = st.always_error.map(|e| e.message());
+            let field_w = (ui.available_width() - 360.0).clamp(200.0, 420.0);
+            let r = TextField::new("Terme à toujours anonymiser", &mut st.always_term)
+                .placeholder("Terme à toujours anonymiser")
+                .id_salt("terme-toujours")
+                .hide_label()
+                .error(error)
+                .width(field_w)
+                .show(ui);
+            let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            egui::ComboBox::from_id_salt("type-toujours")
+                .selected_text(st.always_kind.label())
+                .width(190.0)
+                .show_ui(ui, |ui| {
+                    for k in EntityKind::ALL {
+                        ui.selectable_value(&mut st.always_kind, *k, k.label());
+                    }
+                })
+                .response
+                .on_hover_text("Type du terme");
+            let add = ui.add(PillButton::secondary("Ajouter à la liste").icon(Icon::Plus));
+            if (add.clicked() || enter)
+                && let Ok(Some(paths)) = st.add_always()
+            {
+                fx.push(Effect::Analyze(paths));
+            }
+        });
+        if st.always_kind_needs_renforce() {
+            caption(
+                ui,
+                "Ce type n'est recherché qu'au niveau de protection Renforcé.",
+            );
+        }
+        let mut remove = None;
+        if !st.always.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(p.space(2), p.space(2));
+                for (i, (term, kind)) in st.always.iter().enumerate() {
+                    ui.add(Badge::entity(*kind).small());
+                    body(ui, term);
+                    if icon_button(ui, Icon::X, &format!("Retirer {term}"), p.text_secondary)
+                        .clicked()
+                    {
+                        remove = Some(i);
+                    }
+                    ui.add_space(p.space(2));
+                }
+            });
+        }
+        if let Some(i) = remove
+            && let Some(paths) = st.remove_always(i)
+        {
+            fx.push(Effect::Analyze(paths));
+        }
+    });
+}
+
+/// Menu balise / valeur généralisée d'une ligne : `Some(true)` pour généraliser.
+fn treatment_menu(response: &egui::Response, tag: &str, general: &str) -> Option<bool> {
+    let mut chosen = None;
+    egui::Popup::menu(response).show(|ui| {
+        ui.set_min_width(280.0);
+        if ui
+            .selectable_label(false, format!("Balise {tag}"))
+            .clicked()
+        {
+            chosen = Some(false);
+        }
+        if ui
+            .selectable_label(false, format!("Généraliser : {general} (irréversible)"))
+            .clicked()
+        {
+            chosen = Some(true);
+        }
+    });
+    chosen
 }
 
 /// Menu de choix du type d'une ligne.
@@ -213,11 +327,28 @@ permettent de reconnaître une personne."
     }
     let pending = st.pending_confirmations();
     if pending > 0 {
-        let text = format!(
-            "{pending} valeurs courtes ou incertaines sont surlignées en jaune : vérifiez-les. \
+        let text = if pending == 1 {
+            "1 valeur courte ou incertaine est surlignée en jaune : vérifiez-la. \
+Cochez-la pour l'anonymiser ; « Ne jamais anonymiser » la retire pour toute la session."
+                .to_owned()
+        } else {
+            format!(
+                "{pending} valeurs courtes ou incertaines sont surlignées en jaune : vérifiez-les. \
 Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute la session."
-        );
+            )
+        };
         Banner::warning(&text).title("À confirmer").show(ui);
+    }
+    let generalizable = st
+        .visible()
+        .iter()
+        .any(|id| st.generalization_for(*id).is_some());
+    if generalizable {
+        Banner::info(
+            "Pour une date, un âge ou un montant, cliquez sur sa balise pour la remplacer par une valeur approchée : l'année, la tranche de dix ans ou l'ordre de grandeur. C'est irréversible : la valeur exacte ne sera pas remise à la restauration.",
+        )
+        .title("Généralisation")
+        .show(ui);
     }
 
     Card::new().show(ui, |ui| {
@@ -251,7 +382,7 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
             Column::fill("Contexte", 1.2),
             Column::fixed("Occ.", 60.0),
             Column::fixed("Casse", 64.0),
-            Column::fixed("Balise", 136.0),
+            Column::fixed("Balise", 176.0),
             Column::fixed("", 44.0),
         ];
         let visible = st.visible();
@@ -266,6 +397,7 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
         let mut kind_change: Option<(usize, EntityKind)> = None;
         let mut case_change: Option<(usize, bool)> = None;
         let mut never: Option<usize> = None;
+        let mut general_change: Option<(usize, bool)> = None;
         let out = {
             let row_of = |i: usize| visible.get(i).and_then(|id| st.candidate(*id));
             DataTable::new("detections", &columns)
@@ -341,18 +473,54 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
                                     case_change = Some((c.id, !c.case_sensitive));
                                 }
                             }
-                            5 => match st.tag_preview.get(&c.id) {
-                                Some(tag) => {
-                                    ui.label(
-                                        RichText::new(tag.to_string())
-                                            .monospace()
-                                            .color(p.primary_dark),
+                            5 => {
+                                let tag = st.tag_preview.get(&c.id).map(|t| t.to_string());
+                                let general = st.generalization_for(c.id);
+                                let chosen = st.generalized(c.id);
+                                let shown = match (&tag, chosen) {
+                                    (_, Some(g)) if c.selected => {
+                                        Some(
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(g)
+                                                        .font(font(Weight::Medium, p.text_sm))
+                                                        .color(p.data.ink),
+                                                )
+                                                .truncate(),
+                                            )
+                                            .on_hover_text(format!(
+                                                "Valeur généralisée ({}) : irréversible",
+                                                rule_label(c.kind)
+                                            )),
+                                        )
+                                    }
+                                    (Some(t), _) => Some(ui.label(
+                                        RichText::new(t).font(mono_font()).color(p.primary_dark),
+                                    )),
+                                    _ => {
+                                        caption(ui, "non remplacée");
+                                        None
+                                    }
+                                };
+                                if let (Some(r), Some(g), Some(t)) = (shown, general, &tag) {
+                                    Icon::ChevronDown.show(ui, p.text_secondary, 14.0);
+                                    let r = ui.interact(
+                                        r.rect,
+                                        r.id.with("traitement"),
+                                        Sense::click(),
                                     );
+                                    let label = format!("Remplacement de {} : modifier", c.value);
+                                    r.widget_info(|| {
+                                        egui::WidgetInfo::labeled(egui::Role::Button, true, &label)
+                                    });
+                                    let r = r
+                                        .on_hover_text("Balise ou valeur généralisée")
+                                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                                    if let Some(on) = treatment_menu(&r, t, &g) {
+                                        general_change = Some((c.id, on));
+                                    }
                                 }
-                                None => {
-                                    caption(ui, "non remplacée");
-                                }
-                            },
+                            }
                             _ => {
                                 let label = format!("Ne jamais anonymiser {}", c.value);
                                 if icon_button(ui, Icon::EyeOff, &label, p.text_secondary).clicked()
@@ -380,6 +548,9 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
         }
         if let Some(id) = never {
             st.never_anonymize(id, session);
+        }
+        if let Some((id, on)) = general_change {
+            st.set_generalized(id, on, session);
         }
         if visible.is_empty() {
             muted(ui, "Aucune donnée sensible détectée dans ces fichiers.");
@@ -425,6 +596,9 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
         }
     });
 
+    images_card(ui, st);
+    always_card(ui, st, fx);
+
     if let Some(e) = st.error {
         Banner::error(e.message()).show(ui);
     }
@@ -438,10 +612,15 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
             {
                 st.back();
             }
-            muted(
-                ui,
-                &format!("{} valeurs seront anonymisées", st.selected_count()),
-            );
+            let generalized = st.generalized_count();
+            let mut line = format!("{} valeurs seront anonymisées", st.selected_count());
+            if generalized > 0 {
+                line.push_str(&format!(", dont {generalized} généralisées (irréversible)"));
+            }
+            if !st.masks.is_empty() {
+                line.push_str(&format!(", {} zones d'image ajoutées", st.masks.len()));
+            }
+            muted(ui, &line);
         },
         |ui, st| {
             let go = ui.add(
@@ -767,11 +946,27 @@ fn report_card(
                         .wrap(),
                     );
                 }
-                if !warnings.is_empty() {
+                for w in warnings
+                    .iter()
+                    .filter(|w| w.code == WarningCode::ImageNotRestorable)
+                {
+                    let text = format!(
+                        "{} Le fichier anonymisé est bien protégé ; seule la restauration des images est impossible.",
+                        w.detail
+                    );
+                    Banner::warning(&text)
+                        .title("Images masquées non restaurables")
+                        .show(ui);
+                }
+                let others: Vec<_> = warnings
+                    .iter()
+                    .filter(|w| w.code != WarningCode::ImageNotRestorable)
+                    .collect();
+                if !others.is_empty() {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 4.0;
                         overline(ui, "Avertissements");
-                        for w in warnings {
+                        for w in others {
                             ui.horizontal_wrapped(|ui| {
                                 ui.spacing_mut().item_spacing.x = 6.0;
                                 let icon = if w.code == WarningCode::LowOcrConfidence {

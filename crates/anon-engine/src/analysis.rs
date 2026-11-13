@@ -3,8 +3,10 @@
 //! recompter et masquer sans relire les fichiers.
 
 use crate::error::EngineError;
+use crate::media::{LOW_OCR_CONFIDENCE, regions_for};
 use anon_core::{
-    DetectOptions, EntityKind, OcrPage, Session, Source, Tag, TextBlock, Treatment, Warning,
+    DetectOptions, EntityKind, OcrPage, PixelRect, Session, Source, Tag, TextBlock, Treatment,
+    Warning,
 };
 use anon_replace::session_ext::match_key;
 use anon_replace::{CASE_SENSITIVE_MAX_CHARS, Replacer, SessionExt, key};
@@ -100,7 +102,41 @@ pub(crate) struct ImageData {
     pub name: String,
     /// SHA-256 de l'image d'origine (clé de recherche à l'anonymisation).
     pub sha256: String,
+    /// Octets d'origine, pour l'aperçu à l'écran de validation.
+    pub bytes: Vec<u8>,
     pub ocr: OcrPage,
+}
+
+/// Image lue par OCR à l'analyse : aperçu et tracé de zones manuelles.
+#[derive(Clone, Copy)]
+pub struct AnalyzedImage<'a> {
+    /// Fichier d'origine (nom donné à l'analyse).
+    pub file: &'a str,
+    /// Nom de l'image dans le fichier, à reprendre dans `ManualMask::media`.
+    pub name: &'a str,
+    /// Octets de l'image d'origine (PNG, JPEG…).
+    pub bytes: &'a [u8],
+    /// Mots lus et leurs rectangles, en pixels de l'image.
+    pub ocr: &'a OcrPage,
+}
+
+impl AnalyzedImage<'_> {
+    /// Vrai si la lecture est incertaine (même seuil que l'avertissement d'analyse).
+    pub fn low_confidence(&self) -> bool {
+        !self.ocr.words.is_empty() && self.ocr.mean_confidence() < LOW_OCR_CONFIDENCE
+    }
+}
+
+impl fmt::Debug for AnalyzedImage<'_> {
+    /// Ni le fichier, ni les octets, ni les mots lus.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AnalyzedImage")
+            .field("len", &self.bytes.len())
+            .field("width", &self.ocr.width)
+            .field("height", &self.ocr.height)
+            .field("words", &self.ocr.words.len())
+            .finish_non_exhaustive()
+    }
 }
 
 /// Données d'un fichier gardées en mémoire.
@@ -688,6 +724,41 @@ impl Analysis {
             .collect()
     }
 
+    /// Images lues par OCR, fichier par fichier, dans l'ordre de l'analyse.
+    pub fn images(&self) -> impl Iterator<Item = AnalyzedImage<'_>> {
+        self.store.iter().flat_map(|f| {
+            f.images.iter().map(move |i| AnalyzedImage {
+                file: f.name.as_str(),
+                name: i.name.as_str(),
+                bytes: i.bytes.as_slice(),
+                ocr: &i.ocr,
+            })
+        })
+    }
+
+    /// Image `name` du fichier `file`.
+    pub fn image(&self, file: &str, name: &str) -> Option<AnalyzedImage<'_>> {
+        self.images().find(|i| i.file == file && i.name == name)
+    }
+
+    /// Zones que l'anonymisation masquerait dans chaque image si la sélection
+    /// courante était enregistrée dans `session` (hors zones manuelles), en
+    /// pixels de l'image. Même ordre que [`Analysis::images`]. La session n'est
+    /// pas modifiée.
+    pub fn mask_previews(&self, session: &Session) -> Vec<Vec<PixelRect>> {
+        let mut s = session.clone();
+        self.apply_to(&mut s);
+        let replacer = Replacer::new(&s);
+        self.images()
+            .map(|i| {
+                regions_for(i.ocr, &replacer)
+                    .into_iter()
+                    .map(|r| r.rect)
+                    .collect()
+            })
+            .collect()
+    }
+
     pub(crate) fn file(&self, name: &str) -> Option<&FileAnalysis> {
         self.files.iter().find(|f| f.name == name)
     }
@@ -798,6 +869,39 @@ mod tests {
         let first = preview[0].0;
         a.set_selected(first, false);
         assert!(a.preview_tags(&session).iter().all(|(id, _)| *id != first));
+    }
+
+    #[test]
+    fn low_confidence_images() {
+        let word = |confidence| anon_core::OcrWord {
+            text: "mot".into(),
+            rect: PixelRect {
+                x: 0,
+                y: 0,
+                w: 1,
+                h: 1,
+            },
+            confidence,
+        };
+        let mut page = OcrPage {
+            width: 10,
+            height: 10,
+            words: Vec::new(),
+        };
+        let image = |page: &OcrPage| {
+            AnalyzedImage {
+                file: "a.png",
+                name: "image",
+                bytes: &[],
+                ocr: page,
+            }
+            .low_confidence()
+        };
+        assert!(!image(&page), "aucun mot : rien à signaler");
+        page.words = vec![word(0.9), word(0.8)];
+        assert!(!image(&page));
+        page.words = vec![word(0.5), word(0.4)];
+        assert!(image(&page));
     }
 
     #[test]

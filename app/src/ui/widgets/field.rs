@@ -22,6 +22,7 @@ pub struct TextField<'a> {
     id_salt: Option<&'a str>,
     width: Option<f32>,
     show_label: bool,
+    monospace: bool,
 }
 
 impl<'a> TextField<'a> {
@@ -38,6 +39,7 @@ impl<'a> TextField<'a> {
             id_salt: None,
             width: None,
             show_label: true,
+            monospace: false,
         }
     }
 
@@ -80,6 +82,13 @@ impl<'a> TextField<'a> {
 
     pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
+        self
+    }
+
+    /// Texte à chasse fixe : les balises `[SOCIETE_1]` restent lisibles (le
+    /// tiret bas de Georama est très large).
+    pub fn monospace(mut self) -> Self {
+        self.monospace = true;
         self
     }
 
@@ -127,6 +136,7 @@ impl<'a> TextField<'a> {
             let rows = self.rows;
             let placeholder = self.placeholder;
             let label = self.label;
+            let monospace = self.monospace;
             let value = self.value;
 
             let framed = Frame::new()
@@ -138,7 +148,11 @@ impl<'a> TextField<'a> {
                     ui.horizontal(|ui| {
                         let reveal_w = if password { 28.0 } else { 0.0 };
                         let w = ui.available_width() - reveal_w;
-                        let text_font = font(Weight::Regular, p.text_sm);
+                        let text_font = if monospace {
+                            mono_font()
+                        } else {
+                            font(Weight::Regular, p.text_sm)
+                        };
                         let mut edit = if rows > 1 {
                             TextEdit::multiline(value).desired_rows(rows)
                         } else {
@@ -234,6 +248,11 @@ impl<'a> TextField<'a> {
         })
         .inner
     }
+}
+
+/// Police à chasse fixe des textes contenant des balises.
+pub fn mono_font() -> egui::FontId {
+    egui::FontId::monospace(palette().text_sm - 1.0)
 }
 
 /// Identifiant du champ, pour donner le focus depuis l'extérieur.

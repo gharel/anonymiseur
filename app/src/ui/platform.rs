@@ -13,6 +13,8 @@ pub trait Platform {
     fn pick_responses(&mut self) -> Vec<FileEntry>;
     /// Dialogue de choix d'un dossier.
     fn pick_folder(&mut self, start: Option<&Path>) -> Option<PathBuf>;
+    /// Dialogue de choix du dossier où copier les fichiers d'exemple.
+    fn pick_examples_folder(&mut self) -> Option<PathBuf>;
     /// Dialogue « Enregistrer sous » pour un texte Markdown.
     fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf>;
     /// Ouvre un dossier dans l'explorateur.
@@ -65,6 +67,12 @@ impl Platform for NativePlatform {
         d.pick_folder()
     }
 
+    fn pick_examples_folder(&mut self) -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .set_title("Choisir où copier les fichiers d'exemple")
+            .pick_folder()
+    }
+
     fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf> {
         let mut d = rfd::FileDialog::new()
             .set_title("Enregistrer le texte anonymisé")
@@ -113,6 +121,11 @@ impl Platform for NullPlatform {
 
     fn pick_folder(&mut self, _start: Option<&Path>) -> Option<PathBuf> {
         self.requests.push("dossier de sortie");
+        None
+    }
+
+    fn pick_examples_folder(&mut self) -> Option<PathBuf> {
+        self.requests.push("dossier des exemples");
         None
     }
 

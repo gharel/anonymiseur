@@ -49,6 +49,9 @@ pub enum WarningCode {
     UnsupportedPart,
     /// Balise trop longue pour la zone : écrite en plus petit ou tronquée.
     TagDidNotFit,
+    /// Image masquée dont l'original ne pourra pas être remis à la restauration
+    /// (le format ne conserve pas l'image octet pour octet, comme un PDF scanné).
+    ImageNotRestorable,
 }
 
 /// Avertissement. `part` est un emplacement, `detail` une phrase en français,

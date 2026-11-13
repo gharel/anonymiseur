@@ -607,8 +607,12 @@ impl Engine {
             .unwrap_or_default();
         warnings.extend(out.warnings.iter().cloned());
         warnings.extend(mask_warnings);
+        // Empreintes des images réellement présentes dans la sortie : seules
+        // celles-là pourront être reconnues, donc remises, à la restauration.
+        let mut output_images: BTreeSet<String> = BTreeSet::new();
         if let Some(p) = self.image_processor.as_deref() {
             for media in handler.extract(&out.bytes)?.media {
+                output_images.insert(sha256_hex(&media.bytes));
                 match p.ocr(&media.bytes) {
                     Ok(page) => {
                         for m in replacer.matches(&page.text_with_spans().0) {
@@ -632,6 +636,22 @@ impl Engine {
 
         let risk = self.risk(&deep);
         if !session.irreversible {
+            // Un format qui ne conserve pas l'image octet pour octet (page d'un PDF
+            // scanné) ne permet pas de la reconnaître ensuite : garder son original
+            // alourdirait la table pour rien. On le dit à l'utilisateur.
+            let (originals, lost): (Vec<_>, Vec<_>) = originals
+                .into_iter()
+                .partition(|o| output_images.contains(&o.masked_sha256));
+            if !lost.is_empty() {
+                warnings.push(Warning::new(
+                    WarningCode::ImageNotRestorable,
+                    file.extension(),
+                    format!(
+                        "{} image(s) masquée(s) ne pourront pas être remises à la restauration dans ce format : conservez le fichier d'origine.",
+                        lost.len()
+                    ),
+                ));
+            }
             for o in originals {
                 if !session
                     .media

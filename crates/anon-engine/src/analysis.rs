@@ -666,6 +666,19 @@ impl Analysis {
         }
     }
 
+    /// Balise que recevrait chaque candidat coché si la sélection courante était
+    /// enregistrée dans `session` (aperçu pour l'écran de validation). La
+    /// session n'est pas modifiée.
+    pub fn preview_tags(&self, session: &Session) -> Vec<(usize, Tag)> {
+        let mut s = session.clone();
+        self.apply_to(&mut s);
+        self.candidates
+            .iter()
+            .filter(|c| c.selected)
+            .filter_map(|c| s.tag_for(c.kind, &c.value).map(|t| (c.id, t)))
+            .collect()
+    }
+
     /// OCR gardé en mémoire, par SHA-256 de l'image d'origine.
     pub(crate) fn ocr_by_sha(&self) -> HashMap<&str, &OcrPage> {
         self.store
@@ -760,6 +773,31 @@ mod tests {
         assert!(e.contains("Élodie"));
         assert!(e.chars().count() <= 2 * CONTEXT_CHARS + "Élodie".len() + 2);
         assert_eq!(excerpt("a\n b", 0, 1), "a b");
+    }
+
+    #[test]
+    fn preview_tags_match_the_session_after_apply() {
+        let engine = crate::Engine::standard();
+        let text = "Contact : helene.kaloi@example.com, Nautilus Pacifique SARL.";
+        let mut a = engine.analyze_text(text, &AnalyzeOptions::default(), &Session::new());
+        let session = Session::new();
+        let preview = a.preview_tags(&session);
+        assert!(!preview.is_empty());
+        // La session n'est pas modifiée par l'aperçu.
+        assert!(session.entities.is_empty());
+        let mut applied = Session::new();
+        engine.apply_selection(&a, &mut applied);
+        for (id, tag) in &preview {
+            let c = a.candidate(*id);
+            assert!(c.is_some());
+            if let Some(c) = c {
+                assert_eq!(applied.tag_for(c.kind, &c.value), Some(*tag));
+            }
+        }
+        // Une ligne décochée n'a pas de balise.
+        let first = preview[0].0;
+        a.set_selected(first, false);
+        assert!(a.preview_tags(&session).iter().all(|(id, _)| *id != first));
     }
 
     #[test]

@@ -4,7 +4,7 @@
 use super::card_title;
 use crate::ui::state::anonymize::{AnonymizeState, ImageInfo};
 use crate::ui::state::images::Fit;
-use crate::ui::theme::{Weight, font, palette, radius};
+use crate::ui::theme::{Weight, font, palette, radius, with_alpha};
 use crate::ui::widgets::button::icon_button;
 use crate::ui::widgets::nav::filter_chip;
 use crate::ui::widgets::{Badge, Banner, Card, Icon, PillButton, body, caption, muted};
@@ -91,18 +91,21 @@ fn swatch(ui: &mut Ui, fill: Color32, edge: Color32, text: &str) {
     });
 }
 
+/// Couleur des zones masquées automatiquement : celle du masque réel (anthracite),
+/// quel que soit le thème, puisqu'elle est posée sur l'image.
+const MASK_INK: Color32 = Color32::from_rgb(0x4a, 0x4a, 0x4a);
+
 fn auto_colors() -> (Color32, Color32) {
     let p = palette();
-    (
-        Color32::from_rgba_unmultiplied(p.dark.r(), p.dark.g(), p.dark.b(), 215),
-        p.dark,
-    )
+    let edge = if p.dark_mode { p.line_strong } else { MASK_INK };
+    (with_alpha(MASK_INK, 215.0 / 255.0), edge)
 }
 
 fn manual_colors() -> (Color32, Color32) {
     let p = palette();
     let c = p.primary_dark;
-    (Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 120), c)
+    let edge = if p.dark_mode { p.accent } else { c };
+    (with_alpha(c, 120.0 / 255.0), edge)
 }
 
 /// Carte « Images » de l'étape Vérifier. Ne s'affiche que s'il y a des images.
@@ -137,11 +140,7 @@ regardez ces images et tracez les zones manquantes.",
         if images.len() > 1 {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(p.space(2), p.space(2));
-                let brand = crate::ui::theme::Tinted {
-                    fill: p.primary_subtle,
-                    ink: p.primary_dark,
-                    edge: p.primary,
-                };
+                let brand = p.brand;
                 for (i, info) in images.iter().enumerate() {
                     let n = st.masks.of_image(&info.file, &info.name).len();
                     let count = (n > 0).then_some(n);
@@ -159,7 +158,7 @@ regardez ces images et tracez les zones manquantes.",
             ui.label(
                 RichText::new(image_label(info))
                     .font(font(Weight::Semibold, p.text_sm))
-                    .color(p.dark),
+                    .color(p.heading),
             );
             if info.low_confidence {
                 ui.add(Badge::warning("Lecture incertaine").small());
@@ -204,7 +203,7 @@ fn canvas(ui: &mut Ui, st: &mut AnonymizeState, idx: usize, info: &ImageInfo) {
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &label));
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, radius(0.0), p.gray_100);
+    painter.rect_filled(rect, radius(0.0), p.muted);
     match &pv.texture {
         Some(t) => {
             painter.image(

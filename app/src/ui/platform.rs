@@ -13,7 +13,11 @@ pub trait Platform {
     fn pick_responses(&mut self) -> Vec<FileEntry>;
     /// Dialogue de choix d'un dossier.
     fn pick_folder(&mut self, start: Option<&Path>) -> Option<PathBuf>;
-    /// Dialogue de choix du dossier où copier les fichiers d'exemple.
+    /// Emplacement fixe des exemples (`Documents/Anonymiseur/Exemples`), s'il
+    /// est connu.
+    fn examples_dir(&mut self) -> Option<PathBuf>;
+    /// Dialogue de choix du dossier où copier les fichiers d'exemple (repli
+    /// quand le dossier Documents est introuvable).
     fn pick_examples_folder(&mut self) -> Option<PathBuf>;
     /// Dialogue « Enregistrer sous » pour un texte Markdown.
     fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf>;
@@ -67,6 +71,10 @@ impl Platform for NativePlatform {
         d.pick_folder()
     }
 
+    fn examples_dir(&mut self) -> Option<PathBuf> {
+        dirs::document_dir().map(|d| super::service::examples_dir_in(&d))
+    }
+
     fn pick_examples_folder(&mut self) -> Option<PathBuf> {
         rfd::FileDialog::new()
             .set_title("Choisir où copier les fichiers d'exemple")
@@ -101,6 +109,8 @@ impl Platform for NativePlatform {
 #[derive(Debug, Default)]
 pub struct NullPlatform {
     pub requests: Vec<&'static str>,
+    /// Emplacement des exemples rendu par [`Platform::examples_dir`].
+    pub examples: Option<PathBuf>,
 }
 
 impl Platform for NullPlatform {
@@ -122,6 +132,10 @@ impl Platform for NullPlatform {
     fn pick_folder(&mut self, _start: Option<&Path>) -> Option<PathBuf> {
         self.requests.push("dossier de sortie");
         None
+    }
+
+    fn examples_dir(&mut self) -> Option<PathBuf> {
+        self.examples.clone()
     }
 
     fn pick_examples_folder(&mut self) -> Option<PathBuf> {

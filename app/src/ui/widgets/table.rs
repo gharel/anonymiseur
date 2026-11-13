@@ -3,7 +3,7 @@
 //! « tout cocher » à trois états dans l'en-tête.
 
 use super::{CheckState, Checkbox, TRACKING_WIDE, spaced_job};
-use crate::ui::theme::{Weight, font, mix, palette};
+use crate::ui::theme::{Weight, font, palette};
 use egui::{Rect, ScrollArea, Sense, Stroke, Ui, UiBuilder, pos2, vec2};
 
 /// Largeur d'une colonne.
@@ -149,7 +149,7 @@ impl<'a> DataTable<'a> {
                 sw: 0,
                 se: 0,
             },
-            p.gray_50,
+            p.sunken,
         );
         ui.painter().line_segment(
             [header.left_bottom(), header.right_bottom()],
@@ -191,7 +191,7 @@ impl<'a> DataTable<'a> {
 
         // Corps virtualisé.
         let row_h = self.row_height;
-        let attention_fill = mix(p.white, p.data.fill, 0.85);
+        let attention_fill = p.attention_row;
         ScrollArea::vertical()
             .id_salt(self.id_salt)
             .max_height(self.max_height)
@@ -212,7 +212,7 @@ impl<'a> DataTable<'a> {
                             );
                         }
                         RowTone::Normal if resp.hovered() => {
-                            painter.rect_filled(rect, 0.0, p.gray_50);
+                            painter.rect_filled(rect, 0.0, p.hover);
                         }
                         RowTone::Normal => {}
                     }

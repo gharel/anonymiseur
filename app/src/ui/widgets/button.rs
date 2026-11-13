@@ -1,7 +1,7 @@
 //! Bouton pilule (`Button` de la charte) : primaire, secondaire, fantôme, sombre.
 
 use super::{Icon, TRACKING_WIDE, spaced_job};
-use crate::ui::theme::{Weight, font, palette, radius};
+use crate::ui::theme::{CONTROL_LG, CONTROL_MD, CONTROL_SM, Weight, font, palette, radius};
 use egui::{
     Color32, Response, Role, Sense, Stroke, StrokeKind, Ui, Vec2, Widget, WidgetInfo, vec2,
 };
@@ -26,13 +26,13 @@ pub enum ButtonSize {
 }
 
 impl ButtonSize {
-    /// Taille de texte, marges horizontale et verticale (px de la charte).
+    /// Taille de texte, marge horizontale, taille d'icône et hauteur totale (px).
     fn metrics(self) -> (f32, f32, f32, f32) {
         let p = palette();
         match self {
-            ButtonSize::Sm => (p.text_sm, 16.0, 6.0, 16.0),
-            ButtonSize::Md => (p.text_base, 24.0, 10.0, 20.0),
-            ButtonSize::Lg => (p.text_md, 32.0, 14.0, 20.0),
+            ButtonSize::Sm => (p.text_sm, 16.0, 16.0, CONTROL_SM),
+            ButtonSize::Md => (p.text_base, 24.0, 20.0, CONTROL_MD),
+            ButtonSize::Lg => (p.text_md, 32.0, 20.0, CONTROL_LG),
         }
     }
 }
@@ -127,7 +127,7 @@ impl<'a> PillButton<'a> {
                 } else {
                     p.primary_dark
                 };
-                (fill, fill, p.white)
+                (fill, fill, p.on_primary)
             }
             ButtonVariant::Secondary => {
                 let fill = if hovered {
@@ -135,11 +135,7 @@ impl<'a> PillButton<'a> {
                 } else {
                     Color32::TRANSPARENT
                 };
-                let ink = if hovered {
-                    p.primary_darker
-                } else {
-                    p.primary_dark
-                };
+                let ink = if hovered { p.accent_hover } else { p.accent };
                 (fill, ink, ink)
             }
             ButtonVariant::Ghost => {
@@ -148,25 +144,18 @@ impl<'a> PillButton<'a> {
                 } else {
                     Color32::TRANSPARENT
                 };
-                let ink = if hovered {
-                    p.primary_darker
-                } else {
-                    p.primary_dark
-                };
+                let ink = if hovered { p.accent_hover } else { p.accent };
                 (fill, Color32::TRANSPARENT, ink)
             }
             ButtonVariant::Dark => {
-                let fill = if hovered { p.dark_2() } else { p.dark };
-                (fill, fill, p.white)
+                let fill = if hovered {
+                    p.dark_button_hover
+                } else {
+                    p.dark_button
+                };
+                (fill, fill, p.on_primary)
             }
         }
-    }
-}
-
-impl crate::ui::theme::Palette {
-    /// Survol du bouton sombre.
-    pub fn dark_2(&self) -> Color32 {
-        crate::ui::theme::mix(self.dark, Color32::BLACK, 0.3)
     }
 }
 
@@ -178,7 +167,7 @@ const GAP: f32 = 8.0;
 impl Widget for PillButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let p = palette();
-        let (text_size, pad_x, pad_y, icon_size) = self.metrics();
+        let (text_size, pad_x, icon_size, height) = self.metrics();
         let font_id = font(Weight::Semibold, text_size);
         let galley = ui.painter().layout_job(spaced_job(
             self.text,
@@ -192,8 +181,6 @@ impl Widget for PillButton<'_> {
             0.0
         };
         let content_w = icon_w + galley.size().x;
-        let height = text_size.max(if self.icon.is_some() { icon_size } else { 0.0 })
-            + 2.0 * (pad_y + BORDER);
         let mut width = content_w + 2.0 * (pad_x + BORDER);
         if self.full_width {
             width = width.max(ui.available_width());
@@ -208,8 +195,8 @@ impl Widget for PillButton<'_> {
         let enabled = self.enabled;
         response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &label));
         if ui.is_rect_visible(rect) {
-            let hot = self.preview_hover
-                || (enabled && (response.hovered() || response.is_pointer_button_down_on()));
+            let pressed = enabled && response.is_pointer_button_down_on();
+            let hot = self.preview_hover || pressed || (enabled && response.hovered());
             let (mut fill, mut edge, mut ink) = self.colors(hot);
             if !enabled {
                 // Opacité 0,5 de la charte pour l'état désactivé.
@@ -219,6 +206,12 @@ impl Widget for PillButton<'_> {
             }
             let painter = ui.painter();
             let r = radius(p.radius_full);
+            // Appui : le bouton s'enfonce d'un pixel.
+            let rect = if pressed {
+                rect.translate(vec2(0.0, 1.0))
+            } else {
+                rect
+            };
             painter.rect(rect, r, fill, Stroke::new(BORDER, edge), StrokeKind::Inside);
             let start_x = rect.center().x - content_w / 2.0;
             if let Some(icon) = self.icon {
@@ -254,22 +247,35 @@ impl PillButton<'_> {
     }
 }
 
-/// Petit bouton icône seul (fantôme, rond), avec nom accessible obligatoire.
+/// Bouton icône seul (fantôme, rond, 32 px), avec nom accessible obligatoire.
 pub fn icon_button(ui: &mut Ui, icon: Icon, label: &str, color: Color32) -> Response {
+    icon_button_sized(ui, icon, label, color, CONTROL_SM)
+}
+
+/// Bouton icône seul de côté `size`.
+pub fn icon_button_sized(
+    ui: &mut Ui,
+    icon: Icon,
+    label: &str,
+    color: Color32,
+    size: f32,
+) -> Response {
     let p = palette();
-    let size = 32.0;
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     let label_owned = label.to_owned();
     response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label_owned));
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
-        if response.hovered() {
-            painter.rect_filled(rect, radius(p.radius_full), p.bg_muted);
+        if response.is_pointer_button_down_on() {
+            painter.rect_filled(rect, radius(p.radius_full), p.hover_strong);
+        } else if response.hovered() {
+            painter.rect_filled(rect, radius(p.radius_full), p.muted);
         }
+        let ink = if response.hovered() { p.accent } else { color };
         icon.paint(
             ui,
             egui::Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
-            color,
+            ink,
         );
         if response.has_focus() {
             painter.rect_stroke(

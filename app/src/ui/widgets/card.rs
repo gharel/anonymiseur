@@ -26,7 +26,7 @@ impl Card {
         Self {
             accent: None,
             padding: p.space(5),
-            fill: p.white,
+            fill: p.surface,
         }
     }
 

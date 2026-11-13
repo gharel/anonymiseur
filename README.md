@@ -8,7 +8,7 @@ Il s'adresse aux apprenants et aux formateurs qui veulent utiliser une IA sur de
 
 ## Le parcours en trois étapes
 
-1. **Anonymiser.** Déposez votre fichier dans l'application. Elle propose une liste de données à masquer. Vous la relisez, vous corrigez, vous validez. L'application produit un fichier anonymisé et, sauf si vous choisissez le mode irréversible, une table de correspondance `.anonmap` protégée par un mot de passe que vous choisissez.
+1. **Anonymiser.** Déposez votre fichier dans l'application. Elle propose une liste de données à masquer. Vous la relisez, vous corrigez, vous validez. L'application produit un fichier anonymisé et, sauf si vous choisissez le mode irréversible, une table de correspondance `.anonmap` protégée par un mot de passe que vous choisissez. Par défaut, ces fichiers sont écrits dans un dossier `Anonymisés` créé à côté de vos fichiers, pour ne pas mélanger sources et résultats. Un fichier déjà produit par l'outil (`_anonymise`, `_restaure`, `.anonmap`) n'est jamais anonymisé une seconde fois.
 2. **Envoyer à l'IA.** Donnez à l'IA le fichier anonymisé avec la consigne fournie par l'application. Cette consigne demande à l'IA de conserver les balises telles quelles (texte dans `assets/consigne-ia.md`).
 3. **Désanonymiser.** Collez la réponse de l'IA dans l'application et ouvrez votre table `.anonmap` avec son mot de passe : les balises sont remplacées par les vraies valeurs. Les balises que l'IA a légèrement abîmées (`[Personne 1]`, `[personne_2]`) sont reconnues. Une balise inconnue est signalée et laissée intacte.
 
@@ -68,7 +68,11 @@ Détails sur les données et leur protection : [CONFIDENTIALITE.md](CONFIDENTIAL
 
 ## Fichiers d'exemple
 
-Le dossier `exemples/` contient de faux fichiers, entièrement fictifs, dans chaque format. Le fichier `exemples/LISEZMOI.md` propose un scénario guidé pour essayer l'outil.
+Le bouton « Essayer avec des exemples » charge en un clic de faux fichiers, entièrement fictifs, dans chaque format. Ils sont placés dans `Documents\Anonymiseur\Exemples` (sous macOS, `Documents/Anonymiseur/Exemples`) : le même dossier est réutilisé à chaque clic, seuls les fichiers d'exemple manquants sont recréés et aucun fichier existant n'est remplacé. Le fichier `LISEZMOI.md` de ce dossier propose un scénario guidé ; `reponse-ia-exemple.md` simule la réponse d'une IA pour l'onglet Désanonymiser. Les mêmes fichiers sont dans le dossier `exemples/` du dépôt.
+
+## Thème et préférences
+
+Le bouton en haut à droite choisit le thème : Système (par défaut, suit le réglage de l'ordinateur), Clair ou Sombre. Le thème, le dernier niveau de protection (Standard ou Renforcé) et la taille de la fenêtre sont retenus d'une session à l'autre dans un petit fichier `preferences.json` du dossier de configuration (`%APPDATA%\Anonymiseur` sous Windows, `~/Library/Application Support/Anonymiseur` sous macOS). Ce fichier ne contient aucun chemin de fichier ni aucun contenu de vos documents.
 
 ## Compiler depuis les sources
 

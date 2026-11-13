@@ -1,7 +1,7 @@
 //! Navigation : onglets de l'en-tête, étapes, sélecteur segmenté, filtres.
 
 use super::Icon;
-use crate::ui::theme::{Weight, font, palette, radius};
+use crate::ui::theme::{CONTROL_MD, Weight, font, palette, radius};
 use egui::{
     Color32, Rect, Response, RichText, Role, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, pos2,
     vec2,
@@ -23,6 +23,8 @@ impl<'a> TabBar<'a> {
     pub fn show(self, ui: &mut Ui, active: usize) -> Option<usize> {
         let p = palette();
         let mut clicked = None;
+        // La rangée est placée à sa hauteur finale : centrée sur la ligne parente.
+        ui.spacing_mut().interact_size.y = CONTROL_MD;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = p.space(2);
             for (i, (icon, label)) in self.tabs.iter().enumerate() {
@@ -38,22 +40,24 @@ impl<'a> TabBar<'a> {
                 );
                 let icon_size = 18.0;
                 let pad_x = p.space(3);
-                let size = vec2(pad_x * 2.0 + icon_size + 8.0 + galley.size().x, p.space(10));
+                let size = vec2(pad_x * 2.0 + icon_size + 8.0 + galley.size().x, CONTROL_MD);
                 let (rect, response) = ui.allocate_exact_size(size, Sense::click());
                 let label_owned = (*label).to_owned();
                 response
                     .widget_info(|| WidgetInfo::selected(Role::Tab, true, is_active, &label_owned));
                 let hovered = response.hovered();
                 let ink = if is_active || hovered {
-                    p.primary_dark
+                    p.accent
                 } else {
                     p.text
                 };
                 let painter = ui.painter();
                 if is_active {
                     painter.rect_filled(rect, radius(p.radius_full), p.primary_subtle);
+                } else if response.is_pointer_button_down_on() {
+                    painter.rect_filled(rect, radius(p.radius_full), p.hover_strong);
                 } else if hovered {
-                    painter.rect_filled(rect, radius(p.radius_full), p.bg_muted);
+                    painter.rect_filled(rect, radius(p.radius_full), p.muted);
                 }
                 let icon_rect = Rect::from_center_size(
                     pos2(rect.min.x + pad_x + icon_size / 2.0, rect.center().y),
@@ -122,7 +126,7 @@ impl<'a> Stepper<'a> {
                     Weight::Medium
                 };
                 let color = if i <= self.current {
-                    p.dark
+                    p.heading
                 } else {
                     p.text_secondary
                 };
@@ -157,13 +161,26 @@ impl<'a> Stepper<'a> {
             if done || current {
                 painter.circle_filled(c, disc / 2.0, p.primary_dark);
             } else {
-                painter.circle(c, disc / 2.0 - 0.75, p.white, Stroke::new(1.5, p.gray_400));
+                painter.circle(
+                    c,
+                    disc / 2.0 - 0.75,
+                    p.surface,
+                    Stroke::new(1.5, p.line_strong),
+                );
             }
             if done {
-                Icon::Check.paint(ui, Rect::from_center_size(c, Vec2::splat(16.0)), p.white);
+                Icon::Check.paint(
+                    ui,
+                    Rect::from_center_size(c, Vec2::splat(16.0)),
+                    p.on_primary,
+                );
             } else {
                 let num = format!("{}", i + 1);
-                let color = if current { p.white } else { p.text_secondary };
+                let color = if current {
+                    p.on_primary
+                } else {
+                    p.text_secondary
+                };
                 painter.text(
                     c,
                     egui::Align2::CENTER_CENTER,
@@ -182,7 +199,7 @@ impl<'a> Stepper<'a> {
                 let color = if i < self.current {
                     p.primary_dark
                 } else {
-                    p.gray_300
+                    p.line
                 };
                 painter.line_segment([pos2(x, cy), pos2(x + line, cy)], Stroke::new(2.0, color));
                 x += line + gap;
@@ -222,7 +239,7 @@ pub fn segmented<T: PartialEq + Copy>(
     ui.painter().rect(
         outer,
         radius(p.radius_full),
-        p.bg_muted,
+        p.muted,
         Stroke::new(1.0, p.border),
         StrokeKind::Inside,
     );
@@ -239,9 +256,9 @@ pub fn segmented<T: PartialEq + Copy>(
         if selected {
             painter.rect_filled(rect, radius(p.radius_full), p.primary_dark);
         } else if r.hovered() {
-            painter.rect_filled(rect, radius(p.radius_full), p.gray_200);
+            painter.rect_filled(rect, radius(p.radius_full), p.hover_strong);
         }
-        let ink = if selected { p.white } else { p.text };
+        let ink = if selected { p.on_primary } else { p.text };
         painter.galley(rect.center() - g.size() / 2.0, g, ink);
         if r.has_focus() {
             painter.rect_stroke(
@@ -292,9 +309,9 @@ pub fn filter_chip(
     let (fill, edge, ink) = if selected {
         (tint.fill, tint.ink, tint.ink)
     } else if response.hovered() {
-        (p.gray_50, p.gray_500, p.text)
+        (p.hover, p.line_strong, p.text)
     } else {
-        (p.white, p.gray_300, p.text)
+        (p.surface, p.line, p.text)
     };
     painter.rect(
         rect,
@@ -319,4 +336,76 @@ pub fn filter_chip(
         );
     }
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Icône d'un choix de thème.
+fn theme_icon(choice: crate::ui::theme::ThemeChoice) -> Icon {
+    use crate::ui::theme::ThemeChoice;
+    match choice {
+        ThemeChoice::System => Icon::Monitor,
+        ThemeChoice::Light => Icon::Sun,
+        ThemeChoice::Dark => Icon::Moon,
+    }
+}
+
+/// Bouton d'icône de l'en-tête : menu Système, Clair, Sombre. Renvoie vrai si
+/// le choix a changé.
+pub fn theme_button(ui: &mut Ui, choice: &mut crate::ui::theme::ThemeChoice) -> bool {
+    use crate::ui::theme::{CONTROL_MD, ThemeChoice};
+    let p = palette();
+    let label = format!("Thème : {}", choice.label());
+    let r = super::button::icon_button_sized(ui, theme_icon(*choice), &label, p.text, CONTROL_MD);
+    let mut changed = false;
+    egui::Popup::menu(&r).gap(4.0).show(|ui| {
+        ui.set_min_width(180.0);
+        ui.spacing_mut().item_spacing.y = 0.0;
+        for c in ThemeChoice::ALL {
+            let selected = *choice == c;
+            let (rect, row) =
+                ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
+            let name = c.label().to_owned();
+            row.widget_info(|| WidgetInfo::selected(Role::MenuItemRadio, true, selected, &name));
+            let painter = ui.painter();
+            if row.hovered() || row.has_focus() {
+                painter.rect_filled(rect, radius(p.radius_sm), p.hover);
+            }
+            let ink = if selected { p.accent } else { p.text };
+            theme_icon(c).paint(
+                ui,
+                Rect::from_center_size(pos2(rect.min.x + 18.0, rect.center().y), Vec2::splat(18.0)),
+                ink,
+            );
+            let weight = if selected {
+                Weight::Semibold
+            } else {
+                Weight::Regular
+            };
+            painter.text(
+                pos2(rect.min.x + 36.0, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                c.label(),
+                font(weight, p.text_sm),
+                ink,
+            );
+            if selected {
+                Icon::Check.paint(
+                    ui,
+                    Rect::from_center_size(
+                        pos2(rect.max.x - 16.0, rect.center().y),
+                        Vec2::splat(16.0),
+                    ),
+                    p.accent,
+                );
+            }
+            if row
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .clicked()
+                && !selected
+            {
+                *choice = c;
+                changed = true;
+            }
+        }
+    });
+    changed
 }

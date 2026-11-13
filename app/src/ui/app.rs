@@ -2,14 +2,16 @@
 //! des onglets au moteur : les traitements longs passent par le fil de travail.
 
 use super::platform::{Platform, file_entry};
+use super::prefs::{self, Preferences};
 use super::runner::{Msg, Runner};
 use super::screens;
 use super::service::{self, anonymize_batch, read_inputs, restore_batch};
 use super::state::Tab;
-use super::state::anonymize::{AnonymizeState, Step};
+use super::state::anonymize::{AddReport, AnonymizeState, Step};
 use super::state::deanonymize::{DeanonymizeState, is_map};
 use super::state::freetext::{FreeTextNotice, FreeTextState};
-use super::theme::{self, Weight, font, palette};
+use super::theme::{self, CONTROL_SM, ThemeChoice, Weight, font, palette};
+use super::widgets::nav::theme_button;
 use super::widgets::{Banner, BannerKind, Icon, PillButton, TabBar};
 use crate::moteur::IaStatus;
 use anon_core::Session;
@@ -59,6 +61,14 @@ pub struct AnonApp {
     pub ia: Option<IaStatus>,
     /// Message ponctuel affiché en haut du contenu.
     pub notice: Option<(BannerKind, String)>,
+    /// Préférences (thème, niveau de protection, fenêtre).
+    pub prefs: Preferences,
+    /// Fichier des préférences ; `None` : rien n'est écrit (tests).
+    prefs_path: Option<PathBuf>,
+    /// Préférences telles qu'enregistrées la dernière fois.
+    saved_prefs: Preferences,
+    /// Thème appliqué au contexte egui.
+    applied_theme: Option<ThemeChoice>,
     runner: Runner,
     platform: Box<dyn Platform>,
 }
@@ -73,26 +83,38 @@ impl std::fmt::Debug for AnonApp {
 }
 
 impl AnonApp {
-    /// Installe le thème, lance le chargement du moteur sur le fil de travail.
+    /// Installe le thème, lit les préférences, lance le chargement du moteur
+    /// sur le fil de travail.
     pub fn new(ctx: &egui::Context, platform: Box<dyn Platform>) -> Self {
-        theme::install(ctx);
+        let path = prefs::default_path();
+        let loaded = path.as_deref().map(Preferences::load).unwrap_or_default();
+        theme::install(ctx, loaded.theme);
         let mut runner = Runner::new(Some(ctx.clone()));
         runner.spawn(|_| {
             let m = crate::moteur::build();
             Msg::EngineReady(Arc::new(m.engine), m.ia)
         });
-        Self::assemble(runner, platform, None, None)
+        Self::assemble(runner, platform, None, None, loaded, path)
     }
 
     /// Moteur déjà chargé, traitements exécutés immédiatement (tests, instantanés).
+    /// Préférences par défaut, jamais enregistrées.
     pub fn with_engine(
         ctx: &egui::Context,
         platform: Box<dyn Platform>,
         engine: Arc<Engine>,
         ia: IaStatus,
     ) -> Self {
-        theme::install(ctx);
-        Self::assemble(Runner::synchronous(), platform, Some(engine), Some(ia))
+        let prefs = Preferences::default();
+        theme::install(ctx, prefs.theme);
+        Self::assemble(
+            Runner::synchronous(),
+            platform,
+            Some(engine),
+            Some(ia),
+            prefs,
+            None,
+        )
     }
 
     fn assemble(
@@ -100,19 +122,62 @@ impl AnonApp {
         platform: Box<dyn Platform>,
         engine: Option<Arc<Engine>>,
         ia: Option<IaStatus>,
+        prefs: Preferences,
+        prefs_path: Option<PathBuf>,
     ) -> Self {
+        let anonymize = AnonymizeState {
+            profile: prefs.profile.into(),
+            ..AnonymizeState::default()
+        };
         Self {
             tab: Tab::default(),
-            anonymize: AnonymizeState::default(),
+            anonymize,
             deanonymize: DeanonymizeState::default(),
             free_text: FreeTextState::default(),
             session: Session::new(),
             engine,
             ia,
             notice: None,
+            prefs,
+            prefs_path,
+            saved_prefs: prefs,
+            applied_theme: None,
             runner,
             platform,
         }
+    }
+
+    /// Applique le thème choisi au contexte (effectif à l'image suivante).
+    fn apply_theme(&mut self, ctx: &egui::Context) {
+        if self.applied_theme != Some(self.prefs.theme) {
+            ctx.set_theme(self.prefs.theme.preference());
+            self.applied_theme = Some(self.prefs.theme);
+            ctx.request_repaint();
+        }
+    }
+
+    /// Retient le profil et la taille de la fenêtre ; enregistre les
+    /// préférences quand un réglage choisi par l'utilisateur change.
+    fn track_prefs(&mut self, ctx: &egui::Context) {
+        self.prefs.profile = self.anonymize.profile.into();
+        if let Some(r) = ctx.input(|i| i.viewport().inner_rect) {
+            self.prefs.window = Some([r.width(), r.height()]);
+        }
+        let changed = Preferences {
+            window: self.saved_prefs.window,
+            ..self.prefs
+        } != self.saved_prefs;
+        if changed {
+            self.save_prefs();
+        }
+    }
+
+    /// Écrit les préférences (sauf en test, sans fichier).
+    pub fn save_prefs(&mut self) {
+        if let Some(path) = &self.prefs_path {
+            let _ = self.prefs.save(path);
+        }
+        self.saved_prefs = self.prefs;
     }
 
     fn supported(&self) -> Vec<&'static str> {
@@ -128,8 +193,10 @@ impl AnonApp {
             Tab::Anonymize => {
                 if self.anonymize.step == Step::Drop && self.anonymize.busy.is_none() {
                     let supported = self.supported();
-                    self.anonymize
+                    let report = self
+                        .anonymize
                         .add_files(paths.into_iter().map(file_entry), &supported);
+                    self.report_added(&report);
                 }
             }
             Tab::Deanonymize => {
@@ -202,7 +269,8 @@ impl AnonApp {
             Effect::PickDocuments => {
                 let files = self.platform.pick_documents();
                 let supported = self.supported();
-                self.anonymize.add_files(files, &supported);
+                let report = self.anonymize.add_files(files, &supported);
+                self.report_added(&report);
             }
             Effect::TryExamples => self.try_examples(),
             Effect::Analyze(paths) => {
@@ -386,40 +454,52 @@ impl AnonApp {
         }
     }
 
-    /// Copie les exemples fictifs dans un dossier choisi et les charge dans la liste.
+    /// Message pour les fichiers écartés d'un ajout.
+    fn report_added(&mut self, report: &AddReport) {
+        if let Some(msg) = report.outputs_message() {
+            self.notice = Some((BannerKind::Info, msg));
+        }
+    }
+
+    /// Charge les exemples fictifs, en un clic : toujours le même dossier
+    /// (`Documents/Anonymiseur/Exemples`), réutilisé ; dialogue seulement si le
+    /// dossier Documents est introuvable.
     fn try_examples(&mut self) {
         if self.anonymize.step != Step::Drop || self.anonymize.busy.is_some() {
             return;
         }
-        let Some(parent) = self.platform.pick_examples_folder() else {
-            return;
+        let dir = match self.platform.examples_dir() {
+            Some(d) => d,
+            None => match self.platform.pick_examples_folder() {
+                Some(parent) => parent.join(service::EXAMPLES_FALLBACK_DIR),
+                None => return,
+            },
         };
-        self.load_examples(&parent);
+        self.load_examples(&dir);
     }
 
-    /// Copie les exemples dans un nouveau dossier de `parent` et les charge.
-    pub fn load_examples(&mut self, parent: &std::path::Path) {
-        match service::copy_examples(parent) {
-            Ok(copied) => {
+    /// Prépare les exemples dans `dir` (fichiers manquants recréés, rien
+    /// d'écrasé) et charge les documents d'exemple dans la liste.
+    pub fn load_examples(&mut self, dir: &std::path::Path) {
+        match service::prepare_examples(dir) {
+            Ok(ready) => {
                 let supported = self.supported();
-                if self.anonymize.files.is_empty() {
-                    self.anonymize.out_dir = Some(copied.dir.clone());
-                }
-                self.anonymize
-                    .add_files(copied.documents.into_iter().map(file_entry), &supported);
+                let report = self
+                    .anonymize
+                    .add_files(ready.documents.into_iter().map(file_entry), &supported);
                 self.notice = Some((
                     BannerKind::Success,
                     format!(
-                        "{} fichiers d'exemple, entièrement fictifs, copiés dans le dossier « {} ». Lisez LISEZMOI.md pour le scénario guidé ; reponse-ia-exemple.md sert à l'onglet Désanonymiser.",
-                        copied.copied,
-                        service::file_name(&copied.dir)
+                        "{} documents d'exemple, entièrement fictifs, chargés depuis {}. LISEZMOI.md y propose un scénario guidé ; reponse-ia-exemple.md sert à l'onglet Désanonymiser.",
+                        report.added,
+                        examples_place(dir)
                     ),
                 ));
             }
             Err(_) => {
                 self.notice = Some((
                     BannerKind::Error,
-                    "Copie des exemples impossible dans ce dossier : choisissez-en un autre."
+                    "Préparation des exemples impossible : le dossier Documents n'est pas accessible en écriture."
                         .to_owned(),
                 ));
             }
@@ -465,18 +545,21 @@ impl AnonApp {
             .resizable(false)
             .frame(
                 Frame::new()
-                    .fill(p.white)
+                    .fill(p.surface)
                     .inner_margin(Margin::symmetric(24, 0))
                     .stroke(Stroke::new(1.0, p.border)),
             )
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
+                    let logo = if p.dark_mode {
+                        egui::include_image!("../../../assets/charte/logo-white-color.png")
+                    } else {
+                        egui::include_image!("../../../assets/charte/logo-color.png")
+                    };
                     ui.add(
-                        egui::Image::new(egui::include_image!(
-                            "../../../assets/charte/logo-color.png"
-                        ))
-                        .fit_to_exact_size(vec2(110.0, 36.0))
-                        .alt_text("Skazy Formation"),
+                        egui::Image::new(logo)
+                            .fit_to_exact_size(vec2(110.0, 36.0))
+                            .alt_text("Skazy Formation"),
                     );
                     ui.add_space(p.space(8));
                     let tabs = [
@@ -490,6 +573,9 @@ impl AnonApp {
                         self.tab = tab;
                         self.notice = None;
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        theme_button(ui, &mut self.prefs.theme);
+                    });
                 });
             });
     }
@@ -501,14 +587,15 @@ impl AnonApp {
             .resizable(false)
             .frame(
                 Frame::new()
-                    .fill(p.white)
+                    .fill(p.surface)
                     .inner_margin(Margin::symmetric(24, 0))
                     .stroke(Stroke::new(1.0, p.border)),
             )
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
+                    ui.set_min_height(CONTROL_SM);
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    Icon::ShieldCheck.show(ui, p.primary_dark, 16.0);
+                    Icon::ShieldCheck.show(ui, p.accent, 16.0);
                     let small = |t: &str| {
                         RichText::new(t)
                             .font(font(Weight::Regular, p.text_xs))
@@ -544,6 +631,8 @@ impl AnonApp {
 
     /// Construit toute l'interface dans `ui`.
     pub fn show(&mut self, ui: &mut Ui) {
+        self.apply_theme(ui.ctx());
+        theme::sync(ui);
         let p = palette();
         self.poll();
         self.take_dropped_files(ui);
@@ -557,8 +646,9 @@ impl AnonApp {
         self.footer(ui, &mut effects);
 
         CentralPanel::default()
-            .frame(Frame::new().fill(p.bg_subtle))
+            .frame(Frame::new().fill(p.page))
             .show(ui, |ui| {
+                let view_h = ui.available_height();
                 ScrollArea::vertical()
                     .id_salt(("contenu", self.tab.index()))
                     .auto_shrink([false, false])
@@ -594,6 +684,7 @@ impl AnonApp {
                                     Tab::FreeText => screens::freetext::show(
                                         ui,
                                         &mut self.free_text,
+                                        view_h,
                                         &mut effects,
                                     ),
                                 }
@@ -605,11 +696,37 @@ impl AnonApp {
         self.apply(ui, effects);
         // Traitements synchrones (tests) : résultat visible dès cette image.
         self.poll();
+        self.track_prefs(ui.ctx());
+    }
+}
+
+/// Emplacement des exemples, sans chemin de la machine : « Documents ›
+/// Anonymiseur › Exemples », ou le nom du dossier choisi.
+fn examples_place(dir: &std::path::Path) -> String {
+    let parts: Vec<String> = dir
+        .components()
+        .rev()
+        .take(service::EXAMPLES_SUBDIR.len())
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    let fixed = parts
+        .iter()
+        .rev()
+        .map(String::as_str)
+        .eq(service::EXAMPLES_SUBDIR.iter().copied());
+    if fixed {
+        "Documents › Anonymiseur › Exemples".to_owned()
+    } else {
+        format!("le dossier « {} »", service::file_name(dir))
     }
 }
 
 impl eframe::App for AnonApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.save_prefs();
     }
 }

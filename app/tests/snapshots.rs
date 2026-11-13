@@ -1,6 +1,7 @@
 //! Instantanés PNG de la galerie et de chaque écran, alimentés par une vraie
 //! analyse des fichiers de `exemples/`, à deux tailles de fenêtre (plus une
-//! page haute pour voir le contenu sous la ligne de flottaison).
+//! page haute pour voir le contenu sous la ligne de flottaison), et en thème
+//! sombre à 1280 × 800.
 //! Mise à jour : `UPDATE_SNAPSHOTS=force cargo test -p anonymiseur --test snapshots`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -13,17 +14,20 @@ use anonymiseur::ui::service::{Outcome, anonymize_batch, read_inputs};
 use anonymiseur::ui::state::Tab;
 use anonymiseur::ui::state::anonymize::{Busy, Step};
 use anonymiseur::ui::state::deanonymize::InputMode;
+use anonymiseur::ui::theme::ThemeChoice;
 use anonymiseur::ui::{AnonApp, theme};
 use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::{Harness, SnapshotResults};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-/// Deux tailles de fenêtre, plus une page haute pour voir tout le contenu.
-const SIZES: [(f32, f32, &str); 3] = [
-    (1280.0, 800.0, "1280x800"),
-    (900.0, 650.0, "900x650"),
-    (1280.0, 1600.0, "pleine_page"),
+/// Deux tailles de fenêtre, plus une page haute pour voir tout le contenu, et
+/// le thème sombre.
+const SIZES: [(f32, f32, &str, ThemeChoice); 4] = [
+    (1280.0, 800.0, "1280x800", ThemeChoice::Light),
+    (900.0, 650.0, "900x650", ThemeChoice::Light),
+    (1280.0, 1600.0, "pleine_page", ThemeChoice::Light),
+    (1280.0, 800.0, "sombre_1280x800", ThemeChoice::Dark),
 ];
 const PASSWORD: &str = "Cheval-Agrafe-Batterie-47";
 
@@ -52,13 +56,21 @@ const FICHIERS: [&str; 4] = [
 ];
 
 fn app(width: f32, height: f32, setup: impl FnOnce(&mut AnonApp)) -> Harness<'static, AnonApp> {
+    app_with(width, height, NullPlatform::default(), setup)
+}
+
+fn app_with(
+    width: f32,
+    height: f32,
+    platform: NullPlatform,
+    setup: impl FnOnce(&mut AnonApp),
+) -> Harness<'static, AnonApp> {
     let (engine, ia) = engine();
     Harness::builder()
         .with_size([width, height])
         .with_pixels_per_point(1.0)
         .build_eframe(move |cc| {
-            let mut app =
-                AnonApp::with_engine(&cc.egui_ctx, Box::new(NullPlatform::default()), engine, ia);
+            let mut app = AnonApp::with_engine(&cc.egui_ctx, Box::new(platform), engine, ia);
             setup(&mut app);
             app
         })
@@ -93,8 +105,9 @@ fn neutralize_paths(app: &mut AnonApp) {
 
 fn snap(name: &str, setup: impl Fn(&mut AnonApp)) {
     let mut results = SnapshotResults::new();
-    for (w, h, label) in SIZES {
+    for (w, h, label, theme) in SIZES {
         let mut harness = app(w, h, |a| {
+            a.prefs.theme = theme;
             setup(a);
             neutralize_paths(a);
         });
@@ -162,29 +175,39 @@ fn anonymize_all(app: &mut AnonApp, dir: PathBuf) {
         .anonymize_done(report, job.inputs, job.analysis);
 }
 
-#[test]
-fn gallery() {
+fn gallery_in(choice: ThemeChoice, name: &str) {
     let mut harness = Harness::builder()
-        .with_size([1280.0, 2450.0])
+        .with_size([1280.0, 2500.0])
         .with_pixels_per_point(1.0)
         .build_ui_state(
-            |ui, (ready, st): &mut (bool, GalleryState)| {
+            move |ui, (ready, st): &mut (bool, GalleryState)| {
                 // Polices et thème installés avant la première mise en page.
                 if !*ready {
-                    theme::install(ui.ctx());
+                    theme::install(ui.ctx(), choice);
                     *ready = true;
                     ui.ctx().request_repaint();
                     return;
                 }
+                theme::sync(ui);
                 egui::Frame::new()
-                    .fill(theme::palette().bg_subtle)
+                    .fill(theme::palette().page)
                     .inner_margin(24)
                     .show(ui, |ui| gallery::show(ui, st));
             },
             (false, GalleryState::default()),
         );
     harness.run();
-    harness.snapshot("galerie");
+    harness.snapshot(name);
+}
+
+#[test]
+fn gallery() {
+    gallery_in(ThemeChoice::Light, "galerie");
+}
+
+#[test]
+fn gallery_dark() {
+    gallery_in(ThemeChoice::Dark, "galerie_sombre");
 }
 
 #[test]
@@ -317,13 +340,26 @@ impl egui::DroppedFile for Dropped {
 fn dropped_files_are_listed_or_refused() {
     let mut harness = app(1280.0, 800.0, |_| {});
     harness.run();
-    for p in [exemple("notes.txt"), exemple("vieux.xls")] {
+    for p in [
+        exemple("notes.txt"),
+        exemple("vieux.xls"),
+        exemple("notes_anonymise.txt"),
+        exemple("table_anonymiseur.anonmap"),
+    ] {
         harness.input_mut().dropped_files.push(Arc::new(Dropped(p)));
     }
     harness.run();
     assert_eq!(harness.state().anonymize.files.len(), 1);
     assert_eq!(harness.state().anonymize.rejected.len(), 1);
     harness.get_by_label("notes.txt");
+    // Les fichiers produits par l'outil sont écartés, avec un message.
+    let notice = harness.state().notice.clone().map(|(_, t)| t);
+    assert!(
+        notice
+            .as_deref()
+            .is_some_and(|t| t.starts_with("2 fichiers déjà anonymisés ignorés")),
+        "{notice:?}"
+    );
 }
 
 #[test]
@@ -387,10 +423,15 @@ fn free_text_buttons_use_the_session() {
     assert!(harness.state().session.entities.is_empty());
 }
 
+/// Dossier des exemples comme sous Documents : `…/Anonymiseur/Exemples`.
+fn examples_dir(tag: &str) -> PathBuf {
+    out_dir(tag).join("Anonymiseur").join("Exemples")
+}
+
 #[test]
 fn anonymize_examples_and_always() {
     snap("anonymiser_1c_exemples", |app| {
-        app.load_examples(&out_dir("exemples"));
+        app.load_examples(&examples_dir("exemples"));
         assert_eq!(app.anonymize.files.len(), 14);
         // Quelques fichiers seulement, pour voir la liste « toujours » sous la liste.
         app.anonymize.files.truncate(3);
@@ -510,11 +551,206 @@ fn rapport_signale_les_images_non_restaurables() {
 }
 
 #[test]
-fn bouton_exemples_demande_un_dossier() {
+fn bouton_exemples_sans_documents_demande_un_dossier() {
+    // Dossier Documents introuvable : repli sur le dialogue, annulé ici.
     let mut harness = app(1280.0, 800.0, |_| {});
     harness.run();
     harness.get_by_label("Essayer avec des exemples").click();
     harness.run();
-    // Dialogue annulé (plateforme factice) : rien n'est chargé.
     assert!(harness.state().anonymize.files.is_empty());
+}
+
+#[test]
+fn bouton_exemples_reutilise_le_meme_dossier() {
+    let dir = examples_dir("exemples-un-clic");
+    let platform = NullPlatform {
+        examples: Some(dir.clone()),
+        ..NullPlatform::default()
+    };
+    let mut harness = app_with(1280.0, 800.0, platform, |_| {});
+    harness.run();
+    harness.get_by_label("Essayer avec des exemples").click();
+    harness.run();
+    let files = harness.state().anonymize.files.clone();
+    assert_eq!(files.len(), 14, "documents d'exemple seulement");
+    assert!(files.iter().all(|f| f.path.starts_with(&dir)));
+    assert!(
+        files
+            .iter()
+            .all(|f| f.name != "LISEZMOI.md" && f.name != "reponse-ia-exemple.md")
+    );
+    assert_eq!(
+        harness.state().anonymize.out_dir,
+        Some(dir.join("Anonymisés")),
+        "sorties dans un sous-dossier"
+    );
+    // Un fichier produit par l'outil dans le dossier, un exemple modifié : au
+    // second clic, rien n'est recopié ni ajouté deux fois, rien n'est écrasé.
+    std::fs::write(dir.join("notes_anonymise.txt"), "sortie").unwrap();
+    std::fs::write(dir.join("notes.txt"), "modifié").unwrap();
+    harness.get_by_label("Essayer avec des exemples").click();
+    harness.run();
+    assert_eq!(harness.state().anonymize.files.len(), 14);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("notes.txt")).unwrap(),
+        "modifié"
+    );
+    assert!(!dir.with_file_name("Exemples_2").exists());
+}
+
+/// Rectangles des nœuds d'accessibilité nommés `labels`.
+fn rects(harness: &Harness<'_, AnonApp>, labels: &[&str]) -> Vec<(String, egui::Rect)> {
+    labels
+        .iter()
+        .map(|l| ((*l).to_owned(), harness.get_by_label(l).rect()))
+        .collect()
+}
+
+/// Les contrôles d'une même ligne ont la même hauteur et le même centre
+/// vertical, au pixel près.
+fn assert_aligned(screen: &str, row: &[(String, egui::Rect)]) {
+    let Some((first, r0)) = row.first() else {
+        return;
+    };
+    for (name, r) in row {
+        assert!(
+            (r.height() - r0.height()).abs() <= 1.0,
+            "{screen} : « {name} » mesure {} px de haut, « {first} » {} px",
+            r.height(),
+            r0.height()
+        );
+        assert!(
+            (r.center().y - r0.center().y).abs() <= 1.0,
+            "{screen} : « {name} » centré à y = {}, « {first} » à y = {}",
+            r.center().y,
+            r0.center().y
+        );
+    }
+}
+
+#[test]
+fn controles_alignes_sur_chaque_ecran() {
+    // Déposer : ligne « toujours anonymiser ».
+    let mut h = app(1280.0, 1600.0, |app| {
+        let supported = app.engine.as_ref().unwrap().supported_extensions();
+        app.anonymize
+            .add_files([file_entry(exemple("notes.txt"))], &supported);
+    });
+    h.run();
+    let row = rects(
+        &h,
+        &[
+            "Terme à toujours anonymiser",
+            "Type du terme",
+            "Ajouter à la liste",
+        ],
+    );
+    assert_eq!(row[0].1.height(), theme::CONTROL_MD);
+    assert_aligned("Déposer", &row);
+
+    // Vérifier : niveau de protection, ajout manuel, barre d'actions.
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, Profile::Standard, &["notes.txt"]);
+    });
+    h.run();
+    assert_aligned(
+        "Vérifier, ajout",
+        &rects(&h, &["Terme à ajouter", "Type du terme ajouté", "Ajouter"]),
+    );
+    assert_aligned("Vérifier, actions", &rects(&h, &["Retour", "Continuer"]));
+    let level = h
+        .get_all_by_label("Niveau de protection")
+        .map(|n| n.rect())
+        .collect::<Vec<_>>();
+    assert_eq!(level.len(), 2, "libellé et sélecteur segmenté");
+    assert!(
+        (level[0].center().y - level[1].center().y).abs() <= 1.0,
+        "libellé centré sur le sélecteur : {level:?}"
+    );
+
+    // Protéger : barre d'actions.
+    let mut h = app(1280.0, 1600.0, |app| {
+        analyze_these(app, Profile::Standard, &["notes.txt"]);
+        app.anonymize.confirm_review().unwrap();
+    });
+    h.run();
+    assert_aligned("Protéger", &rects(&h, &["Retour", "Anonymiser 1 fichier"]));
+
+    // Terminé : boutons du résultat.
+    let mut h = app(1280.0, 1600.0, |app| {
+        anonymize_all(app, out_dir("alignement"));
+        neutralize_paths(app);
+    });
+    h.run();
+    assert_aligned(
+        "Terminé",
+        &rects(
+            &h,
+            &[
+                "Ouvrir le dossier",
+                "Copier la consigne pour l'IA",
+                "Anonymiser d'autres fichiers",
+            ],
+        ),
+    );
+
+    // Désanonymiser : ouverture de la table.
+    let mut h = app(1280.0, 800.0, |app| {
+        app.tab = Tab::Deanonymize;
+        let _ = app
+            .deanonymize
+            .choose_map(PathBuf::from("C:/Dossiers/table_anonymiseur.anonmap"));
+    });
+    h.run();
+    assert_aligned(
+        "Désanonymiser",
+        &rects(&h, &["Ouvrir la table", "Changer de table"]),
+    );
+
+    // Texte libre : boutons sous les zones.
+    let mut h = app(1280.0, 800.0, |app| app.tab = Tab::FreeText);
+    h.run();
+    let anonymize = h
+        .get_all_by_label("Anonymiser")
+        .find(|n| n.accesskit_node().role() == egui::accesskit::Role::Button)
+        .unwrap()
+        .rect();
+    let mut row = vec![("Anonymiser".to_owned(), anonymize)];
+    row.extend(rects(&h, &["Restaurer", "Copier le texte anonymisé"]));
+    assert_aligned("Texte libre", &row);
+
+    // En-tête : onglets et bouton du thème.
+    let tab = h
+        .get_all_by_label("Anonymiser")
+        .find(|n| n.accesskit_node().role() == egui::accesskit::Role::Tab)
+        .unwrap()
+        .rect();
+    let mut row = vec![("onglet Anonymiser".to_owned(), tab)];
+    row.extend(rects(&h, &["Thème : Système"]));
+    assert_aligned("En-tête", &row);
+}
+
+#[test]
+fn zones_de_texte_lisibles() {
+    // 1280 × 800 : au moins 12 lignes visibles par zone, texte de 15 px.
+    let mut h = app(1280.0, 800.0, |app| app.tab = Tab::FreeText);
+    h.run();
+    let area = h.get_by_label("Texte original").rect();
+    let line = anonymiseur::ui::widgets::field::area_line_height();
+    assert!(area.height() / line >= 12.0, "{} px", area.height());
+    assert!(anonymiseur::ui::widgets::field::mono_font().size >= 15.0);
+}
+
+#[test]
+fn choix_du_theme_depuis_l_en_tete() {
+    let mut h = app(1280.0, 800.0, |_| {});
+    h.run();
+    assert_eq!(h.ctx.theme(), egui::Theme::Light);
+    h.get_by_label("Thème : Système").click();
+    h.run();
+    h.get_by_label("Sombre").click();
+    h.run();
+    assert_eq!(h.state().prefs.theme, ThemeChoice::Dark);
+    assert_eq!(h.ctx.theme(), egui::Theme::Dark);
+    h.get_by_label("Thème : Sombre");
 }

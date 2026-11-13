@@ -1,14 +1,14 @@
 //! Onglet « Désanonymiser » : table + mot de passe, réponse de l'IA, résultat.
 
 use super::anonymize::busy_card;
-use super::{card_title, file_row, page_title};
+use super::{card_title, control_row, file_row, page_title, truncated_text};
 use crate::ui::app::Effect;
 use crate::ui::runner::Shared;
 use crate::ui::service::{file_name, unused_tags};
 use crate::ui::state::deanonymize::{Busy, DeanonymizeState, InputMode, MapStatus};
-use crate::ui::theme::{Weight, font, palette, radius};
+use crate::ui::theme::{CONTROL_MD, CONTROL_SM, Weight, font, palette, radius};
 use crate::ui::widgets::button::icon_button;
-use crate::ui::widgets::field::mono_font;
+use crate::ui::widgets::field::{area_height_for_rows, mono_job};
 use crate::ui::widgets::nav::segmented;
 use crate::ui::widgets::{
     Badge, Banner, Card, DropZone, Icon, PillButton, TextField, body, caption, muted, overline,
@@ -19,6 +19,8 @@ use egui::{Frame, Margin, RichText, Ui};
 
 /// Largeur à partir de laquelle les deux cartes sont côte à côte.
 const TWO_COLUMNS: f32 = 760.0;
+/// Lignes visibles de la zone où coller la réponse de l'IA.
+const PASTE_ROWS: usize = 8;
 
 pub fn show(ui: &mut Ui, st: &mut DeanonymizeState, progress: &Shared, fx: &mut Vec<Effect>) {
     page_title(
@@ -85,10 +87,11 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                         egui::Label::new(
                             RichText::new(&name)
                                 .font(font(Weight::Semibold, p.text_sm))
-                                .color(p.dark),
+                                .color(p.heading),
                         )
                         .truncate(),
-                    );
+                    )
+                    .on_hover_text(name.as_str());
                 });
                 let error = st.unlock_error.as_deref();
                 let r = TextField::password("Mot de passe de la table", &mut st.password)
@@ -96,7 +99,7 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                     .error(error)
                     .show(ui);
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                ui.horizontal(|ui| {
+                control_row(ui, CONTROL_MD, |ui| {
                     let go = ui.add(
                         PillButton::primary("Ouvrir la table")
                             .icon(Icon::LockOpen)
@@ -118,10 +121,11 @@ fn map_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                         egui::Label::new(
                             RichText::new(&name)
                                 .font(font(Weight::Semibold, p.text_sm))
-                                .color(p.dark),
+                                .color(p.heading),
                         )
                         .truncate(),
-                    );
+                    )
+                    .on_hover_text(name.as_str());
                 });
                 muted(ui, &format!("{entries} correspondances."));
                 if ui
@@ -158,7 +162,7 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                 TextField::new("Texte renvoyé par l'IA", &mut st.pasted)
                     .placeholder("Collez ici la réponse qui contient des balises [PERSONNE_1]…")
                     .id_salt("reponse-ia")
-                    .multiline(6)
+                    .area_height(area_height_for_rows(PASTE_ROWS))
                     .monospace()
                     .show(ui);
             }
@@ -193,8 +197,16 @@ fn input_card(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
                         .as_deref()
                         .map(|d| d.display().to_string())
                         .unwrap_or_default();
-                    ui.horizontal_wrapped(|ui| {
-                        caption(ui, &format!("Enregistrés dans : {dir}"));
+                    control_row(ui, CONTROL_SM, |ui| {
+                        let w = (ui.available_width() - 120.0).max(80.0);
+                        truncated_text(
+                            ui,
+                            w,
+                            CONTROL_SM,
+                            RichText::new(format!("Enregistrés dans : {dir}"))
+                                .font(font(Weight::Regular, p.text_xs))
+                                .color(p.text_secondary),
+                        );
                         if ui.add(PillButton::ghost("Changer").small()).clicked() {
                             fx.push(Effect::PickRestoreDir);
                         }
@@ -241,7 +253,7 @@ fn result_section(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) 
     if let Some((text, r)) = &st.text_result {
         Card::new().accent(p.primary).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = p.space(3);
-            ui.horizontal(|ui| {
+            control_row(ui, CONTROL_SM, |ui| {
                 subheading(ui, "Résultat");
                 ui.add(Badge::brand(&format!("{} balises restaurées", r.restored)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -258,16 +270,14 @@ fn result_section(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) 
                 });
             });
             Frame::new()
-                .fill(p.bg_subtle)
+                .fill(p.sunken)
+                .stroke(egui::Stroke::new(1.0, p.border))
                 .corner_radius(radius(p.radius_md))
                 .inner_margin(Margin::same(16))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.add(
-                        egui::Label::new(RichText::new(text).font(mono_font()).color(p.text))
-                            .wrap()
-                            .selectable(true),
-                    );
+                    let job = mono_job(text, p.text, ui.available_width());
+                    ui.add(egui::Label::new(job).wrap().selectable(true));
                 });
             report_banners(ui, r);
         });

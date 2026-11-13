@@ -22,6 +22,9 @@ anon-ner = { version = "0.1.0", path = "../crates/anon-ner", default-features = 
 anon-pdf = { version = "0.1.0", path = "../crates/anon-pdf" }
 anon-replace = { version = "0.1.0", path = "../crates/anon-replace" }
 anon-vault = { version = "0.1.0", path = "../crates/anon-vault" }
+# Dossiers Documents (exemples) et configuration (préférences) du système.
+# MIT ou Apache-2.0, aucun réseau ; sous Windows, API Known Folder.
+dirs = "7.0.0"
 eframe = { version = "0.37", features = ["glow"] }
 egui = "0.37"
 egui_extras = { version = "0.37", features = ["image", "svg"] }

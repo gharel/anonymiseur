@@ -1,22 +1,22 @@
 //! Onglet « Anonymiser » : Déposer → Vérifier → Protéger → Terminé.
 
 use super::images::images_card;
-use super::{action_bar, card_title, file_row, file_tile, page_title};
+use super::{action_bar, card_title, control_row, file_row, file_tile, page_title, truncated_text};
 use crate::ui::app::Effect;
 use crate::ui::runner::Shared;
 use crate::ui::service::{BatchReport, Outcome, Rejected, file_name};
 use crate::ui::state::anonymize::{AnonymizeState, ProtectMode, Step, needs_confirmation};
 use crate::ui::state::files::{FileFormat, human_size};
 use crate::ui::state::generalize::rule_label;
-use crate::ui::theme::{Weight, font, palette};
+use crate::ui::theme::{CONTROL_MD, CONTROL_SM, Weight, font, palette};
 use crate::ui::widgets::badge::{FAMILIES, family_label, family_tint};
 use crate::ui::widgets::button::icon_button;
-use crate::ui::widgets::field::mono_font;
+use crate::ui::widgets::field::tag_font;
 use crate::ui::widgets::nav::{filter_chip, segmented};
 use crate::ui::widgets::{
     Badge, Banner, Card, CheckState, Checkbox, Column, DataTable, DropZone, Icon, PillButton,
-    ProgressBar, RowTone, Stepper, StrengthMeter, TextField, body, caption, muted, overline,
-    subheading,
+    ProgressBar, RowTone, Select, Stepper, StrengthMeter, TextField, body, caption, muted,
+    overline, subheading,
 };
 use anon_core::{EntityKind, Profile, Session, WarningCode};
 use anon_engine::RiskLevel;
@@ -60,7 +60,7 @@ pub fn busy_card(ui: &mut Ui, title: &str, progress: &Shared, fx: &mut Vec<Effec
             format!("{title} : {label}")
         };
         ui.add(ProgressBar::new(progress.fraction(), &line));
-        ui.horizontal(|ui| {
+        control_row(ui, CONTROL_SM, |ui| {
             if progress.is_cancel_requested() {
                 muted(ui, "Annulation demandée : le fichier en cours se termine.");
             } else if ui
@@ -100,7 +100,7 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
         if zone.clicked() {
             fx.push(Effect::PickDocuments);
         }
-        ui.horizontal_wrapped(|ui| {
+        control_row(ui, CONTROL_SM, |ui| {
             ui.spacing_mut().item_spacing.x = p.space(3);
             if ui
                 .add(
@@ -108,14 +108,16 @@ fn drop_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
                         .icon(Icon::Sparkles)
                         .small(),
                 )
-                .on_hover_text("Copie des fichiers fictifs dans un dossier de votre choix.")
+                .on_hover_text(
+                    "Charge des documents fictifs, placés dans Documents › Anonymiseur › Exemples.",
+                )
                 .clicked()
             {
                 fx.push(Effect::TryExamples);
             }
             caption(
                 ui,
-                "Des documents fictifs (contrat, tableur, PDF scanné, carte de visite…) copiés dans un dossier de votre choix.",
+                "Contrat, tableur, PDF scanné, carte de visite… entièrement fictifs, dans Documents › Anonymiseur › Exemples.",
             );
         });
         if !st.files.is_empty() {
@@ -190,35 +192,29 @@ fn always_card(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
             "Termes cherchés dans tous les fichiers, même si la détection les manque (nom de projet, client, lieu-dit)."
         };
         muted(ui, note);
-        ui.horizontal_wrapped(|ui| {
+        let kinds = kind_options();
+        let error = st.always_error.map(|e| e.message());
+        let enter = control_row(ui, CONTROL_MD, |ui| {
             ui.spacing_mut().item_spacing.x = p.space(2);
-            let error = st.always_error.map(|e| e.message());
-            let field_w = (ui.available_width() - 360.0).clamp(200.0, 420.0);
+            let field_w = (ui.available_width() - 380.0).clamp(200.0, 420.0);
             let r = TextField::new("Terme à toujours anonymiser", &mut st.always_term)
                 .placeholder("Terme à toujours anonymiser")
                 .id_salt("terme-toujours")
                 .hide_label()
-                .error(error)
+                .error(error.map(|_| ""))
                 .width(field_w)
-                .show(ui);
+                .show_control(ui);
             let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            egui::ComboBox::from_id_salt("type-toujours")
-                .selected_text(st.always_kind.label())
-                .width(190.0)
-                .show_ui(ui, |ui| {
-                    for k in EntityKind::ALL {
-                        ui.selectable_value(&mut st.always_kind, *k, k.label());
-                    }
-                })
-                .response
-                .on_hover_text("Type du terme");
+            Select::new("type-toujours", "Type du terme", &mut st.always_kind, &kinds)
+                .width(200.0)
+                .show(ui);
             let add = ui.add(PillButton::secondary("Ajouter à la liste").icon(Icon::Plus));
-            if (add.clicked() || enter)
-                && let Ok(Some(paths)) = st.add_always()
-            {
-                fx.push(Effect::Analyze(paths));
-            }
+            enter || add.clicked()
         });
+        field_error(ui, error);
+        if enter && let Ok(Some(paths)) = st.add_always() {
+            fx.push(Effect::Analyze(paths));
+        }
         if st.always_kind_needs_renforce() {
             caption(
                 ui,
@@ -288,15 +284,35 @@ fn kind_menu(response: &egui::Response, current: EntityKind) -> Option<EntityKin
     chosen
 }
 
+/// Types proposés dans les sélecteurs, avec leur nom.
+fn kind_options() -> Vec<(EntityKind, &'static str)> {
+    EntityKind::ALL.iter().map(|k| (*k, k.label())).collect()
+}
+
+/// Message d'erreur sous une ligne de contrôles (le champ n'affiche que son bord rouge).
+fn field_error(ui: &mut Ui, error: Option<&str>) {
+    let Some(msg) = error else { return };
+    let p = palette();
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        Icon::TriangleAlert.show(ui, p.error, 14.0);
+        ui.label(
+            RichText::new(msg)
+                .font(font(Weight::Medium, p.text_xs))
+                .color(p.error),
+        );
+    });
+}
+
 fn review_step(ui: &mut Ui, st: &mut AnonymizeState, session: &Session, fx: &mut Vec<Effect>) {
     let p = palette();
     Card::new().show(ui, |ui| {
-        ui.horizontal(|ui| {
+        control_row(ui, CONTROL_MD, |ui| {
             ui.spacing_mut().item_spacing.x = p.space(4);
             ui.label(
                 RichText::new("Niveau de protection")
                     .font(font(Weight::Semibold, p.text_sm))
-                    .color(p.dark),
+                    .color(p.heading),
             );
             let mut profile = st.profile;
             segmented(
@@ -356,11 +372,7 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(p.space(2), p.space(2));
             let all = st.family_filter.is_empty();
-            let brand = crate::ui::theme::Tinted {
-                fill: p.primary_subtle,
-                ink: p.primary_dark,
-                edge: p.primary,
-            };
+            let brand = p.brand;
             if filter_chip(ui, "Toutes", None, all, brand).clicked() {
                 st.clear_filter();
             }
@@ -438,14 +450,17 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
                                 }
                                 let mut text = RichText::new(&c.value)
                                     .font(font(Weight::Semibold, p.text_sm))
-                                    .color(p.dark);
+                                    .color(p.heading);
                                 if !c.selected {
                                     text = text.color(p.text_secondary);
                                 }
                                 let r = ui.add(egui::Label::new(text).truncate());
-                                if !c.variants.is_empty() {
+                                if c.variants.is_empty() {
+                                    r.on_hover_text(c.value.as_str());
+                                } else {
                                     r.on_hover_text(format!(
-                                        "Autres formes : {}",
+                                        "{}\nAutres formes : {}",
+                                        c.value,
                                         c.variants.join(", ")
                                     ));
                                 }
@@ -458,7 +473,8 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
                                             .color(p.text_secondary),
                                     )
                                     .truncate(),
-                                );
+                                )
+                                .on_hover_text(c.context.as_str());
                             }
                             3 => {
                                 body(ui, &c.occurrences.to_string());
@@ -477,9 +493,9 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
                                 let tag = st.tag_preview.get(&c.id).map(|t| t.to_string());
                                 let general = st.generalization_for(c.id);
                                 let chosen = st.generalized(c.id);
-                                let shown = match (&tag, chosen) {
-                                    (_, Some(g)) if c.selected => {
-                                        Some(
+                                let shown =
+                                    match (&tag, chosen) {
+                                        (_, Some(g)) if c.selected => Some(
                                             ui.add(
                                                 egui::Label::new(
                                                     RichText::new(g)
@@ -492,16 +508,15 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
                                                 "Valeur généralisée ({}) : irréversible",
                                                 rule_label(c.kind)
                                             )),
-                                        )
-                                    }
-                                    (Some(t), _) => Some(ui.label(
-                                        RichText::new(t).font(mono_font()).color(p.primary_dark),
-                                    )),
-                                    _ => {
-                                        caption(ui, "non remplacée");
-                                        None
-                                    }
-                                };
+                                        ),
+                                        (Some(t), _) => Some(ui.label(
+                                            RichText::new(t).font(tag_font()).color(p.accent),
+                                        )),
+                                        _ => {
+                                            caption(ui, "non remplacée");
+                                            None
+                                        }
+                                    };
                                 if let (Some(r), Some(g), Some(t)) = (shown, general, &tag) {
                                     Icon::ChevronDown.show(ui, p.text_secondary, 14.0);
                                     let r = ui.interact(
@@ -558,33 +573,34 @@ Cochez celles à anonymiser ; « Ne jamais anonymiser » les retire pour toute l
 
         // Ajout manuel.
         ui.add_space(p.space(1));
-        ui.horizontal_wrapped(|ui| {
+        let kinds = kind_options();
+        let error = st.manual_error.map(|e| e.message());
+        let add = control_row(ui, CONTROL_MD, |ui| {
             ui.spacing_mut().item_spacing.x = p.space(2);
-            let error = st.manual_error.map(|e| e.message());
-            let field_w = (ui.available_width() - 360.0).clamp(200.0, 420.0);
+            let field_w = (ui.available_width() - 380.0).clamp(200.0, 420.0);
             let r = TextField::new("Terme à ajouter", &mut st.manual_term)
                 .placeholder("Ajouter un terme absent de la liste")
                 .id_salt("terme-manuel")
                 .hide_label()
-                .error(error)
+                .error(error.map(|_| ""))
                 .width(field_w)
-                .show(ui);
+                .show_control(ui);
             let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            egui::ComboBox::from_id_salt("type-manuel")
-                .selected_text(st.manual_kind.label())
-                .width(190.0)
-                .show_ui(ui, |ui| {
-                    for k in EntityKind::ALL {
-                        ui.selectable_value(&mut st.manual_kind, *k, k.label());
-                    }
-                })
-                .response
-                .on_hover_text("Type du terme ajouté");
+            Select::new(
+                "type-manuel",
+                "Type du terme ajouté",
+                &mut st.manual_kind,
+                &kinds,
+            )
+            .width(200.0)
+            .show(ui);
             let add = ui.add(PillButton::secondary("Ajouter").icon(Icon::Plus));
-            if add.clicked() || enter {
-                let _ = st.add_manual(session);
-            }
+            add.clicked() || enter
         });
+        field_error(ui, error);
+        if add {
+            let _ = st.add_manual(session);
+        }
         if !st.never.is_empty() {
             caption(
                 ui,
@@ -710,7 +726,7 @@ nouvelle table, complétée, est enregistrée avec le même mot de passe.",
                             .as_deref()
                             .map(file_name)
                             .unwrap_or_else(|| "Aucune table choisie".to_owned());
-                        ui.horizontal(|ui| {
+                        control_row(ui, CONTROL_SM, |ui| {
                             ui.spacing_mut().item_spacing.x = p.space(3);
                             if ui
                                 .add(
@@ -755,7 +771,7 @@ par les vraies valeurs. À réserver aux documents que vous n'aurez pas à resta
             }
         }
         ui.separator();
-        ui.horizontal_wrapped(|ui| {
+        control_row(ui, CONTROL_SM, |ui| {
             ui.spacing_mut().item_spacing.x = p.space(3);
             Icon::FolderOpen.show(ui, p.text_secondary, 18.0);
             let dir = st
@@ -763,15 +779,23 @@ par les vraies valeurs. À réserver aux documents que vous n'aurez pas à resta
                 .as_deref()
                 .map(|d| d.display().to_string())
                 .unwrap_or_else(|| "Aucun dossier choisi".to_owned());
-            body(ui, &format!("Dossier de sortie : {dir}"));
+            let w = (ui.available_width() - 120.0).max(120.0);
+            truncated_text(
+                ui,
+                w,
+                CONTROL_SM,
+                RichText::new(format!("Dossier de sortie : {dir}"))
+                    .font(font(Weight::Regular, p.text_sm))
+                    .color(p.text),
+            );
             if ui.add(PillButton::ghost("Changer").small()).clicked() {
                 fx.push(Effect::PickOutputDir);
             }
         });
         caption(
             ui,
-            "Chaque fichier est enregistré sous « nom_anonymise » ; un fichier existant n'est \
-jamais remplacé.",
+            "Chaque fichier est enregistré sous « nom_anonymise », dans un dossier « Anonymisés » \
+créé à côté de vos fichiers ; un fichier existant n'est jamais remplacé.",
         );
     });
     if let Some(e) = st.error {
@@ -789,7 +813,12 @@ jamais remplacé.",
             }
         },
         |ui, st| {
-            let label = format!("Anonymiser {} fichiers", st.inputs.len());
+            let n = st.inputs.len();
+            let label = if n == 1 {
+                "Anonymiser 1 fichier".to_owned()
+            } else {
+                format!("Anonymiser {n} fichiers")
+            };
             let go = ui.add(
                 PillButton::primary(&label)
                     .icon(Icon::Lock)
@@ -808,7 +837,7 @@ fn done_step(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
         return;
     };
     summary_banner(ui, &report);
-    ui.horizontal_wrapped(|ui| {
+    control_row(ui, CONTROL_MD, |ui| {
         ui.spacing_mut().item_spacing.x = p.space(3);
         if ui
             .add(PillButton::primary("Ouvrir le dossier").icon(Icon::FolderOpen))
@@ -878,7 +907,7 @@ fn report_card(
     let accent = match outcome {
         Outcome::Written { .. } => p.primary,
         Outcome::Leak { .. } | Outcome::Failed(_) => p.error,
-        Outcome::Cancelled => p.gray_400,
+        Outcome::Cancelled => p.line_strong,
     };
     Card::new().accent(accent).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(3);
@@ -891,10 +920,11 @@ fn report_card(
                     egui::Label::new(
                         RichText::new(name)
                             .font(font(Weight::Semibold, p.text_base))
-                            .color(p.dark),
+                            .color(p.heading),
                     )
                     .truncate(),
-                );
+                )
+                .on_hover_text(name);
                 let out = match outcome {
                     Outcome::Written { path, .. } => {
                         format!("Enregistré sous « {} »", file_name(path))
@@ -919,7 +949,7 @@ fn report_card(
                             ui.label(
                                 RichText::new(replacements.to_string())
                                     .font(font(Weight::Bold, p.text_xl))
-                                    .color(p.dark),
+                                    .color(p.heading),
                             );
                         });
                         stat(b, "Contrôle de fuite", |ui| {

@@ -10,6 +10,7 @@ pub mod field;
 pub mod icon;
 pub mod nav;
 pub mod progress;
+pub mod select;
 pub mod table;
 
 pub use badge::{Badge, BadgeSize, family_colors, family_tint};
@@ -22,6 +23,7 @@ pub use field::TextField;
 pub use icon::Icon;
 pub use nav::{Stepper, TabBar};
 pub use progress::{ProgressBar, StrengthMeter};
+pub use select::Select;
 pub use table::{Column, DataTable, RowTone};
 
 use crate::ui::theme::{Weight, font, palette};
@@ -55,7 +57,7 @@ pub fn heading(ui: &mut Ui, text: &str) -> egui::Response {
     ui.label(
         RichText::new(text)
             .font(font(Weight::Bold, p.text_xl))
-            .color(p.dark),
+            .color(p.heading),
     )
 }
 
@@ -65,7 +67,7 @@ pub fn subheading(ui: &mut Ui, text: &str) -> egui::Response {
     ui.label(
         RichText::new(text)
             .font(font(Weight::Semibold, p.text_md))
-            .color(p.dark),
+            .color(p.heading),
     )
 }
 

@@ -7,7 +7,8 @@ pub mod freetext;
 pub mod images;
 
 use super::state::files::{FileEntry, FileFormat, human_size};
-use super::theme::{Tinted, Weight, font, palette, radius};
+use super::theme::Tinted;
+use super::theme::{CONTROL_MD, Weight, font, palette, radius};
 use super::widgets::{Icon, heading, muted};
 use egui::{Rect, Response, RichText, Sense, Ui, Vec2, vec2};
 
@@ -22,14 +23,9 @@ pub fn format_style(format: FileFormat) -> (Icon, Tinted) {
         FileFormat::PowerPoint | FileFormat::OdfSlides => (Icon::Presentation, p.ia),
         FileFormat::Pdf => (Icon::File, p.gestion),
         FileFormat::Image => (Icon::Image, p.bureautique),
-        FileFormat::Text | FileFormat::GoogleShortcut | FileFormat::Unsupported => (
-            Icon::File,
-            Tinted {
-                fill: p.gray_100,
-                ink: p.gray_700,
-                edge: p.gray_400,
-            },
-        ),
+        FileFormat::Text | FileFormat::GoogleShortcut | FileFormat::Unsupported => {
+            (Icon::File, p.neutral)
+        }
     }
 }
 
@@ -71,10 +67,11 @@ pub fn file_row(ui: &mut Ui, file: &FileEntry, trailing: impl FnOnce(&mut Ui)) {
                     egui::Label::new(
                         RichText::new(&file.name)
                             .font(font(Weight::Semibold, p.text_sm))
-                            .color(p.dark),
+                            .color(p.heading),
                     )
                     .truncate(),
-                );
+                )
+                .on_hover_text(file.name.as_str());
                 ui.label(
                     RichText::new(detail)
                         .font(font(Weight::Regular, p.text_xs))
@@ -86,6 +83,19 @@ pub fn file_row(ui: &mut Ui, file: &FileEntry, trailing: impl FnOnce(&mut Ui)) {
     });
 }
 
+/// Texte d'une ligne, aligné à gauche dans une largeur donnée, tronqué avec
+/// le texte entier en infobulle.
+pub fn truncated_text(ui: &mut Ui, width: f32, height: f32, text: RichText) -> Response {
+    let full = text.text().to_owned();
+    ui.allocate_ui_with_layout(
+        vec2(width, height),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| ui.add(egui::Label::new(text).truncate()),
+    )
+    .inner
+    .on_hover_text(full)
+}
+
 /// Titre d'écran et sous-titre.
 pub fn page_title(ui: &mut Ui, title: &str, subtitle: &str) {
     ui.vertical(|ui| {
@@ -95,6 +105,16 @@ pub fn page_title(ui: &mut Ui, title: &str, subtitle: &str) {
     });
 }
 
+/// Ligne de contrôles de hauteur `height` : chaque élément est centré
+/// verticalement sur cette hauteur, même ceux placés avant un contrôle plus haut.
+pub fn control_row<R>(ui: &mut Ui, height: f32, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.horizontal(|ui| {
+        ui.set_min_height(height);
+        add(ui)
+    })
+    .inner
+}
+
 /// Barre d'actions de bas d'étape : `left` à gauche, `right` aligné à droite.
 pub fn action_bar<S>(
     ui: &mut Ui,
@@ -102,10 +122,11 @@ pub fn action_bar<S>(
     left: impl FnOnce(&mut Ui, &mut S),
     right: impl FnOnce(&mut Ui, &mut S),
 ) {
-    ui.horizontal(|ui| {
+    control_row(ui, CONTROL_MD, |ui| {
         ui.spacing_mut().item_spacing.x = palette().space(3);
         left(ui, st);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.set_min_height(CONTROL_MD);
             right(ui, st)
         });
     });
@@ -116,11 +137,11 @@ pub fn card_title(ui: &mut Ui, icon: Icon, title: &str) {
     let p = palette();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = p.space(2);
-        icon.show(ui, p.primary_dark, 20.0);
+        icon.show(ui, p.accent, 20.0);
         ui.label(
             RichText::new(title)
                 .font(font(Weight::Semibold, p.text_md))
-                .color(p.dark),
+                .color(p.heading),
         );
     });
 }

@@ -76,9 +76,9 @@ impl Widget for DropZone<'_> {
             let painter = ui.painter();
             let r = p.radius_lg;
             let (fill, edge) = if active {
-                (p.primary_subtle, p.primary_dark)
+                (p.primary_subtle, p.accent)
             } else {
-                (p.bg_subtle, p.border_input)
+                (p.sunken, p.border_input)
             };
             painter.rect_filled(rect, radius(r), fill);
             let path = rounded_rect_path(rect.shrink(1.0), r);
@@ -97,15 +97,11 @@ impl Widget for DropZone<'_> {
                 );
             }
             // Pastille d'icône, titre, sous-titre, centrés.
-            let ink = if active {
-                p.primary_dark
-            } else {
-                p.text_secondary
-            };
+            let ink = if active { p.accent } else { p.text_secondary };
             let title = egui::WidgetText::from(
                 RichText::new(self.title)
                     .font(font(Weight::Semibold, p.text_base))
-                    .color(if active { p.primary_dark } else { p.dark }),
+                    .color(if active { p.accent } else { p.heading }),
             )
             .into_galley(
                 ui,
@@ -132,12 +128,12 @@ impl Widget for DropZone<'_> {
             painter.circle_filled(
                 disc_rect.center(),
                 disc / 2.0,
-                if active { p.white } else { p.primary_subtle },
+                if active { p.surface } else { p.primary_subtle },
             );
             Icon::Upload.paint(
                 ui,
                 Rect::from_center_size(disc_rect.center(), vec2(24.0, 24.0)),
-                p.primary_dark,
+                p.accent,
             );
             y += disc + 12.0;
             let title_h = title.size().y;

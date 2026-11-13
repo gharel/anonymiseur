@@ -3,7 +3,7 @@
 //! traitements longs sont confiés au fil de travail par `AnonApp` ; l'état
 //! reçoit leurs résultats par les méthodes `*_done`.
 
-use super::files::FileEntry;
+use super::files::{FileEntry, default_output_dir, is_tool_output};
 use super::generalize::{generalize, is_generalizable};
 use super::images::{FileMask, ManualMasks};
 use crate::ui::service::{BatchReport, Protection, Rejected, unsupported_reason};
@@ -59,6 +59,30 @@ impl Busy {
             Busy::Analyzing => "Analyse des fichiers",
             Busy::OpeningTable => "Ouverture de la table",
             Busy::Anonymizing => "Anonymisation et contrôle de fuite",
+        }
+    }
+}
+
+/// Bilan d'un ajout de fichiers.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AddReport {
+    /// Fichiers ajoutés à la liste.
+    pub added: usize,
+    /// Fichiers produits par l'outil, écartés.
+    pub outputs: usize,
+    /// Fichiers refusés (format non pris en charge).
+    pub refused: usize,
+    /// Tables `.anonmap` parmi les fichiers écartés (dernière vue).
+    pub map: Option<PathBuf>,
+}
+
+impl AddReport {
+    /// Message pour les fichiers produits par l'outil, s'il y en a.
+    pub fn outputs_message(&self) -> Option<String> {
+        match self.outputs {
+            0 => None,
+            1 => Some("1 fichier déjà anonymisé ignoré : un fichier produit par l'outil n'est pas anonymisé une seconde fois.".to_owned()),
+            n => Some(format!("{n} fichiers déjà anonymisés ignorés : les fichiers produits par l'outil ne sont pas anonymisés une seconde fois.")),
         }
     }
 }
@@ -326,11 +350,25 @@ impl Default for AnonymizeState {
 }
 
 impl AnonymizeState {
-    /// Ajoute des fichiers : doublons ignorés, extensions non gérées refusées
-    /// avec leur raison (`supported` vide = tout accepter, le moteur tranchera).
-    pub fn add_files(&mut self, entries: impl IntoIterator<Item = FileEntry>, supported: &[&str]) {
+    /// Ajoute des fichiers : doublons ignorés, fichiers produits par l'outil
+    /// écartés, extensions non gérées refusées avec leur raison (`supported`
+    /// vide = tout accepter, le moteur tranchera). Le dossier de sortie par
+    /// défaut est le sous-dossier `Anonymisés` du premier fichier.
+    pub fn add_files(
+        &mut self,
+        entries: impl IntoIterator<Item = FileEntry>,
+        supported: &[&str],
+    ) -> AddReport {
+        let mut report = AddReport::default();
         for e in entries {
             if self.files.iter().any(|f| f.path == e.path) {
+                continue;
+            }
+            if is_tool_output(&e.path) {
+                report.outputs += 1;
+                if crate::ui::state::deanonymize::is_map(&e.path) {
+                    report.map = Some(e.path.clone());
+                }
                 continue;
             }
             let ext = crate::ui::service::extension(&e.path);
@@ -340,14 +378,17 @@ impl AnonymizeState {
                     name: e.name.clone(),
                     reason: unsupported_reason(&e.path),
                 });
+                report.refused += 1;
                 continue;
             }
             if self.out_dir.is_none() {
-                self.out_dir = e.path.parent().map(|p| p.to_path_buf());
+                self.out_dir = default_output_dir(&e.path);
             }
             self.files.push(e);
+            report.added += 1;
         }
         self.error = None;
+        report
     }
 
     pub fn remove_file(&mut self, index: usize) {
@@ -883,9 +924,50 @@ mod tests {
         assert_eq!(s.files.len(), 1);
         assert_eq!(s.rejected.len(), 2);
         assert!(s.rejected[0].reason.contains("réenregistrez"));
-        assert_eq!(s.out_dir, Some(PathBuf::from("C:/dossier")));
+        assert_eq!(
+            s.out_dir,
+            Some(PathBuf::from("C:/dossier").join(super::super::files::OUTPUT_DIR_NAME))
+        );
         s.remove_file(0);
         assert_eq!(s.begin_analysis(), Err(StepError::NoFiles));
+    }
+
+    #[test]
+    fn tool_outputs_are_never_added() {
+        let mut s = AnonymizeState::default();
+        let r = s.add_files(
+            [
+                entry("contrat_anonymise.docx"),
+                entry("notes_anonymise_2.txt"),
+                entry("table_anonymiseur.anonmap"),
+                entry("notes_restaure.txt"),
+                entry("contrat.docx"),
+            ],
+            &["docx", "txt"],
+        );
+        assert_eq!(r.added, 1);
+        assert_eq!(r.outputs, 4);
+        assert_eq!(r.refused, 0, "une sortie n'est pas un refus");
+        assert!(s.rejected.is_empty());
+        assert_eq!(s.files.len(), 1);
+        assert_eq!(s.files[0].name, "contrat.docx");
+        assert_eq!(
+            r.map,
+            Some(PathBuf::from("C:/dossier/table_anonymiseur.anonmap"))
+        );
+        assert!(
+            r.outputs_message()
+                .is_some_and(|m| m.starts_with("4 fichiers déjà anonymisés ignorés"))
+        );
+        let one = AddReport {
+            outputs: 1,
+            ..Default::default()
+        };
+        assert!(
+            one.outputs_message()
+                .is_some_and(|m| m.starts_with("1 fichier déjà anonymisé ignoré"))
+        );
+        assert_eq!(AddReport::default().outputs_message(), None);
     }
 
     #[test]
@@ -1026,7 +1108,10 @@ mod tests {
         assert!(s.analysis.is_none());
         assert_eq!(s.begin_anonymize().err(), Some(StepError::Busy));
         if let Ok(job) = job {
-            assert_eq!(job.out_dir, PathBuf::from("C:/dossier"));
+            assert_eq!(
+                job.out_dir,
+                PathBuf::from("C:/dossier").join(super::super::files::OUTPUT_DIR_NAME)
+            );
             s.anonymize_done(BatchReport::default(), job.inputs, job.analysis);
         }
         assert_eq!(s.step, Step::Done);

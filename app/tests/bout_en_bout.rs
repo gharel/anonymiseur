@@ -18,6 +18,7 @@ use anonymiseur::ui::service::{
 };
 use anonymiseur::ui::state::anonymize::{AnonymizeState, ProtectMode, Step};
 use anonymiseur::ui::state::deanonymize::DeanonymizeState;
+use anonymiseur::ui::state::files::OUTPUT_DIR_NAME;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -62,7 +63,8 @@ fn example_paths() -> Vec<PathBuf> {
     out
 }
 
-/// Copie des exemples dans un dossier de travail (sortie par défaut = dossier du premier fichier).
+/// Copie des exemples dans un dossier de travail (sortie par défaut : sous-dossier
+/// `Anonymisés` du dossier du premier fichier).
 fn copy_examples(dir: &Path) -> Vec<PathBuf> {
     example_paths()
         .into_iter()
@@ -117,7 +119,9 @@ fn parcours_complet_sur_les_exemples() {
     assert!(st.rejected.is_empty(), "{:?}", st.rejected);
     assert!(st.selected_count() > 10);
     assert!(!st.tag_preview.is_empty());
-    assert_eq!(st.out_dir.as_deref(), Some(work.as_path()));
+    let out = work.join(OUTPUT_DIR_NAME);
+    assert_eq!(st.out_dir.as_deref(), Some(out.as_path()));
+    assert!(!out.exists(), "créé seulement à l'écriture");
 
     st.protect.mode = ProtectMode::NewPassword;
     st.protect.password = PASSWORD.into();
@@ -128,7 +132,7 @@ fn parcours_complet_sur_les_exemples() {
     let report = st.report.clone().unwrap();
     assert!(report.fatal.is_none());
     let map = report.map_path.clone().unwrap();
-    assert_eq!(map, work.join(MAP_BASENAME));
+    assert_eq!(map, out.join(MAP_BASENAME));
 
     // Fichiers écrits : suffixe, aucun original modifié, aucune valeur cochée lisible.
     let mut written = Vec::new();
@@ -152,7 +156,7 @@ fn parcours_complet_sur_les_exemples() {
             Outcome::Leak { .. } => {
                 // Bloqué : aucun fichier produit.
                 let stem = f.name.rsplit_once('.').unwrap().0;
-                assert!(!std::fs::read_dir(&work).unwrap().any(|e| {
+                assert!(!std::fs::read_dir(&out).unwrap().any(|e| {
                     e.unwrap()
                         .file_name()
                         .to_string_lossy()
@@ -392,6 +396,7 @@ fn aucun_fichier_ecrase() {
     let file = work.join("notes.txt");
     std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
     let mut session = Session::new();
+    let out = work.join(OUTPUT_DIR_NAME);
     for round in 1..=2 {
         let mut st = analyzed(vec![file.clone()], &session, &NoProgress);
         st.protect.password = PASSWORD.into();
@@ -407,12 +412,12 @@ fn aucun_fichier_ecrase() {
             )
         };
         assert!(
-            matches!(&report.files[0].outcome, Outcome::Written { path, .. } if path == &work.join(expected_file))
+            matches!(&report.files[0].outcome, Outcome::Written { path, .. } if path == &out.join(expected_file))
         );
-        assert_eq!(report.map_path, Some(work.join(expected_map)));
+        assert_eq!(report.map_path, Some(out.join(expected_map)));
     }
     // La première table reste lisible : elle n'a pas été remplacée.
-    assert!(anon_vault::open(&std::fs::read(work.join(MAP_BASENAME)).unwrap(), PASSWORD).is_ok());
+    assert!(anon_vault::open(&std::fs::read(out.join(MAP_BASENAME)).unwrap(), PASSWORD).is_ok());
     let _ = std::fs::remove_dir_all(&work);
 }
 
@@ -452,8 +457,9 @@ fn reprise_d_une_table_existante_garde_les_balises() {
         &job.out_dir,
         &NoProgress,
     );
-    let first = std::fs::read(work.join("notes_anonymise.txt")).unwrap();
-    let second = std::fs::read(work.join("notes_anonymise_2.txt")).unwrap();
+    let out = work.join(OUTPUT_DIR_NAME);
+    let first = std::fs::read(out.join("notes_anonymise.txt")).unwrap();
+    let second = std::fs::read(out.join("notes_anonymise_2.txt")).unwrap();
     assert_eq!(first, second, "mêmes balises");
     let new_map = report.map_path.unwrap();
     assert!(anon_vault::open(&std::fs::read(new_map).unwrap(), PASSWORD).is_ok());
@@ -520,8 +526,8 @@ fn annulation() {
 // --- Exemples, liste « toujours », généralisation, zones manuelles ----------
 
 #[test]
-fn exemples_copies_sans_ecrasement() {
-    use anonymiseur::ui::service::{EXAMPLES, EXAMPLES_DIR, copy_examples};
+fn exemples_reutilises_sans_ecrasement() {
+    use anonymiseur::ui::service::{EXAMPLES, prepare_examples};
     // Tous les fichiers de `exemples/` sont embarqués, sauf la vérité terrain.
     let mut on_disk: Vec<String> = std::fs::read_dir(exemples())
         .unwrap()
@@ -534,27 +540,26 @@ fn exemples_copies_sans_ecrasement() {
     assert_eq!(embedded, on_disk);
 
     let parent = temp_dir("exemples");
-    // Un dossier du même nom existe déjà, avec un fichier de l'utilisateur.
-    std::fs::create_dir_all(parent.join(EXAMPLES_DIR)).unwrap();
-    std::fs::write(parent.join(EXAMPLES_DIR).join("notes.txt"), "à garder").unwrap();
-    let first = copy_examples(&parent).unwrap();
-    let second = copy_examples(&parent).unwrap();
-    assert_eq!(first.dir, parent.join(format!("{EXAMPLES_DIR}_2")));
-    assert_eq!(second.dir, parent.join(format!("{EXAMPLES_DIR}_3")));
+    let dir = parent.join("Anonymiseur").join("Exemples");
+    // Le dossier existe déjà, avec un fichier modifié par l'utilisateur.
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("notes.txt"), "à garder").unwrap();
+    let first = prepare_examples(&dir).unwrap();
+    assert_eq!(first.dir, dir, "même dossier, jamais « _2 »");
+    assert_eq!(first.created, EXAMPLES.len() - 1);
     assert_eq!(
-        std::fs::read_to_string(parent.join(EXAMPLES_DIR).join("notes.txt")).unwrap(),
+        std::fs::read_to_string(dir.join("notes.txt")).unwrap(),
         "à garder",
         "rien n'est remplacé"
     );
-    for e in EXAMPLES {
+    for e in EXAMPLES.iter().filter(|e| e.name != "notes.txt") {
         assert_eq!(
-            std::fs::read(first.dir.join(e.name)).unwrap(),
+            std::fs::read(dir.join(e.name)).unwrap(),
             std::fs::read(exemples().join(e.name)).unwrap(),
             "{}",
             e.name
         );
     }
-    assert_eq!(first.copied, EXAMPLES.len());
     // Documents chargés : tout sauf la notice et la réponse d'IA simulée.
     let names: Vec<String> = first
         .documents
@@ -564,7 +569,7 @@ fn exemples_copies_sans_ecrasement() {
     assert!(!names.contains(&"LISEZMOI.md".to_owned()));
     assert!(!names.contains(&"reponse-ia-exemple.md".to_owned()));
     assert_eq!(names.len(), EXAMPLES.len() - 2);
-    // Tous sont acceptés par le moteur livré.
+    // Tous sont acceptés par le moteur livré ; la sortie va dans « Anonymisés ».
     let mut st = AnonymizeState::default();
     st.add_files(
         first.documents.iter().cloned().map(file_entry),
@@ -572,7 +577,56 @@ fn exemples_copies_sans_ecrasement() {
     );
     assert_eq!(st.files.len(), names.len());
     assert!(st.rejected.is_empty(), "{:?}", st.rejected);
+    assert_eq!(st.out_dir, Some(dir.join(OUTPUT_DIR_NAME)));
+
+    // Second passage, après une anonymisation : rien n'est recréé, et les
+    // fichiers produits par l'outil ne sont jamais proposés.
+    std::fs::write(dir.join("notes_anonymise.txt"), "sortie").unwrap();
+    let second = prepare_examples(&dir).unwrap();
+    assert_eq!(second.created, 0);
+    assert_eq!(second.documents, first.documents);
     let _ = std::fs::remove_dir_all(&parent);
+}
+
+#[test]
+fn fichiers_produits_jamais_reanonymises() {
+    // Anonymisation de deux exemples, puis dépôt de tout le dossier, sorties comprises.
+    let work = temp_dir("sorties");
+    let mut paths = Vec::new();
+    for n in ["notes.txt", "export.csv"] {
+        let to = work.join(n);
+        std::fs::copy(exemples().join(n), &to).unwrap();
+        paths.push(to);
+    }
+    let mut session = Session::new();
+    let mut st = analyzed(paths, &session, &NoProgress);
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut session, &NoProgress);
+    let out = work.join(OUTPUT_DIR_NAME);
+    assert_eq!(st.report.unwrap().delivered(), 2);
+    // Les sorties, recopiées à côté des sources (cas d'un ancien dossier).
+    for e in std::fs::read_dir(&out).unwrap() {
+        let p = e.unwrap().path();
+        std::fs::copy(&p, work.join(p.file_name().unwrap())).unwrap();
+    }
+    let all: Vec<PathBuf> = std::fs::read_dir(&work)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_file())
+        .collect();
+    assert_eq!(all.len(), 5, "{all:?}");
+    let mut st = AnonymizeState::default();
+    let report = st.add_files(
+        all.into_iter().map(file_entry),
+        &engine().supported_extensions(),
+    );
+    assert_eq!(report.added, 2);
+    assert_eq!(report.outputs, 3, "deux fichiers et la table");
+    let mut names: Vec<&str> = st.files.iter().map(|f| f.name.as_str()).collect();
+    names.sort();
+    assert_eq!(names, ["export.csv", "notes.txt"]);
+    let _ = std::fs::remove_dir_all(&work);
 }
 
 #[test]

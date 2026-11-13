@@ -6,11 +6,13 @@
 //! - `screens` : rendu de chaque onglet ;
 //! - `app` : fenêtre, en-tête, onglets, pied ;
 //! - `runner` : fil de travail (traitements longs, avancement, annulation) ;
-//! - `service` : opérations sur les fichiers, sans egui.
+//! - `service` : opérations sur les fichiers, sans egui ;
+//! - `prefs` : préférences retenues d'une session à l'autre.
 
 pub mod app;
 pub mod gallery;
 pub mod platform;
+pub mod prefs;
 pub mod runner;
 pub mod screens;
 pub mod service;

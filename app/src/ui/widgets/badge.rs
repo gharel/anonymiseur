@@ -36,15 +36,7 @@ impl Badge {
 
     /// Badge vert de marque (statut positif).
     pub fn brand(text: &str) -> Self {
-        let p = palette();
-        Self::new(
-            text,
-            Tinted {
-                fill: p.primary_subtle,
-                ink: p.primary_dark,
-                edge: p.primary,
-            },
-        )
+        Self::new(text, palette().brand)
     }
 
     /// Badge neutre.
@@ -63,7 +55,7 @@ impl Badge {
         Self::new(
             text,
             Tinted {
-                fill: p.error_tint(),
+                fill: p.error_tint,
                 ink: p.error,
                 edge: p.error,
             },
@@ -81,12 +73,7 @@ impl Badge {
 }
 
 fn neutral_tint() -> Tinted {
-    let p = palette();
-    Tinted {
-        fill: p.gray_100,
-        ink: p.gray_700,
-        edge: p.gray_400,
-    }
+    palette().neutral
 }
 
 /// Couleurs d'une famille de types : teinte, encre et couleur de base.
@@ -195,7 +182,10 @@ mod tests {
             (p.gestion.fill, p.gestion.ink)
         );
         assert_eq!(family_colors(Family::Finances), (p.data.fill, p.data.ink));
-        assert_eq!(family_colors(Family::Contexte), (p.gray_100, p.gray_700));
+        assert_eq!(
+            family_colors(Family::Contexte),
+            (p.neutral.fill, p.neutral.ink)
+        );
     }
 
     #[test]

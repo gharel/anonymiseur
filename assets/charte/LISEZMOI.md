@@ -9,6 +9,7 @@ Pour le régénérer : `uv run --project tools python tools/import_charte.py`.
 - `tokens.json` : couleurs, rayons, espacements (px), ombres, tailles de texte (px).
 - `fonts/Georama-400.ttf` à `Georama-800.ttf` : police de l'interface (converties du WOFF2).
 - `logo-color.png`, `logo-white.png` : logos sans marge (fond clair, fond foncé).
+- `logo-white-color.png` : logo sans marge pour le thème sombre (« skazy » blanc, « formation » vert).
 - `icon.ico`, `icon-256.png`, `icon-1024.png` : icône de l'application.
 - `icons/*.svg` : icônes Lucide 0.460.0 (licence ISC dans `icons/LICENSE`).
 

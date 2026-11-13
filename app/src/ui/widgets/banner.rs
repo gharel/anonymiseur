@@ -22,14 +22,9 @@ impl BannerKind {
         let p = palette();
         match self {
             BannerKind::Info => (p.dev.fill, p.info, p.dev.ink, Icon::Info),
-            BannerKind::Success => (
-                p.primary_subtle,
-                p.success,
-                p.primary_dark,
-                Icon::ShieldCheck,
-            ),
+            BannerKind::Success => (p.primary_subtle, p.success, p.accent, Icon::ShieldCheck),
             BannerKind::Warning => (p.data.fill, p.warning, p.data.ink, Icon::TriangleAlert),
-            BannerKind::Error => (p.error_tint(), p.error, p.error, Icon::TriangleAlert),
+            BannerKind::Error => (p.error_tint, p.error, p.error, Icon::TriangleAlert),
         }
     }
 }
@@ -95,7 +90,7 @@ impl<'a> Banner<'a> {
                             ui.label(
                                 RichText::new(title)
                                     .font(font(Weight::Semibold, p.text_sm))
-                                    .color(p.dark),
+                                    .color(p.heading),
                             );
                         }
                         ui.add(

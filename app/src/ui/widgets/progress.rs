@@ -46,11 +46,11 @@ impl Widget for ProgressBar<'_> {
             let (rect, response) =
                 ui.allocate_exact_size(vec2(ui.available_width(), TRACK), Sense::hover());
             let painter = ui.painter();
-            painter.rect_filled(rect, radius(TRACK / 2.0), p.gray_200);
+            painter.rect_filled(rect, radius(TRACK / 2.0), p.track);
             if self.fraction > 0.0 {
                 let w = (rect.width() * self.fraction).max(TRACK);
                 let fill = Rect::from_min_size(rect.min, vec2(w, TRACK));
-                painter.rect_filled(fill, radius(TRACK / 2.0), p.primary);
+                painter.rect_filled(fill, radius(TRACK / 2.0), p.meter);
             }
             let label = format!("{} : {percent} %", self.label);
             response.widget_info(|| {
@@ -95,11 +95,11 @@ impl Widget for StrengthMeter {
         let p = palette();
         let level = self.strength;
         let (filled, color) = match level {
-            None => (0u8, p.gray_300),
+            None => (0u8, p.line),
             Some(PasswordStrength::TropCourt) => (1, p.error),
             Some(PasswordStrength::Faible) => (2, p.warning),
             Some(PasswordStrength::Correct) => (3, p.primary),
-            Some(PasswordStrength::Fort) => (4, p.primary_dark),
+            Some(PasswordStrength::Fort) => (4, p.meter),
         };
         // Texte toujours AA : rouge d'erreur quand le mot de passe est refusé, sinon anthracite.
         let text_color = match level {
@@ -115,7 +115,7 @@ impl Widget for StrengthMeter {
             for i in 0..4u8 {
                 let x = rect.min.x + f32::from(i) * (seg_w + gap);
                 let seg = Rect::from_min_size(pos2(x, rect.min.y), vec2(seg_w, rect.height()));
-                let c = if i < filled { color } else { p.gray_200 };
+                let c = if i < filled { color } else { p.track };
                 ui.painter().rect_filled(seg, radius(3.0), c);
             }
             let text = format!("Robustesse : {}", strength_label(level));

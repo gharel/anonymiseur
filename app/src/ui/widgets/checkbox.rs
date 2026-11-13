@@ -106,15 +106,11 @@ impl Widget for Checkbox<'_> {
             let alpha = if enabled { 1.0 } else { 0.5 };
             match self.state {
                 CheckState::Unchecked => {
-                    let edge = if hovered {
-                        p.primary_dark
-                    } else {
-                        p.border_input
-                    };
+                    let edge = if hovered { p.accent } else { p.border_input };
                     painter.rect(
                         b,
                         radius(p.radius_sm),
-                        p.white,
+                        p.surface,
                         Stroke::new(1.5, edge.gamma_multiply(alpha)),
                         StrokeKind::Inside,
                     );
@@ -127,12 +123,12 @@ impl Widget for Checkbox<'_> {
                     };
                     painter.rect_filled(b, radius(p.radius_sm), fill.gamma_multiply(alpha));
                     if self.state == CheckState::Checked {
-                        Icon::Check.paint(ui, b.shrink(2.5), p.white);
+                        Icon::Check.paint(ui, b.shrink(2.5), p.on_primary);
                     } else {
                         let y = b.center().y;
                         painter.line_segment(
                             [pos2(b.min.x + 4.5, y), pos2(b.max.x - 4.5, y)],
-                            Stroke::new(2.0, p.white),
+                            Stroke::new(2.0, p.on_primary),
                         );
                     }
                 }

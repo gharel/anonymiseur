@@ -36,6 +36,11 @@ ICONES = [
     "trash-2", "copy", "clipboard", "folder-open", "triangle-alert", "info",
     "search", "settings", "refresh-cw", "download", "key-round", "chevron-down",
     "chevron-right", "circle-help", "sparkles", "undo-2",
+    # Thème clair, sombre ou système.
+    "sun", "moon", "monitor",
+    # Raccourcis, tri, presse-papiers, états des fichiers, états vides.
+    "keyboard", "chevron-up", "chevrons-up-down", "clipboard-paste", "circle-check",
+    "circle-x", "clock", "loader-circle", "inbox", "arrow-down",
 ]
 POIDS = [400, 500, 600, 700, 800]
 GLYPHES_REQUIS = "éèêàçœÉ’"
@@ -68,6 +73,7 @@ Pour le régénérer : `uv run --project tools python tools/import_charte.py`.
 - `tokens.json` : couleurs, rayons, espacements (px), ombres, tailles de texte (px).
 - `fonts/Georama-400.ttf` à `Georama-800.ttf` : police de l'interface (converties du WOFF2).
 - `logo-color.png`, `logo-white.png` : logos sans marge (fond clair, fond foncé).
+- `logo-white-color.png` : logo sans marge pour le thème sombre (« skazy » blanc, « formation » vert).
 - `icon.ico`, `icon-256.png`, `icon-1024.png` : icône de l'application.
 - `icons/*.svg` : icônes Lucide 0.460.0 (licence ISC dans `icons/LICENSE`).
 
@@ -206,7 +212,8 @@ def convertir_polices(source: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     for p in POIDS:
         src = source / "assets" / "fonts" / f"georama-{p}.woff2"
-        police = TTFont(src)
+        # Horodatage de la source conservé : sans cela, chaque import changerait les TTF.
+        police = TTFont(src, recalcTimestamp=False)
         absents = manquants(police)
         if absents:
             raise SystemExit(f"{src.name} : glyphes absents {absents}")
@@ -257,6 +264,7 @@ def copier_images(source: Path) -> None:
     SORTIE.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(a / "logo-color-crop.png", SORTIE / "logo-color.png")
     shutil.copyfile(a / "logo-white-crop.png", SORTIE / "logo-white.png")
+    shutil.copyfile(a / "logo-white-color-crop.png", SORTIE / "logo-white-color.png")
     shutil.copyfile(a / "favicon" / "favicon.ico", SORTIE / "icon.ico")
     for t in (256, 1024):
         rendre_icone(a / "favicon" / "favicon.svg", t).save(SORTIE / f"icon-{t}.png", optimize=True)
@@ -325,6 +333,7 @@ def verifier() -> int:
     ok.append(f"polices : {len(POIDS)} TTF ouvrables, glyphes {GLYPHES_REQUIS} présents")
 
     for nom, taille in (("logo-color.png", None), ("logo-white.png", None),
+                        ("logo-white-color.png", None),
                         ("icon-256.png", (256, 256)), ("icon-1024.png", (1024, 1024)),
                         ("icon.ico", None)):
         try:

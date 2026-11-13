@@ -7,8 +7,8 @@ use super::widgets::field::field_id;
 use super::widgets::nav::{filter_chip, segmented};
 use super::widgets::{
     Badge, Banner, ButtonSize, ButtonVariant, Card, CheckState, Checkbox, Column, DataTable,
-    DropZone, Icon, PillButton, ProgressBar, RowTone, Stepper, StrengthMeter, TabBar, TextField,
-    family_tint, overline,
+    DropZone, Icon, PillButton, ProgressBar, RowTone, Select, Stepper, StrengthMeter, TabBar,
+    TextField, family_tint, overline,
 };
 use anon_core::{EntityKind, Profile};
 use egui::Ui;
@@ -22,6 +22,7 @@ pub struct GalleryState {
     pub with_error: String,
     pub password: String,
     pub profile: Profile,
+    pub kind: EntityKind,
     /// Donne le focus au champ « focus » à la prochaine image.
     pub focus_once: bool,
 }
@@ -35,6 +36,7 @@ impl Default for GalleryState {
             with_error: "claire.martin@".into(),
             password: "Cheval-Agrafe".into(),
             profile: Profile::Standard,
+            kind: EntityKind::Societe,
             focus_once: true,
         }
     }
@@ -177,6 +179,11 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
                 TextField::password("Mot de passe", &mut st.password)
                     .id_salt("galerie-mdp")
                     .show(b);
+                let kinds: Vec<(EntityKind, &str)> =
+                    EntityKind::ALL.iter().map(|k| (*k, k.label())).collect();
+                Select::new("galerie-type", "Type", &mut st.kind, &kinds)
+                    .width(240.0)
+                    .show(b);
                 b.add(StrengthMeter::of(&st.password));
                 for pw in [
                     "",
@@ -293,7 +300,7 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
                             ui.label(r.1);
                         }
                         _ => {
-                            ui.label(egui::RichText::new(r.2).monospace().color(p.primary_dark));
+                            ui.label(egui::RichText::new(r.2).monospace().color(p.accent));
                         }
                     }
                 },

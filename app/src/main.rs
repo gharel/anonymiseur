@@ -5,16 +5,22 @@
 
 use anonymiseur::ui::AnonApp;
 use anonymiseur::ui::platform::NativePlatform;
+use anonymiseur::ui::prefs::{self, Preferences};
 use std::sync::Arc;
 
 /// Taille de départ et taille minimale de la fenêtre.
 const INITIAL_SIZE: [f32; 2] = [1280.0, 800.0];
-const MIN_SIZE: [f32; 2] = [900.0, 650.0];
+const MIN_SIZE: [f32; 2] = prefs::WINDOW_MIN;
 
 fn options(renderer: eframe::Renderer) -> eframe::NativeOptions {
+    // Taille de la dernière session, si elle a été retenue.
+    let size = prefs::default_path()
+        .map(|p| Preferences::load(&p))
+        .and_then(|p| p.window_size())
+        .unwrap_or(INITIAL_SIZE);
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Anonymiseur")
-        .with_inner_size(INITIAL_SIZE)
+        .with_inner_size(size)
         .with_min_inner_size(MIN_SIZE)
         .with_drag_and_drop(true);
     if let Ok(icon) =
@@ -25,6 +31,9 @@ fn options(renderer: eframe::Renderer) -> eframe::NativeOptions {
     eframe::NativeOptions {
         viewport,
         renderer,
+        // Les préférences sont dans un fichier à nous (`ui::prefs`), sans
+        // mémoire d'egui : rien de ce qui est saisi n'est écrit sur le disque.
+        persist_window: false,
         ..Default::default()
     }
 }

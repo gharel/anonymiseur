@@ -23,6 +23,16 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - **Exécutables Windows autonomes** : `Anonymiseur.exe` (complet) et `Anonymiseur-Lite.exe`, sans aucune bibliothèque à installer. Paquet macOS et publication automatique préparés.
 - **Documents** : `README.md`, `CONFIDENTIALITE.md`, `THIRD-PARTY.md`, `LICENSE` (AGPL-3.0), `CONTRIBUTING.md` ; faux fichiers d'exemple dans `exemples/` avec un scénario guidé.
 - **Garde-fous** : aucune dépendance réseau, vérifiée automatiquement à chaque modification du code.
+- **Mode sombre** : thème Système (par défaut, suit le réglage de l'ordinateur), Clair ou Sombre, depuis un bouton de l'en-tête. Palette sombre dérivée de la charte (fond `#1a1a1a`, vert de marque éclairci, badges de catégorie adaptés, logo clair) ; chaque couple texte / fond et chaque élément d'interface est vérifié par un test de contraste WCAG AA dans les deux thèmes.
+- **Préférences retenues** d'une session à l'autre : thème, niveau de protection, taille de la fenêtre. Petit fichier `preferences.json` dans le dossier de configuration du système, sans aucun chemin de fichier ni contenu.
+- **Sélecteur à la charte** (bord, rayon, chevron, anneau de focus) à la place du sélecteur natif d'egui.
+
+### Modifié
+- **Contrôles alignés** : un champ, un sélecteur, un bouton ou un sélecteur segmenté posés sur une même ligne ont la même hauteur (32, 40 ou 48 px, définies dans le thème) et le même centre ; un test le mesure sur chaque écran.
+- **Zones de texte plus lisibles** (texte libre, réponse collée, résultat de la désanonymisation) : police de 15 px, interligne plus large, zones qui occupent la hauteur de la fenêtre et défilent à l'intérieur.
+- **« Essayer avec des exemples »** : un seul clic, sans dialogue. Les exemples sont placés dans `Documents\Anonymiseur\Exemples`, toujours le même dossier : seuls les fichiers d'exemple manquants sont recréés, aucun fichier existant n'est remplacé, et seuls les documents d'exemple sont chargés.
+- **Fichiers produits par l'outil écartés** : un fichier `_anonymise`, `_restaure` ou une table `.anonmap` ajouté à l'onglet Anonymiser n'est jamais anonymisé une seconde fois ; un message indique combien ont été ignorés.
+- **Dossier de sortie par défaut** : sous-dossier `Anonymisés` à côté du premier fichier, créé à l'écriture, pour ne plus mélanger sources et résultats.
 
 ### Limites connues
 - Pseudonymisation réversible, pas anonymisation au sens du RGPD ; aucune détection n'est exhaustive, la relecture de l'écran de validation est nécessaire.

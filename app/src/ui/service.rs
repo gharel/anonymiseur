@@ -61,8 +61,19 @@ pub const EXAMPLES: &[ExampleFile] = &[
     example!("support.odp", true),
 ];
 
-/// Nom du dossier créé pour les exemples.
-pub const EXAMPLES_DIR: &str = "Exemples Anonymiseur";
+/// Emplacement fixe des exemples, sous le dossier Documents : `Anonymiseur/Exemples`.
+pub const EXAMPLES_SUBDIR: [&str; 2] = ["Anonymiseur", "Exemples"];
+
+/// Nom du dossier d'exemples créé dans un dossier choisi (repli quand le
+/// dossier Documents est introuvable).
+pub const EXAMPLES_FALLBACK_DIR: &str = "Exemples Anonymiseur";
+
+/// Dossier des exemples sous un dossier Documents.
+pub fn examples_dir_in(documents: &Path) -> PathBuf {
+    EXAMPLES_SUBDIR
+        .iter()
+        .fold(documents.to_path_buf(), |d, part| d.join(part))
+}
 
 /// Crée `parent/name`, ou `name_2`, `name_3`… si le nom est pris.
 pub fn create_new_dir(parent: &Path, name: &str) -> std::io::Result<PathBuf> {
@@ -85,29 +96,43 @@ pub fn create_new_dir(parent: &Path, name: &str) -> std::io::Result<PathBuf> {
     ))
 }
 
-/// Exemples copiés : dossier créé et documents à charger.
+/// Exemples prêts : dossier, documents à charger, fichiers recréés.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CopiedExamples {
+pub struct PreparedExamples {
     pub dir: PathBuf,
+    /// Documents d'exemple à anonymiser (ni la notice, ni la réponse d'IA simulée).
     pub documents: Vec<PathBuf>,
-    pub copied: usize,
+    /// Fichiers d'exemple absents, recréés à cet appel.
+    pub created: usize,
 }
 
-/// Copie les exemples dans un nouveau dossier de `parent`. Rien n'est jamais
-/// remplacé : le dossier est neuf, chaque fichier est créé en exclusivité.
-pub fn copy_examples(parent: &Path) -> std::io::Result<CopiedExamples> {
-    let dir = create_new_dir(parent, EXAMPLES_DIR)?;
+/// Prépare les exemples dans `dir`, toujours le même : le dossier est créé
+/// s'il manque, puis seuls les fichiers d'exemple absents sont écrits. Un
+/// fichier existant n'est jamais remplacé (création exclusive), et seuls les
+/// documents d'exemple sont renvoyés : jamais un fichier produit par l'outil.
+pub fn prepare_examples(dir: &Path) -> std::io::Result<PreparedExamples> {
+    std::fs::create_dir_all(dir)?;
     let mut documents = Vec::new();
+    let mut created = 0;
     for e in EXAMPLES {
-        let path = write_new(&dir, e.name, e.bytes)?;
-        if e.document {
+        let path = dir.join(e.name);
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut f) => {
+                f.write_all(e.bytes)?;
+                f.sync_all()?;
+                created += 1;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) => return Err(err),
+        }
+        if e.document && path.is_file() {
             documents.push(path);
         }
     }
-    Ok(CopiedExamples {
-        dir,
+    Ok(PreparedExamples {
+        dir: dir.to_path_buf(),
         documents,
-        copied: EXAMPLES.len(),
+        created,
     })
 }
 
@@ -302,6 +327,7 @@ pub fn anonymize_batch(
     };
     let total = inputs.len();
     let mut ready: Vec<(usize, Anonymized)> = Vec::new();
+    // Le dossier de sortie (`Anonymisés` par défaut) n'est créé qu'à l'écriture.
     for (i, file) in inputs.iter().enumerate() {
         if report.cancelled || progress.cancelled() {
             report.cancelled = true;
@@ -346,6 +372,15 @@ pub fn anonymize_batch(
     }
     progress.step(total, total, "");
     if ready.is_empty() {
+        return report;
+    }
+    if std::fs::create_dir_all(out_dir).is_err() {
+        report.fatal = Some(
+            "Impossible de créer le dossier de sortie : aucun fichier n'a été écrit. Choisissez \
+             un autre dossier de sortie."
+                .to_owned(),
+        );
+        mark_unwritten(&mut report, &ready);
         return report;
     }
 
@@ -502,6 +537,44 @@ mod tests {
         assert_eq!(a.ok(), Some(d.join("Exemples")));
         assert_eq!(b.ok(), Some(d.join("Exemples_2")));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn examples_are_reused_without_overwriting() {
+        let d = temp_dir("exemples").join("Anonymiseur").join("Exemples");
+        let first = prepare_examples(&d);
+        assert!(first.is_ok());
+        let Ok(first) = first else { return };
+        assert_eq!(first.created, EXAMPLES.len());
+        // Un fichier modifié par l'utilisateur et un fichier supprimé.
+        let _ = std::fs::write(d.join("notes.txt"), "à garder");
+        let _ = std::fs::remove_file(d.join("brief.md"));
+        let _ = std::fs::write(d.join("notes_anonymise.txt"), "sortie");
+        let again = prepare_examples(&d);
+        assert!(again.is_ok());
+        let Ok(again) = again else { return };
+        assert_eq!(again.dir, d, "même dossier");
+        assert_eq!(again.created, 1, "seul le fichier supprimé est recréé");
+        assert_eq!(
+            std::fs::read_to_string(d.join("notes.txt")).ok().as_deref(),
+            Some("à garder")
+        );
+        assert_eq!(again.documents, first.documents);
+        assert!(
+            again
+                .documents
+                .iter()
+                .all(|p| !crate::ui::state::files::is_tool_output(p))
+        );
+        let _ = std::fs::remove_dir_all(temp_dir("exemples"));
+    }
+
+    #[test]
+    fn examples_dir_is_under_documents() {
+        assert_eq!(
+            examples_dir_in(Path::new("C:/Users/x/Documents")),
+            PathBuf::from("C:/Users/x/Documents/Anonymiseur/Exemples")
+        );
     }
 
     #[test]

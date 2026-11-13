@@ -99,7 +99,9 @@ if ($Force -or -not (Test-Path $common) -or -not (Test-Path $re2)) {
     Invoke-Checked cmake @("--version")
 
     if (-not (Test-Path (Join-Path $src ".git"))) {
-        Invoke-Checked git @("-c", "advice.detachedHead=false", "clone", "--depth", "1", "--branch", "v$Version",
+        # core.autocrlf=false : les correctifs cmake/patches/*.patch doivent garder leurs fins de ligne
+        # Unix, comme les sources téléchargées qu'ils modifient ; convertis en CRLF, patch les rejette.
+        Invoke-Checked git @("-c", "advice.detachedHead=false", "-c", "core.autocrlf=false", "clone", "--depth", "1", "--branch", "v$Version",
             "--recurse-submodules", "--shallow-submodules", "https://github.com/microsoft/onnxruntime", $src)
     }
     if ($Force -and (Test-Path $buildRoot)) { Remove-Item $buildRoot -Recurse -Force }
@@ -111,6 +113,19 @@ if ($Force -or -not (Test-Path $common) -or -not (Test-Path $re2)) {
     if (-not $vs2022) {
         throw "Visual Studio 2022 avec le toolset C++ est requis (introuvable). Sur GitHub Actions : runs-on: windows-2022."
     }
+
+    # Les correctifs d'ONNX Runtime sur ses dépendances (onnx…) s'appliquent avec le patch.exe de Git.
+    # Celui de Strawberry Perl, trouvé en premier sur les machines GitHub Actions, en rejette des
+    # morceaux (scoped_resource.h). On impose donc celui de Git.
+    # Git for Windows dans Program Files (là où CMake le cherche aussi), sinon le git du PATH.
+    $candidats = @(
+        (Join-Path $env:ProgramFiles "Git\usr\bin\patch.exe"),
+        (Join-Path (Split-Path (Split-Path (Split-Path (git --exec-path)))) "usr\bin\patch.exe")
+    )
+    $patchExe = $candidats | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $patchExe) { throw "patch.exe de Git for Windows introuvable : $($candidats -join ', ')." }
+    $patchExe = $patchExe -replace '\\', '/'
+    Write-Host "patch : $patchExe"
 
     $buildArgs = @(
         (Join-Path $src "tools\ci_build\build.py"),
@@ -135,7 +150,8 @@ if ($Force -or -not (Test-Path $common) -or -not (Test-Path $re2)) {
         # Sans cela, device_discovery.cc exige le SDK Windows 10.0.22621+ (DXCoreHardwareIDParts).
         "onnxruntime_DISABLE_DEVICE_DISCOVERY=ON",
         "onnxruntime_USE_TELEMETRY=OFF",
-        "onnxruntime_BUILD_BENCHMARKS=OFF"
+        "onnxruntime_BUILD_BENCHMARKS=OFF",
+        "Patch_EXECUTABLE=$patchExe"
     )
     Push-Location $src
     try {

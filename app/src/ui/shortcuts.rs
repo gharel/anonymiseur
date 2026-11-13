@@ -206,7 +206,9 @@ mod tests {
             modifiers: Modifiers::NONE,
         });
         let mut got = Vec::new();
-        let _ = ctx.run_ui(input, |ui| got = read(ui.ctx()));
+        let mut output = ctx.run_ui(input, |ui| got = read(ui.ctx()));
+        // En debug, epaint refuse qu'on abandonne des textures non appliquées (atlas de police).
+        output.textures_delta.clear();
         assert_eq!(got, vec![Command::Open, Command::Back]);
     }
 }

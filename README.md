@@ -4,7 +4,7 @@ Anonymiseur remplace les données sensibles d'un document (noms, adresses, numé
 
 Il s'adresse aux apprenants et aux formateurs qui veulent utiliser une IA sur des documents contenant des données personnelles. C'est un projet de Skazy Formation, libre sous licence AGPL-3.0.
 
-<!-- À COMPLÉTER : lien de téléchargement -->
+**[Télécharger pour Windows ou macOS](https://gharel.github.io/anonymiseur/)** : page de présentation, empreintes SHA-256 et lien d'analyse VirusTotal pour chaque fichier. Les exécutables sont aussi dans les [publications du dépôt](https://github.com/gharel/anonymiseur/releases/latest).
 
 ## Le parcours en trois étapes
 

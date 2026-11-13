@@ -12,7 +12,7 @@ Déploiement : `.github/workflows/pages.yml` (push sur `main` touchant `site/**`
 | `img/logo-color.png`, `img/logo-white-color.png`, `img/icon-256.png` | `assets/charte/` |
 | `img/LICENSE-lucide.txt` | `assets/charte/icons/LICENSE` (ISC) |
 | icônes | Lucide 0.460.0 (`assets/charte/icons/*.svg`), intégrées en sprite SVG dans `index.html` |
-| `captures/*.png` | `app/tests/snapshots/<nom>_1280x800.png`, réduites à 128 couleurs |
+| `captures/*.png` | `app/tests/snapshots/<nom>_1280x800.png` et `<nom>_sombre_1280x800.png` (affichée si le système est en mode sombre), réduites à 128 couleurs |
 | `empreintes.json` | **généré au déploiement** à partir du `SHA256SUMS` de la dernière release ; absent du dépôt |
 
 ## Remplacer les captures

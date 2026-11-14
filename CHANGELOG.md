@@ -4,6 +4,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+## [0.1.1] - 2026-11-14
+
+### Corrigé
+- **Mémoire de l'édition complète** : l'IA de noms traite un long bloc de texte par lots de huit fenêtres au lieu d'un seul. Sur les fichiers d'exemple, le pic de mémoire passe de 4,4 Go à 0,7 Go, pour la même durée. La version 0.1.0 pouvait saturer un ordinateur de 8 Go.
+
 ## [0.1.0] - 2026-11-14
 
 Première version publique.

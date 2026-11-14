@@ -232,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "anon-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_bytes",
@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "anon-detect"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anon-core",
  "proptest",
@@ -252,7 +252,7 @@ dependencies = [
 
 [[package]]
 name = "anon-dict"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anon-core",
  "anon-detect",
@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "anon-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anon-core",
  "anon-detect",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "anon-ner"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anon-core",
  "anon-dict",
@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "anon-office"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anon-core",
  "anon-replace",
@@ -302,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "anon-pdf"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ab_glyph",
  "anon-core",
@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "anon-replace"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aho-corasick",
  "anon-core",
@@ -329,7 +329,7 @@ dependencies = [
 
 [[package]]
 name = "anon-vault"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes-gcm",
  "anon-core",
@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "anonymiseur"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anon-core",
  "anon-engine",

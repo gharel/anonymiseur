@@ -1,7 +1,7 @@
 //! Instantanés PNG de la galerie et de chaque écran, alimentés par une vraie
 //! analyse des fichiers de `exemples/`, à deux tailles de fenêtre (plus une
 //! page haute pour voir le contenu sous la ligne de flottaison), et en thème
-//! sombre à 1280 × 800.
+//! sombre à 1280 × 800. Images comparées sous Windows, édition complète (`COMPARE_IMAGES`).
 //! Mise à jour : `UPDATE_SNAPSHOTS=force cargo test -p anonymiseur --test snapshots`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -30,6 +30,19 @@ const SIZES: [(f32, f32, &str, ThemeChoice); 4] = [
     (1280.0, 800.0, "sombre_1280x800", ThemeChoice::Dark),
 ];
 const PASSWORD: &str = "Cheval-Agrafe-Batterie-47";
+
+/// Les images de référence sont produites sous Windows avec l'édition complète. Ailleurs,
+/// chaque écran est quand même rendu, sans comparaison d'image : l'édition Lite affiche un
+/// autre pied de page et d'autres détections, et le rendu d'un autre système diffère de
+/// quelques pixels.
+const COMPARE_IMAGES: bool = cfg!(all(windows, feature = "ia"));
+
+/// Compare l'écran déjà rendu à son image de référence, là où elle s'applique.
+fn shot<S>(harness: &mut Harness<'_, S>, name: impl Into<String>) {
+    if COMPARE_IMAGES {
+        harness.snapshot(name);
+    }
+}
 
 fn engine() -> (Arc<Engine>, IaStatus) {
     static ENGINE: OnceLock<(Arc<Engine>, IaStatus)> = OnceLock::new();
@@ -112,7 +125,7 @@ fn snap(name: &str, setup: impl Fn(&mut AnonApp)) {
             neutralize_paths(a);
         });
         harness.run();
-        harness.snapshot(format!("{name}_{label}"));
+        shot(&mut harness, format!("{name}_{label}"));
         results.extend_harness(&mut harness);
     }
     results.unwrap();
@@ -197,7 +210,7 @@ fn gallery_in(choice: ThemeChoice, name: &str) {
             (false, GalleryState::default()),
         );
     harness.run();
-    harness.snapshot(name);
+    shot(&mut harness, name);
 }
 
 #[test]
@@ -1062,7 +1075,7 @@ fn anonymize_drop_overlay() {
             ],
         );
         h.run_steps(3);
-        h.snapshot(format!("anonymiser_1d_voile_de_depot_{label}"));
+        shot(&mut h, format!("anonymiser_1d_voile_de_depot_{label}"));
         results.extend_harness(&mut h);
     }
     results.unwrap();

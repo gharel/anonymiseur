@@ -10,6 +10,10 @@ use std::borrow::Cow;
 use std::sync::{Mutex, OnceLock};
 use tokenizers::Tokenizer;
 
+/// Nombre maximal de fenêtres passées ensemble au modèle. La mémoire d'une passe croît avec
+/// le nombre de fenêtres, et ONNX Runtime conserve le pic atteint.
+pub(crate) const MAX_BATCH_WINDOWS: usize = 8;
+
 /// Environnement ONNX Runtime partagé, créé une seule fois, télémétrie coupée.
 static ENVIRONMENT: OnceLock<Result<ort::environment::Environment, NerError>> = OnceLock::new();
 
@@ -38,6 +42,9 @@ pub(crate) struct Model {
     pad: u32,
     inputs: Vec<String>,
     output: String,
+    /// Plus grand lot passé au modèle (tests seulement).
+    #[cfg(test)]
+    max_rows: std::sync::atomic::AtomicUsize,
 }
 
 impl std::fmt::Debug for Model {
@@ -109,6 +116,8 @@ impl Model {
             pad: pad_id.unwrap_or(sep),
             inputs,
             output,
+            #[cfg(test)]
+            max_rows: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 
@@ -137,8 +146,12 @@ impl Model {
             win.push(i64::from(self.sep));
             batch.push(win);
         }
-        // Toutes les fenêtres d'un bloc en une seule passe (lot).
-        let logits = self.run_batch(&batch)?;
+        // Les fenêtres d'un bloc passent par lots de MAX_BATCH_WINDOWS : un lot unique pour un
+        // long bloc gonfle la réserve mémoire d'ONNX Runtime, qui la garde ensuite.
+        let mut logits = Vec::with_capacity(batch.len());
+        for chunk in batch.chunks(MAX_BATCH_WINDOWS) {
+            logits.extend(self.run_batch(chunk)?);
+        }
         for (range, (win, out)) in ranges.into_iter().zip(batch.iter().zip(&logits)) {
             let inner = out
                 .get(n_labels..(win.len().saturating_sub(1)) * n_labels)
@@ -161,6 +174,9 @@ impl Model {
         if rows == 0 || width == 0 {
             return Ok(Vec::new());
         }
+        #[cfg(test)]
+        self.max_rows
+            .fetch_max(rows, std::sync::atomic::Ordering::Relaxed);
         let mut ids = vec![i64::from(self.pad); rows * width];
         let mut mask = vec![0i64; rows * width];
         for (r, win) in batch.iter().enumerate() {
@@ -205,5 +221,53 @@ impl Model {
                     .ok_or(NerError::Runtime("sortie du modèle trop courte".into()))
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::atomic::Ordering;
+
+    fn french_model() -> Model {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/ner");
+        let read = |f: &str| std::fs::read(dir.join(f)).expect(f);
+        Model::load(
+            &read("fr.onnx"),
+            &read("fr.tokenizer.json"),
+            &read("fr.config.json"),
+        )
+        .expect("modèle français")
+    }
+
+    /// Un long bloc passe en plusieurs lots bornés : un lot unique faisait monter la
+    /// mémoire d'ONNX Runtime à plus de 4 Go sur les exemples. Les noms du début et de
+    /// la fin du bloc restent trouvés, à leur place.
+    #[test]
+    fn long_block_runs_in_bounded_batches() {
+        let model = french_model();
+        let filler = "Le comité a examiné le budget annuel et le calendrier des travaux. ";
+        let mut text = String::from("Jean Dupont ouvre la séance. ");
+        let tokens = |t: &str| model.tokenizer.encode(t, false).map(|e| e.len()).unwrap();
+        while tokens(&text) < 3 * MAX_BATCH_WINDOWS * crate::aggregate::WINDOW_TOKENS {
+            text.push_str(filler);
+        }
+        text.push_str("Marie Lefèvre clôt la séance.");
+
+        let spans = model.predict(&text).unwrap();
+
+        let max_rows = model.max_rows.load(Ordering::Relaxed);
+        assert!(
+            max_rows <= MAX_BATCH_WINDOWS,
+            "lot de {max_rows} fenêtres (maximum {MAX_BATCH_WINDOWS})"
+        );
+        let found = |name: &str| {
+            spans
+                .iter()
+                .any(|s| text.get(s.start..s.end).is_some_and(|v| v.contains(name)))
+        };
+        assert!(found("Jean Dupont"), "nom du début");
+        assert!(found("Marie Lefèvre"), "nom de la fin");
     }
 }

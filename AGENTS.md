@@ -48,15 +48,15 @@ Espace de travail Cargo. Les dépendances ne vont que vers le bas de cette liste
 | Crate | Rôle |
 |---|---|
 | `app` (`anonymiseur`) | Interface egui à la charte Skazy. Aucune logique métier. |
-| `crates/anon-engine` | Orchestration : analyse, anonymisation, restauration, contrôle de fuite. Tests d'intégration pilotés par `exemples/attendu.json`. |
+| `crates/anon-engine` | Orchestration : analyse, vue document, évaluation et corrections, anonymisation, restauration, contrôle de fuite, fiche d'évaluation. Tests d'intégration pilotés par `exemples/attendu.json` et `exemples/evaluation.json`. |
 | `crates/anon-office` | Gestionnaires Word/Excel/PowerPoint (OOXML), ODF, texte brut. Pur Rust. |
 | `crates/anon-pdf` | PDF, images, OCR (MuPDF + Tesseract). Seul crate autorisé à utiliser `unsafe` (FFI). |
-| `crates/anon-ner` | Détection de noms par modèle ONNX. Optionnel (fonctionnalité `ia`). |
+| `crates/anon-ner` | Détection de noms et de visages (YuNet) par modèles ONNX. Optionnel (fonctionnalité `ia`). |
 | `crates/anon-assess` | Évaluation des trois critères du CEPD : tableaux, textes, images. |
-| `crates/anon-detect` | Règles à clé, colonnes de tableur, quasi-identifiants, listes, fusion des détections. |
-| `crates/anon-dict` | Dictionnaires embarqués (prénoms, noms, communes) et leur détecteur. |
+| `crates/anon-detect` | Règles à clé, colonnes de tableur, indices, données sensibles, listes, fusion des détections. |
+| `crates/anon-dict` | Dictionnaires embarqués (prénoms, noms, communes), population (Insee, ISEE), métiers, hiérarchies de généralisation. |
 | `crates/anon-replace` | Normalisation, `Replacer`, `Restorer`, enregistrement des valeurs dans la session. |
-| `crates/anon-vault` | Fichier `.anonmap` : session sérialisée et chiffrée par mot de passe. |
+| `crates/anon-vault` | Clé de restauration `.anonmap` (session chiffrée par mot de passe), phrase de passe, trousseau du système, dates de conservation. |
 | `crates/anon-core` | **Contrats** partagés, rien d'autre. |
 
 `spikes/` contient des prototypes jetables, hors espace de travail.
@@ -109,7 +109,7 @@ Un changement est terminé quand :
 - **Unitaires** : dans chaque module (`#[cfg(test)]`).
 - **Propriétés** (`proptest`) : anonymiser puis restaurer redonne le texte d'origine ; une balise n'est jamais re-remplacée.
 - **Intégration** : `crates/anon-engine/tests`, pilotés par `exemples/attendu.json`.
-- **Instantanés** (`insta`) : `cargo insta review` pour accepter un écart, jamais d'acceptation en bloc sans lecture.
+- **Instantanés** (`insta`) : `cargo insta review` pour accepter un écart, jamais d'acceptation en bloc sans lecture. Écrans de l'application (`app/tests/snapshots.rs`, `egui_kittest`) : `UPDATE_SNAPSHOTS=force` sur un filtre, puis regarder chaque image modifiée.
 - **Robustesse** : fichiers tronqués ou corrompus → `Err`, pas de panique.
 
 Vérifier un comportement en lançant le test, pas en le supposant. Un rapport « ça marche » sans sortie de test ne vaut rien.

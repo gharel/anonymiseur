@@ -1,6 +1,6 @@
 # Anonymiseur V2 : plan
 
-Statut : proposé et validé le 15 novembre 2026. Développement en cours.
+Statut : proposé et validé le 15 novembre 2026. Lots 1 à 10 développés (version 2.0.0) ; séances de test avec des utilisateurs à mener par l'équipe Skazy (§8).
 Maquettes des écrans : [`maquettes.html`](maquettes.html).
 
 ## 1. En bref

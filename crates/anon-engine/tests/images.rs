@@ -317,7 +317,7 @@ fn images_masquees_puis_restaurees() {
     let out = engine
         .anonymize(&file, &analysis, &mut session, &opts)
         .unwrap();
-    assert_eq!(out.name, "rapport_anonymise.pack");
+    assert_eq!(out.name, "rapport_masque.pack");
 
     // L'OCR de l'analyse est réutilisé : un seul nouvel appel (contrôle de fuite).
     let c = calls.lock().unwrap();

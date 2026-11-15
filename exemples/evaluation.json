@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "notes": "Évaluation des trois critères (isolement, recoupement, déduction) sur les faux fichiers d'exemple : verdict attendu et nombre de sujets en échec, au total et par critère, avec la sélection par défaut de l'analyse. Réglages : assistant IA grand public, approche simplifiée, k_min 5. Édition sans détection des visages (Lite) : les visages ne sont pas vérifiés. « apres_tout_corriger » : même évaluation après « Tout corriger ». Verdicts : anonyme, reidentifiable, non_concluant. Profil Standard : les indices (lieu, fonction, âge, matricule…) sont trouvés pour l'évaluation mais laissés décochés ; profil Renforcé : ils sont cochés d'office. Lu par crates/anon-engine/tests/evaluation.rs ; à mettre à jour quand l'évaluation des textes change.",
+  "cas": [
+    {
+      "fichier": "patients.xlsx",
+      "profil": "standard",
+      "objectif": "masquer",
+      "verdict": "reidentifiable",
+      "sujets_en_echec": 3,
+      "echecs": { "isolement": 3, "recoupement": 0, "deduction": 0 },
+      "apres_tout_corriger": {
+        "verdict": "anonyme",
+        "sujets_en_echec": 0,
+        "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+      }
+    },
+    {
+      "fichier": "patients.xlsx",
+      "profil": "standard",
+      "objectif": "anonymiser",
+      "verdict": "reidentifiable",
+      "sujets_en_echec": 3,
+      "echecs": { "isolement": 3, "recoupement": 0, "deduction": 0 },
+      "apres_tout_corriger": {
+        "verdict": "anonyme",
+        "sujets_en_echec": 0,
+        "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+      }
+    },
+    {
+      "fichier": "patients.xlsx",
+      "profil": "renforce",
+      "objectif": "anonymiser",
+      "verdict": "reidentifiable",
+      "sujets_en_echec": 3,
+      "echecs": { "isolement": 3, "recoupement": 0, "deduction": 0 },
+      "apres_tout_corriger": {
+        "verdict": "anonyme",
+        "sujets_en_echec": 0,
+        "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+      }
+    },
+    {
+      "fichier": "carte-visite.png",
+      "profil": "standard",
+      "objectif": "masquer",
+      "verdict": "non_concluant",
+      "sujets_en_echec": 1,
+      "echecs": { "isolement": 1, "recoupement": 0, "deduction": 0 }
+    },
+    {
+      "fichier": "carte-visite.png",
+      "profil": "standard",
+      "objectif": "anonymiser",
+      "verdict": "non_concluant",
+      "sujets_en_echec": 1,
+      "echecs": { "isolement": 1, "recoupement": 0, "deduction": 0 }
+    },
+    {
+      "fichier": "compte-rendu-commission.docx",
+      "profil": "standard",
+      "objectif": "masquer",
+      "verdict": "reidentifiable",
+      "sujets_en_echec": 1,
+      "echecs": { "isolement": 1, "recoupement": 0, "deduction": 0 },
+      "apres_tout_corriger": {
+        "verdict": "anonyme",
+        "sujets_en_echec": 0,
+        "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+      }
+    },
+    {
+      "fichier": "compte-rendu-commission.docx",
+      "profil": "standard",
+      "objectif": "anonymiser",
+      "verdict": "reidentifiable",
+      "sujets_en_echec": 1,
+      "echecs": { "isolement": 1, "recoupement": 0, "deduction": 0 },
+      "apres_tout_corriger": {
+        "verdict": "anonyme",
+        "sujets_en_echec": 0,
+        "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+      }
+    },
+    {
+      "fichier": "compte-rendu-commission.docx",
+      "profil": "renforce",
+      "objectif": "anonymiser",
+      "verdict": "anonyme",
+      "sujets_en_echec": 0,
+      "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+    },
+    {
+      "fichier": "courrier-arret-maladie.txt",
+      "profil": "standard",
+      "objectif": "masquer",
+      "verdict": "reidentifiable",
+      "sujets_en_echec": 1,
+      "echecs": { "isolement": 0, "recoupement": 1, "deduction": 0 },
+      "apres_tout_corriger": {
+        "verdict": "anonyme",
+        "sujets_en_echec": 0,
+        "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+      }
+    },
+    {
+      "fichier": "courrier-arret-maladie.txt",
+      "profil": "standard",
+      "objectif": "anonymiser",
+      "verdict": "reidentifiable",
+      "sujets_en_echec": 1,
+      "echecs": { "isolement": 0, "recoupement": 1, "deduction": 0 },
+      "apres_tout_corriger": {
+        "verdict": "anonyme",
+        "sujets_en_echec": 0,
+        "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+      }
+    },
+    {
+      "fichier": "courrier-arret-maladie.txt",
+      "profil": "renforce",
+      "objectif": "anonymiser",
+      "verdict": "anonyme",
+      "sujets_en_echec": 0,
+      "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+    },
+    {
+      "fichier": "contrat-prestation.docx",
+      "profil": "standard",
+      "objectif": "anonymiser",
+      "verdict": "anonyme",
+      "sujets_en_echec": 0,
+      "echecs": { "isolement": 0, "recoupement": 0, "deduction": 0 }
+    }
+  ]
+}

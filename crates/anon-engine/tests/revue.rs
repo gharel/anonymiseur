@@ -11,7 +11,7 @@
     clippy::print_stdout
 )]
 
-use anon_core::{DetectOptions, Profile, Session};
+use anon_core::{DetectOptions, EntityKind, Profile, Session};
 use anon_engine::{AnalyzeOptions, AnonymizeOptions, Engine, InputFile, NoProgress};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -25,9 +25,48 @@ fn exemples() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../exemples")
 }
 
+/// Texte (en minuscules) sans les balises posées par l'anonymisation :
+/// `[nom_35]`, `nom_35` (cible d'URI). Leurs chiffres ne sont pas une valeur.
+fn sans_balises(texte: &str) -> String {
+    let prefixes: Vec<String> = EntityKind::ALL
+        .iter()
+        .map(|k| format!("{}_", k.prefix().to_lowercase()))
+        .collect();
+    let mut out = String::with_capacity(texte.len());
+    let mut reste = texte;
+    'suite: while !reste.is_empty() {
+        for p in &prefixes {
+            let debut = reste.strip_prefix('[').unwrap_or(reste);
+            let precedent = out.chars().next_back();
+            if precedent.is_some_and(char::is_alphanumeric) {
+                break;
+            }
+            if let Some(apres) = debut.strip_prefix(p.as_str()) {
+                let chiffres =
+                    apres.len() - apres.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+                if chiffres > 0 {
+                    let fin = &apres[chiffres..];
+                    reste = fin.strip_prefix(']').unwrap_or(fin);
+                    out.push(' ');
+                    continue 'suite;
+                }
+            }
+        }
+        let mut cs = reste.chars();
+        if let Some(c) = cs.next() {
+            out.push(c);
+        }
+        reste = cs.as_str();
+    }
+    out
+}
+
 /// Vrai si `valeur` apparaît dans `texte` comme un mot entier : « 620000 » dans
-/// « 16200000 » (un angle du thème du classeur) n'est pas une fuite.
+/// « 16200000 » (un angle du thème du classeur) n'est pas une fuite, ni « 35 »
+/// dans la balise `[NOM_35]`.
 fn lisible(texte: &str, valeur: &str) -> bool {
+    let texte = sans_balises(texte);
+    let texte = texte.as_str();
     texte.match_indices(valeur).any(|(i, m)| {
         let avant = texte[..i].chars().next_back();
         let apres = texte[i + m.len()..].chars().next();
@@ -76,6 +115,7 @@ fn mesure(profile: Profile) -> (usize, usize) {
 
     let sortie = std::env::var_os("ANON_REVUE_OUT").map(PathBuf::from);
     let (mut total, mut restantes) = (0usize, 0usize);
+    let mut refuses = Vec::new();
     println!("\nProfil {profile:?} — sélection par défaut, sans correction humaine");
     for (file, entree) in files.iter().zip(&entrees) {
         let ext = file.extension();
@@ -84,6 +124,7 @@ fn mesure(profile: Profile) -> (usize, usize) {
                 Ok(a) => a,
                 Err(e) => {
                     println!("  {:<28} REFUSÉ : {e}", file.name);
+                    refuses.push(file.name.clone());
                     continue;
                 }
             };
@@ -139,7 +180,25 @@ fn mesure(profile: Profile) -> (usize, usize) {
         "  TOTAL : {restantes}/{total} valeurs encore lisibles ({:.1} %)",
         part * 100.0
     );
+    // Un fichier refusé n'est pas mesuré : sa sélection par défaut doit passer
+    // le contrôle de fuite (un refus cachait des identifiants structurels pris
+    // pour des fuites).
+    assert!(
+        refuses.is_empty(),
+        "profil {profile:?} : fichiers refusés {refuses:?}"
+    );
     (restantes, total)
+}
+
+#[test]
+fn balises_ne_sont_pas_des_valeurs() {
+    assert!(!lisible("patient [nom_35] suivi", "35"));
+    assert!(!lisible("https://anon.invalid/url_3", "3"));
+    assert!(lisible("[nom_35] a 35 ans", "35"));
+    assert!(lisible("35", "35"));
+    assert!(!lisible("16200000", "620000"));
+    // Une valeur collée à une balise reste lisible.
+    assert!(lisible("[nom_1]35 ans", "35"));
 }
 
 #[test]

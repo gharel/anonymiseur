@@ -1,13 +1,17 @@
 //! Orchestration : gestionnaires de formats, détecteurs, table de correspondance.
 
-use crate::analysis::{Aggregator, Analysis, AnalyzeOptions, FileAnalysis, FileData, ImageData};
+use crate::analysis::{
+    Aggregator, Analysis, AnalyzeOptions, FileAnalysis, FileData, ImageData, UnreadMedia,
+};
 use crate::error::{EngineError, Leak, extension_of};
+use crate::evaluation::{self, FIX_ALL_MAX_ROUNDS, FixUndo};
 use crate::media::{LOW_OCR_CONFIDENCE, ManualMask, Masker, Unmasker, sha256_hex};
 use crate::risk::{RiskReport, assess};
+use crate::structure::structural_counts;
 use anon_core::{
-    BlockContext, BlockRole, DetectOptions, Detection, Detector, EntityKind, Handler,
-    ImageProcessor, MediaTransform, Profile, Session, TextBlock, TextTransform, TransformOptions,
-    Warning, WarningCode,
+    AssessInput, AssessSettings, Assessment, BlockContext, BlockRole, DetectOptions, Detection,
+    Detector, EntityKind, Fix, Goal, Handler, ImageProcessor, MediaTransform, PixelRect, Profile,
+    Session, Tag, TextBlock, TextTransform, TransformOptions, Verdict, Warning, WarningCode,
 };
 use anon_detect::{ColumnDetector, ListDetector, QuasiDetector, RuleDetector, merge};
 use anon_dict::DictionaryDetector;
@@ -62,10 +66,19 @@ impl Progress for NoProgress {
     fn step(&self, _done: usize, _total: usize, _label: &str) {}
 }
 
+/// Détection des visages dans une image (édition complète). Injecté par
+/// [`EngineBuilder::face_finder`] ; sans lui, les visages ne sont pas vérifiés.
+pub trait FaceFinder: Sync {
+    /// Visages d'une image encodée (PNG, JPEG…), en pixels de l'image.
+    /// `None` : non vérifiés (image illisible, détection en échec).
+    fn faces(&self, image: &[u8]) -> Option<Vec<PixelRect>>;
+}
+
 /// Réglages d'une anonymisation.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AnonymizeOptions {
-    /// Zones d'image à masquer en plus de celles trouvées par l'OCR.
+    /// Zones d'image à masquer en plus de celles trouvées par l'OCR et de
+    /// celles gardées dans l'analyse (`Analysis::masks`).
     pub manual_masks: Vec<ManualMask>,
 }
 
@@ -122,12 +135,17 @@ const PROBED_EXTENSIONS: &[&str] = &[
     "tiff", "webp", "rtf", "html", "htm", "xml", "eml",
 ];
 
+/// Nom du détecteur d'IA de noms (`anon-ner`), non relancé pour les indices.
+const NER_DETECTOR: &str = "ner";
+
 /// Extensions dont les lignes sont découpées en cellules pour la détection.
 const CSV_EXTENSIONS: &[&str] = &["csv", "tsv"];
 
-/// Suffixes des noms de fichiers produits.
-const ANONYMIZED_SUFFIX: &str = "_anonymise";
+/// Suffixe des fichiers restaurés.
 const RESTORED_SUFFIX: &str = "_restaure";
+/// Suffixes des fichiers produits retirés à la restauration, du plus long au
+/// plus court (`_anonymise` : fichiers de la V1).
+const PRODUCED_SUFFIXES: &[&str] = &["_masque_sans_cle", "_anonymise", "_anonyme", "_masque"];
 
 /// Construction d'un [`Engine`] par injection.
 #[derive(Default)]
@@ -136,6 +154,7 @@ pub struct EngineBuilder {
     lookups: Vec<HandlerLookup>,
     detectors: Vec<Box<dyn Detector + Send>>,
     image_processor: Option<Box<dyn ImageProcessor + Send>>,
+    face_finder: Option<Box<dyn FaceFinder + Send>>,
 }
 
 impl fmt::Debug for EngineBuilder {
@@ -151,6 +170,7 @@ impl fmt::Debug for EngineBuilder {
                 &self.detectors.iter().map(|d| d.name()).collect::<Vec<_>>(),
             )
             .field("image_processor", &self.image_processor.is_some())
+            .field("face_finder", &self.face_finder.is_some())
             .finish()
     }
 }
@@ -187,12 +207,19 @@ impl EngineBuilder {
         self
     }
 
+    /// Détecteur de visages (édition complète).
+    pub fn face_finder(mut self, finder: Box<dyn FaceFinder + Send>) -> Self {
+        self.face_finder = Some(finder);
+        self
+    }
+
     pub fn build(self) -> Engine {
         Engine {
             handlers: self.handlers,
             lookups: self.lookups,
             detectors: self.detectors,
             image_processor: self.image_processor,
+            face_finder: self.face_finder,
         }
     }
 }
@@ -204,6 +231,7 @@ pub struct Engine {
     lookups: Vec<HandlerLookup>,
     detectors: Vec<Box<dyn Detector + Send>>,
     image_processor: Option<Box<dyn ImageProcessor + Send>>,
+    face_finder: Option<Box<dyn FaceFinder + Send>>,
 }
 
 impl fmt::Debug for Engine {
@@ -215,6 +243,7 @@ impl fmt::Debug for Engine {
                 &self.detectors.iter().map(|d| d.name()).collect::<Vec<_>>(),
             )
             .field("image_processor", &self.image_processor.is_some())
+            .field("face_finder", &self.face_finder.is_some())
             .finish()
     }
 }
@@ -229,16 +258,28 @@ struct Loaded {
     warnings: Vec<Warning>,
 }
 
-fn output_name(name: &str, suffix: &str, strip: Option<&str>) -> String {
+fn output_name(name: &str, suffix: &str, strip: &[&str]) -> String {
     let (stem, ext) = match name.rsplit_once('.') {
         Some((s, e)) if !s.is_empty() => (s, Some(e)),
         _ => (name, None),
     };
-    let stem = strip.and_then(|s| stem.strip_suffix(s)).unwrap_or(stem);
+    let stem = strip
+        .iter()
+        .find_map(|s| stem.strip_suffix(s))
+        .unwrap_or(stem);
     match ext {
         Some(e) => format!("{stem}{suffix}.{e}"),
         None => format!("{stem}{suffix}"),
     }
+}
+
+/// Nom d'un fichier produit : suffixe de l'objectif (`Goal::output_suffix`).
+/// `_anonyme` seulement en objectif « Anonymiser définitivement » et si la
+/// dernière évaluation conclut à l'anonymat (invariant 9) ; sinon
+/// `_masque_sans_cle` ; `_masque` en objectif « Masquer pour l'IA ».
+pub fn output_file_name(name: &str, goal: Goal, verdict: Option<Verdict>) -> String {
+    let anonymous = verdict == Some(Verdict::Anonymous);
+    output_name(name, goal.output_suffix(anonymous), &[])
 }
 
 fn text_blocks(text: &str) -> Vec<TextBlock> {
@@ -318,6 +359,8 @@ impl Engine {
         let ex = handler.extract(&file.bytes)?;
         let mut warnings = ex.warnings;
         let mut images = Vec::new();
+        let mut unread_media = Vec::new();
+        let faces = |bytes: &[u8]| self.face_finder.as_deref().and_then(|f| f.faces(bytes));
         match self.image_processor.as_deref() {
             Some(p) => {
                 for m in &ex.media {
@@ -336,26 +379,52 @@ impl Engine {
                                 sha256: sha256_hex(&m.bytes),
                                 bytes: m.bytes.clone(),
                                 ocr: page,
+                                faces: faces(&m.bytes),
                             });
                         }
-                        Err(_) => warnings.push(Warning::new(
-                            WarningCode::ImageNotProcessed,
-                            m.name.clone(),
-                            "Image illisible par l'OCR, non analysée.",
-                        )),
+                        Err(_) => {
+                            warnings.push(Warning::new(
+                                WarningCode::ImageNotProcessed,
+                                m.name.clone(),
+                                "Image illisible par l'OCR, non analysée.",
+                            ));
+                            unread_media.push(UnreadMedia {
+                                name: m.name.clone(),
+                                faces: faces(&m.bytes),
+                            });
+                        }
                     }
                 }
             }
-            None if !ex.media.is_empty() => warnings.push(Warning::new(
-                WarningCode::ImageNotProcessed,
-                "images",
-                format!(
-                    "{} image(s) non analysée(s) : lecture des images indisponible.",
-                    ex.media.len()
-                ),
-            )),
-            None => {}
+            None => {
+                if !ex.media.is_empty() {
+                    warnings.push(Warning::new(
+                        WarningCode::ImageNotProcessed,
+                        "images",
+                        format!(
+                            "{} image(s) non analysée(s) : lecture des images indisponible.",
+                            ex.media.len()
+                        ),
+                    ));
+                }
+                unread_media.extend(ex.media.iter().map(|m| UnreadMedia {
+                    name: m.name.clone(),
+                    faces: faces(&m.bytes),
+                }));
+            }
         }
+        // Tableaux pour l'évaluation : une feuille illisible n'empêche pas l'analyse.
+        let tables = match handler.tables(&file.bytes) {
+            Ok(t) => t,
+            Err(_) => {
+                warnings.push(Warning::new(
+                    WarningCode::UnsupportedPart,
+                    "tableaux",
+                    "Tableaux illisibles : ils ne sont pas évalués.",
+                ));
+                Vec::new()
+            }
+        };
         // Un gestionnaire qui rend déjà des cellules n'a pas besoin du découpage.
         let has_cells = ex.blocks.iter().any(|b| b.ctx.role == BlockRole::Cell);
         let mut detect_blocks = if !has_cells && CSV_EXTENSIONS.contains(&file.extension().as_str())
@@ -373,6 +442,8 @@ impl Engine {
                 name: file.name.clone(),
                 blocks: ex.blocks,
                 images,
+                tables,
+                unread_media,
             },
             detect_blocks,
             warnings,
@@ -405,6 +476,33 @@ impl Engine {
         merge(all)
     }
 
+    /// Indices (dates, âges, lieux, fonctions, montants, matricules, événements)
+    /// que le profil `opts` ne cherche pas : l'évaluation en a besoin pour voir
+    /// ce qui reste lisible. Détecteurs à règles et dictionnaires seulement (l'IA
+    /// de noms n'est pas relancée) ; ces valeurs entrent décochées dans l'analyse.
+    fn detect_clues(&self, block: &TextBlock, opts: &DetectOptions) -> Vec<Detection> {
+        let text = block.text.as_str();
+        let clue_opts = DetectOptions {
+            profile: Profile::Renforce,
+            disabled: opts.disabled.clone(),
+        };
+        let all: Vec<Detection> = self
+            .detectors
+            .iter()
+            .filter(|d| d.name() != NER_DETECTOR)
+            .flat_map(|d| d.detect(block, &clue_opts))
+            .filter(|d| {
+                clue_opts.wants(d.kind)
+                    && !opts.wants(d.kind)
+                    && d.start < d.end
+                    && d.end <= text.len()
+                    && text.is_char_boundary(d.start)
+                    && text.is_char_boundary(d.end)
+            })
+            .collect();
+        merge(all)
+    }
+
     fn analyze_with(
         &self,
         names: Vec<String>,
@@ -419,6 +517,8 @@ impl Engine {
         never.extend(opts.never.iter().cloned());
         let mut agg = Aggregator::new(&never);
         let mut cache: HashMap<BlockKey, Vec<Detection>> = HashMap::new();
+        let mut clue_cache: HashMap<BlockKey, Vec<Detection>> = HashMap::new();
+        let clues_wanted = opts.detect.profile == Profile::Standard;
         let mut files = Vec::with_capacity(total);
         let mut store = Vec::with_capacity(total);
         let mut cancelled = false;
@@ -445,7 +545,7 @@ impl Engine {
                             block.ctx.column_header.clone(),
                         );
                         let dets = cache
-                            .entry(key)
+                            .entry(key.clone())
                             .or_insert_with(|| self.detect_block(block, &opts.detect, &list));
                         for d in dets.iter() {
                             agg.add(
@@ -457,6 +557,25 @@ impl Engine {
                                 d.confidence,
                                 i,
                             );
+                        }
+                        if clues_wanted {
+                            let clues = clue_cache
+                                .entry(key)
+                                .or_insert_with(|| self.detect_clues(block, &opts.detect));
+                            for c in clues.iter() {
+                                if dets.iter().any(|d| d.start < c.end && c.start < d.end) {
+                                    continue;
+                                }
+                                agg.add(
+                                    c.kind,
+                                    &block.text,
+                                    c.start,
+                                    c.end,
+                                    c.source,
+                                    c.confidence,
+                                    i,
+                                );
+                            }
                         }
                     }
                     files.push(FileAnalysis {
@@ -518,6 +637,8 @@ impl Engine {
                     name: "texte".into(),
                     blocks: blocks.clone(),
                     images: Vec::new(),
+                    tables: Vec::new(),
+                    unread_media: Vec::new(),
                 },
                 detect_blocks: blocks,
                 warnings: Vec::new(),
@@ -529,7 +650,15 @@ impl Engine {
     /// Enregistre les candidats cochés dans la session : personnes complètes
     /// d'abord, variantes, casse et traitement reportés, liste « jamais » ajoutée.
     /// Un candidat décoché déjà présent dans la session y est désactivé.
+    ///
+    /// Objectif « Anonymiser définitivement » (R7) : la session repart de zéro
+    /// (valeurs et images d'origine retirées, liste « jamais » gardée) ; la
+    /// numérotation des balises est propre à cet envoi.
     pub fn apply_selection(&self, analysis: &Analysis, session: &mut Session) {
+        if session.goal == Goal::Anonymize {
+            session.entities.clear();
+            session.media.clear();
+        }
         analysis.apply_to(session);
     }
 
@@ -559,6 +688,11 @@ impl Engine {
 
     /// Anonymise un fichier avec la session : masquage des images, réécriture,
     /// contrôle de fuite bloquant. Aucun octet n'est rendu si une valeur subsiste.
+    ///
+    /// Le nom du fichier produit suit l'objectif de la session
+    /// ([`output_file_name`]) ; en « Anonymiser définitivement », le dossier est
+    /// évalué pour le destinataire de la session, approche simplifiée et
+    /// `k_min` par défaut (voir [`Engine::anonymize_with`] pour d'autres réglages).
     pub fn anonymize(
         &self,
         file: &InputFile,
@@ -566,20 +700,59 @@ impl Engine {
         session: &mut Session,
         opts: &AnonymizeOptions,
     ) -> Result<Anonymized, EngineError> {
+        let settings = AssessSettings {
+            goal: session.goal,
+            recipient: session.recipient,
+            ..AssessSettings::default()
+        };
+        self.anonymize_with(file, analysis, session, opts, &settings)
+    }
+
+    /// Comme [`Engine::anonymize`], avec les réglages de l'évaluation choisis
+    /// par l'utilisateur. En « Anonymiser définitivement », le dossier est
+    /// réévalué ici, sur l'analyse telle qu'elle est : le suffixe `_anonyme`
+    /// n'est jamais tiré d'un verdict périmé (invariant 9).
+    pub fn anonymize_with(
+        &self,
+        file: &InputFile,
+        analysis: &Analysis,
+        session: &mut Session,
+        opts: &AnonymizeOptions,
+        settings: &AssessSettings,
+    ) -> Result<Anonymized, EngineError> {
+        let verdict = (session.goal == Goal::Anonymize).then(|| {
+            let s = AssessSettings {
+                goal: session.goal,
+                ..*settings
+            };
+            self.assess(analysis, &s).verdict
+        });
         let handler = self.handler_of(file)?;
         if file.bytes.is_empty() {
             return Err(EngineError::Empty);
         }
         let replacer = Replacer::new(session);
-        let masker = self.image_processor.as_deref().map(|p| {
-            Masker::new(
-                p,
-                &replacer,
-                analysis.ocr_by_sha(),
-                &opts.manual_masks,
-                !session.irreversible,
-            )
-        });
+        // Images d'origine gardées pour la restauration : seulement en objectif
+        // « Masquer pour l'IA » avec une clé (R7 : aucune en « Anonymiser
+        // définitivement »).
+        let keep_originals = !session.irreversible && session.goal == Goal::Mask;
+        let mut masks = opts.manual_masks.clone();
+        if let Some(fi) = analysis.file_index(&file.name) {
+            masks.extend(
+                analysis
+                    .masks()
+                    .iter()
+                    .filter(|m| m.file == fi)
+                    .map(|m| ManualMask {
+                        media: m.media.clone(),
+                        rect: m.rect,
+                    }),
+            );
+        }
+        let masker = self
+            .image_processor
+            .as_deref()
+            .map(|p| Masker::new(p, &replacer, analysis.ocr_by_sha(), &masks, keep_originals));
         let topts = TransformOptions {
             media: masker.as_ref().map(|m| m as &dyn MediaTransform),
             ..TransformOptions::anonymize()
@@ -597,20 +770,12 @@ impl Engine {
 
         // Contrôle de fuite : lecture exhaustive puis recherche de chaque valeur.
         let deep = handler.deep_scan(&out.bytes)?;
-        let mut leaks: Vec<Leak> = Vec::new();
+        let mut leaks: Vec<Leak> = text_leaks(&deep, &replacer, &out.bytes);
         let mut push_leak = |leak: Leak| {
             if !leaks.contains(&leak) {
                 leaks.push(leak);
             }
         };
-        for b in &deep {
-            for m in replacer.matches(&b.text) {
-                push_leak(Leak {
-                    tag: m.tag,
-                    part: b.ctx.part.clone(),
-                });
-            }
-        }
         let mut warnings: Vec<Warning> = analysis
             .file(&file.name)
             .map(|f| f.warnings.clone())
@@ -645,7 +810,7 @@ impl Engine {
         }
 
         let risk = self.risk(&deep, analysis.profile);
-        if !session.irreversible {
+        if keep_originals {
             // Un format qui ne conserve pas l'image octet pour octet (page d'un PDF
             // scanné) ne permet pas de la reconnaître ensuite : garder son original
             // alourdirait la table pour rien. On le dit à l'utilisateur.
@@ -673,7 +838,7 @@ impl Engine {
             }
         }
         Ok(Anonymized {
-            name: output_name(&file.name, ANONYMIZED_SUFFIX, None),
+            name: output_file_name(&file.name, session.goal, verdict),
             bytes: out.bytes,
             report: FileReport {
                 replacements: out.replacements.saturating_add(masked),
@@ -728,7 +893,7 @@ impl Engine {
         };
         let out = handler.transform(&file.bytes, &restorer, &opts)?;
         Ok(Restored {
-            name: output_name(&file.name, RESTORED_SUFFIX, Some(ANONYMIZED_SUFFIX)),
+            name: output_name(&file.name, RESTORED_SUFFIX, PRODUCED_SUFFIXES),
             bytes: out.bytes,
             report: restorer.report(),
         })
@@ -749,6 +914,101 @@ impl Engine {
             .into_owned();
         (out, r.report())
     }
+
+    /// Vrai si l'édition vérifie les visages (détecteur injecté).
+    pub fn checks_faces(&self) -> bool {
+        self.face_finder.is_some()
+    }
+
+    /// Entrée de l'évaluation construite à partir de l'analyse et de la
+    /// sélection courante (voir le module `evaluation`).
+    pub fn assess_input(&self, analysis: &Analysis) -> AssessInput {
+        evaluation::build_input(analysis, self.image_processor.is_some())
+    }
+
+    /// Évalue le dossier pour un destinataire : isolement, recoupement,
+    /// déduction, sujet par sujet. Moins d'une seconde sur les exemples.
+    pub fn assess(&self, analysis: &Analysis, settings: &AssessSettings) -> Assessment {
+        anon_assess::assess(&self.assess_input(analysis), settings)
+    }
+
+    /// Applique une correction proposée par l'évaluation. `Mask` coche la
+    /// valeur avec une balise ; `Generalize` et `GeneralizeMany` la cochent
+    /// avec le traitement « rendre moins précis » ; `SuppressRows` masque les
+    /// valeurs listées et retire les lignes de l'évaluation ; `MaskRegion`
+    /// ajoute une zone masquée, appliquée par [`Engine::anonymize`]. Le
+    /// résultat permet d'annuler ([`Engine::undo_fix`], Ctrl+Z).
+    pub fn apply_fix(&self, analysis: &mut Analysis, fix: &Fix) -> FixUndo {
+        evaluation::apply_fix(analysis, fix)
+    }
+
+    /// Annule une correction (ou « Tout corriger ») : l'analyse revient
+    /// exactement à son état d'avant. Annuler dans l'ordre inverse des
+    /// applications.
+    pub fn undo_fix(&self, analysis: &mut Analysis, undo: FixUndo) {
+        evaluation::undo_fix(analysis, undo);
+    }
+
+    /// « Tout corriger » : applique la première correction de chaque échec,
+    /// réévalue, et recommence tant qu'une correction change quelque chose (au
+    /// plus [`FIX_ALL_MAX_ROUNDS`] passes : une généralisation peut laisser
+    /// quelques lignes à supprimer). Une seule annulation défait le tout.
+    pub fn fix_all(&self, analysis: &mut Analysis, settings: &AssessSettings) -> FixUndo {
+        let mut undo = FixUndo::default();
+        for _ in 0..FIX_ALL_MAX_ROUNDS {
+            let assessment = self.assess(analysis, settings);
+            let mut seen: Vec<&Fix> = Vec::new();
+            let mut round = FixUndo::default();
+            for fix in assessment.failures.iter().filter_map(|f| f.fixes.first()) {
+                if seen.contains(&fix) {
+                    continue;
+                }
+                seen.push(fix);
+                round.extend(evaluation::apply_fix(analysis, fix));
+            }
+            if round.is_empty() {
+                break;
+            }
+            undo.extend(round);
+        }
+        undo
+    }
+}
+
+/// Valeurs validées trouvées par la lecture exhaustive du fichier produit, moins
+/// les identifiants structurels du format (numéro de ligne, référence de
+/// cellule, priorité de style : voir le module `structure`). Une occurrence
+/// structurelle n'en compense qu'une dans la même partie : une valeur restée
+/// dans le contenu est toujours signalée.
+fn text_leaks(deep: &[TextBlock], replacer: &Replacer, bytes: &[u8]) -> Vec<Leak> {
+    let mut found: Vec<(Leak, usize)> = Vec::new();
+    for b in deep {
+        for m in replacer.matches(&b.text) {
+            let leak = Leak {
+                tag: m.tag,
+                part: b.ctx.part.clone(),
+            };
+            match found.iter_mut().find(|(l, _)| *l == leak) {
+                Some((_, n)) => *n = n.saturating_add(1),
+                None => found.push((leak, 1)),
+            }
+        }
+    }
+    if found.is_empty() {
+        return Vec::new();
+    }
+    let structural: HashMap<(String, Tag), usize> = structural_counts(bytes, replacer);
+    found
+        .into_iter()
+        .filter(|(leak, n)| {
+            let credit = structural
+                .get(&(leak.part.clone(), leak.tag))
+                .copied()
+                .unwrap_or(0);
+            *n > credit
+        })
+        .map(|(leak, _)| leak)
+        .collect()
 }
 
 #[cfg(test)]
@@ -758,19 +1018,40 @@ mod tests {
     #[test]
     fn names() {
         assert_eq!(
-            output_name("contrat.docx", ANONYMIZED_SUFFIX, None),
-            "contrat_anonymise.docx"
+            output_file_name("contrat.docx", Goal::Mask, None),
+            "contrat_masque.docx"
         );
         assert_eq!(
-            output_name(
-                "contrat_anonymise.docx",
-                RESTORED_SUFFIX,
-                Some(ANONYMIZED_SUFFIX)
-            ),
-            "contrat_restaure.docx"
+            output_file_name("contrat.docx", Goal::Mask, Some(Verdict::Anonymous)),
+            "contrat_masque.docx"
         );
-        assert_eq!(output_name("notes", "_x", None), "notes_x");
-        assert_eq!(output_name(".profile", "_x", None), ".profile_x");
+        assert_eq!(
+            output_file_name("clients.xlsx", Goal::Anonymize, Some(Verdict::Anonymous)),
+            "clients_anonyme.xlsx"
+        );
+        for verdict in [
+            None,
+            Some(Verdict::Inconclusive),
+            Some(Verdict::Reidentifiable { subjects: 1 }),
+        ] {
+            assert_eq!(
+                output_file_name("clients.xlsx", Goal::Anonymize, verdict),
+                "clients_masque_sans_cle.xlsx"
+            );
+        }
+        for produced in [
+            "contrat_masque.docx",
+            "contrat_anonymise.docx",
+            "contrat_masque_sans_cle.docx",
+            "contrat_anonyme.docx",
+        ] {
+            assert_eq!(
+                output_name(produced, RESTORED_SUFFIX, PRODUCED_SUFFIXES),
+                "contrat_restaure.docx"
+            );
+        }
+        assert_eq!(output_name("notes", "_x", &[]), "notes_x");
+        assert_eq!(output_name(".profile", "_x", &[]), ".profile_x");
     }
 
     #[test]

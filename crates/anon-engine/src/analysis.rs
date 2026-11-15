@@ -5,8 +5,8 @@
 use crate::error::EngineError;
 use crate::media::{LOW_OCR_CONFIDENCE, regions_for};
 use anon_core::{
-    DetectOptions, EntityKind, OcrPage, PixelRect, Profile, Session, Source, Tag, TextBlock,
-    Treatment, Warning,
+    DetectOptions, EntityKind, Goal, OcrPage, PixelRect, Profile, Session, Source, TableData, Tag,
+    TextBlock, Treatment, Warning,
 };
 use anon_replace::session_ext::match_key;
 use anon_replace::{CASE_SENSITIVE_MAX_CHARS, Replacer, SessionExt, key};
@@ -105,6 +105,41 @@ pub(crate) struct ImageData {
     /// Octets d'origine, pour l'aperçu à l'écran de validation.
     pub bytes: Vec<u8>,
     pub ocr: OcrPage,
+    /// Visages trouvés, en pixels de l'image ; `None` : non vérifiés.
+    pub faces: Option<Vec<PixelRect>>,
+}
+
+/// Image non lue par OCR (lecture impossible ou indisponible) : seuls ses
+/// visages comptent pour l'évaluation.
+pub(crate) struct UnreadMedia {
+    pub name: String,
+    pub faces: Option<Vec<PixelRect>>,
+}
+
+/// Zone masquée d'une image, tracée par l'utilisateur ou ajoutée par une
+/// correction de l'évaluation. Prise en compte par `Engine::anonymize`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageMask {
+    pub id: usize,
+    /// Position du fichier dans l'analyse (`Analysis::files`).
+    pub file: usize,
+    /// Nom de l'image dans le fichier (`FileAnalysis::images`).
+    pub media: String,
+    pub rect: PixelRect,
+    /// Vrai si la zone vient d'une correction (`Fix::MaskRegion`).
+    pub from_fix: bool,
+}
+
+/// Lignes d'un tableau retirées de l'évaluation par une correction
+/// (`Fix::SuppressRows`) : leurs indices sont masqués.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SuppressedRows {
+    pub id: usize,
+    pub file: usize,
+    /// Rang de la feuille dans `FileData::tables`.
+    pub sheet: usize,
+    /// Lignes de données (hors en-tête) dans `TableData::rows`.
+    pub rows: Vec<usize>,
 }
 
 /// Image lue par OCR à l'analyse : aperçu et tracé de zones manuelles.
@@ -144,6 +179,9 @@ pub(crate) struct FileData {
     pub name: String,
     pub blocks: Vec<TextBlock>,
     pub images: Vec<ImageData>,
+    /// Tableaux du fichier (`Handler::tables`), pour l'évaluation.
+    pub tables: Vec<TableData>,
+    pub unread_media: Vec<UnreadMedia>,
 }
 
 impl FileData {
@@ -152,6 +190,8 @@ impl FileData {
             name: name.to_string(),
             blocks: Vec::new(),
             images: Vec::new(),
+            tables: Vec::new(),
+            unread_media: Vec::new(),
         }
     }
 
@@ -174,7 +214,18 @@ pub struct Analysis {
     pub(crate) store: Vec<FileData>,
     /// Profil de l'analyse : il oriente les conseils du bilan de risque.
     pub(crate) profile: Profile,
+    /// Session de départ, sans images : balises prévisionnelles de l'évaluation.
+    /// Vide (liste « jamais » exceptée) pour l'objectif « Anonymiser
+    /// définitivement » : aucune balise d'une clé précédente n'est reprise (R7).
+    pub(crate) base: Session,
+    /// Zones d'image masquées (utilisateur et corrections).
+    masks: Vec<ImageMask>,
+    /// Identifiants des valeurs ajoutées pour les cellules des tableaux évalués.
+    pub(crate) table_values: BTreeSet<usize>,
+    /// Lignes de tableau supprimées par une correction.
+    pub(crate) suppressed: Vec<SuppressedRows>,
     next_id: usize,
+    next_mask: usize,
 }
 
 impl fmt::Debug for Analysis {
@@ -184,6 +235,7 @@ impl fmt::Debug for Analysis {
             .field("candidates", &self.candidates)
             .field("cancelled", &self.cancelled)
             .field("profile", &self.profile)
+            .field("masks", &self.masks.len())
             .finish_non_exhaustive()
     }
 }
@@ -306,7 +358,9 @@ impl Aggregator {
 
 impl Analysis {
     /// Assemble l'analyse : candidats agrégés, valeurs déjà connues de la
-    /// session, variantes de personnes, comptage des occurrences.
+    /// session, variantes de personnes, comptage des occurrences, valeurs des
+    /// cellules de tableau à évaluer. Pour l'objectif « Anonymiser
+    /// définitivement », la session n'apporte que sa liste « jamais » (R7).
     pub(crate) fn finish(
         files: Vec<FileAnalysis>,
         store: Vec<FileData>,
@@ -316,6 +370,8 @@ impl Analysis {
         cancelled: bool,
         profile: Profile,
     ) -> Self {
+        let base = base_session(session);
+        let session = &base;
         let mut a = Analysis {
             files,
             candidates: Vec::new(),
@@ -323,7 +379,12 @@ impl Analysis {
             never,
             store,
             profile,
+            base: Session::new(),
+            masks: Vec::new(),
+            table_values: BTreeSet::new(),
+            suppressed: Vec::new(),
             next_id: 1,
+            next_mask: 1,
         };
         for g in agg.groups {
             let mut best = 0usize;
@@ -343,8 +404,9 @@ impl Analysis {
                 .map(|(_, (f, _))| f.clone())
                 .collect();
             let hits = g.forms.iter().map(|(_, n)| n).sum();
+            let kind = g.kind;
             a.push_candidate(
-                g.kind,
+                kind,
                 value,
                 variants,
                 g.source,
@@ -354,11 +416,44 @@ impl Analysis {
                 hits,
                 session,
             );
+            // Indice trouvé pour l'évaluation hors du profil choisi : décoché,
+            // sauf s'il était déjà dans la clé.
+            if !profile_wants(profile, kind)
+                && let Some(c) = a.candidates.last_mut()
+                && c.existing_tag.is_none()
+            {
+                c.selected = false;
+            }
         }
         a.add_session_entities(session);
         a.merge_person_variants();
         a.recount();
+        a.base = base;
+        crate::evaluation::register_table_values(&mut a);
         a
+    }
+
+    /// Valeur d'une cellule de tableau évalué, ajoutée décochée (source
+    /// `Column`), sans recompter. Le contexte est la cellule elle-même.
+    pub(crate) fn push_table_value(&mut self, kind: EntityKind, value: &str, file: usize) -> usize {
+        let empty = Session::new();
+        let value = value.trim().to_string();
+        let id = self.push_candidate(
+            kind,
+            value.clone(),
+            Vec::new(),
+            Source::Column,
+            1.0,
+            value,
+            BTreeSet::from([file]),
+            1,
+            &empty,
+        );
+        if let Some(c) = self.candidates.last_mut() {
+            c.selected = false;
+        }
+        self.table_values.insert(id);
+        id
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -552,7 +647,7 @@ impl Analysis {
     }
 
     /// Indices des candidats dans l'ordre d'enregistrement.
-    fn ordered_indices(&self) -> Vec<usize> {
+    pub(crate) fn ordered_indices(&self) -> Vec<usize> {
         let mut idx: Vec<usize> = (0..self.candidates.len()).collect();
         idx.sort_by_key(|&i| {
             self.candidates
@@ -579,19 +674,47 @@ impl Analysis {
     /// ligne existante de même type et même valeur est cochée et réutilisée),
     /// `None` si la valeur est vide.
     pub fn add_manual(&mut self, kind: EntityKind, value: &str) -> Option<usize> {
-        let value = value.trim();
-        let mk = match_key(kind, value);
+        let id = self.push_value(kind, value, Source::Manual, true)?;
+        self.recount();
+        Some(id)
+    }
+
+    /// Ligne existante de même type et même valeur (forme ou variante).
+    pub(crate) fn find_value(&self, kind: EntityKind, value: &str) -> Option<usize> {
+        let mk = match_key(kind, value.trim());
         if mk.is_empty() {
             return None;
         }
-        if let Some(c) = self.candidates.iter_mut().find(|c| {
-            c.kind == kind
-                && std::iter::once(&c.value)
-                    .chain(c.variants.iter())
-                    .any(|v| match_key(kind, v) == mk)
-        }) {
-            c.selected = true;
-            return Some(c.id);
+        self.candidates
+            .iter()
+            .find(|c| {
+                c.kind == kind
+                    && std::iter::once(&c.value)
+                        .chain(c.variants.iter())
+                        .any(|v| match_key(kind, v) == mk)
+            })
+            .map(|c| c.id)
+    }
+
+    /// Ajoute une valeur comme l'ajout manuel, sans recompter : une ligne
+    /// existante de même type et même valeur est réutilisée (et cochée si
+    /// `select`). `None` si la valeur est vide.
+    pub(crate) fn push_value(
+        &mut self,
+        kind: EntityKind,
+        value: &str,
+        source: Source,
+        select: bool,
+    ) -> Option<usize> {
+        let value = value.trim();
+        if match_key(kind, value).is_empty() {
+            return None;
+        }
+        if let Some(id) = self.find_value(kind, value) {
+            if select {
+                self.set_selected(id, true);
+            }
+            return Some(id);
         }
         // Premier endroit où la valeur apparaît, pour le contexte.
         let mut probe = Session::new();
@@ -614,7 +737,7 @@ impl Analysis {
             kind,
             value.to_string(),
             Vec::new(),
-            Source::Manual,
+            source,
             1.0,
             context,
             file_ids,
@@ -622,9 +745,8 @@ impl Analysis {
             &empty,
         );
         if let Some(c) = self.candidates.last_mut() {
-            c.selected = true;
+            c.selected = select;
         }
-        self.recount();
         Some(id)
     }
 
@@ -766,6 +888,91 @@ impl Analysis {
 
     pub(crate) fn file(&self, name: &str) -> Option<&FileAnalysis> {
         self.files.iter().find(|f| f.name == name)
+    }
+
+    /// Position d'un fichier dans l'analyse.
+    pub fn file_index(&self, name: &str) -> Option<usize> {
+        self.files.iter().position(|f| f.name == name)
+    }
+
+    /// Zones d'image masquées (tracées par l'utilisateur ou ajoutées par une
+    /// correction), dans l'ordre d'ajout.
+    pub fn masks(&self) -> &[ImageMask] {
+        &self.masks
+    }
+
+    /// Ajoute une zone à masquer sur l'image `media` du fichier n° `file`.
+    /// `None` si le fichier n'existe pas.
+    pub fn add_mask(&mut self, file: usize, media: &str, rect: PixelRect) -> Option<usize> {
+        self.push_mask(file, media, rect, false)
+    }
+
+    pub(crate) fn push_mask(
+        &mut self,
+        file: usize,
+        media: &str,
+        rect: PixelRect,
+        from_fix: bool,
+    ) -> Option<usize> {
+        if file >= self.files.len() {
+            return None;
+        }
+        let id = self.next_mask;
+        self.next_mask = self.next_mask.saturating_add(1);
+        self.masks.push(ImageMask {
+            id,
+            file,
+            media: media.to_string(),
+            rect,
+            from_fix,
+        });
+        Some(id)
+    }
+
+    /// Retire une zone masquée.
+    pub fn remove_mask(&mut self, id: usize) -> bool {
+        let before = self.masks.len();
+        self.masks.retain(|m| m.id != id);
+        self.masks.len() != before
+    }
+
+    /// Nouvel identifiant de lignes supprimées.
+    pub(crate) fn next_suppressed_id(&self) -> usize {
+        self.suppressed
+            .iter()
+            .map(|s| s.id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
+    }
+}
+
+/// Vrai si le profil cherche ce type (types désactivés mis à part).
+fn profile_wants(profile: Profile, kind: EntityKind) -> bool {
+    DetectOptions {
+        profile,
+        ..DetectOptions::default()
+    }
+    .wants(kind)
+}
+
+/// Session de départ d'une analyse, sans les images d'origine. Objectif
+/// « Anonymiser définitivement » : seulement la liste « jamais » (R7).
+fn base_session(session: &Session) -> Session {
+    let entities = match session.goal {
+        Goal::Mask => session.entities.clone(),
+        Goal::Anonymize => Vec::new(),
+    };
+    Session {
+        format_version: session.format_version,
+        entities,
+        never: session.never.clone(),
+        media: Vec::new(),
+        irreversible: session.irreversible,
+        goal: session.goal,
+        recipient: session.recipient,
+        created_on: session.created_on.clone(),
+        keep_until: session.keep_until.clone(),
     }
 }
 

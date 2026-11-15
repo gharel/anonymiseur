@@ -1,0 +1,92 @@
+---
+source: crates/anon-engine/tests/evaluation.rs
+expression: before
+---
+# Fiche d'évaluation
+
+Évaluation du 15/11/2026 · Anonymiseur x.y.z
+
+## Conclusion
+
+3 sujets restent reconnaissables pour un assistant IA grand public : le dossier reste une donnée personnelle (un seul sujet reconnaissable suffit, § 36). Évaluation du 15/11/2026, approche simplifiée.
+
+## Contexte
+
+| Élément | Valeur |
+|---|---|
+| Objectif | Masquer pour l'IA (pseudonymisation, réversible avec la clé de restauration) |
+| Destinataire | Assistant IA grand public |
+| Approche | Approche simplifiée : toute voie de réidentification compte, quel que soit l'attaquant |
+| Taille minimale d'un groupe | 5 personnes |
+| Référentiel | Projet de lignes directrices 02/2026 du CEPD sur l'anonymisation (version 1.0 du 7 juillet 2026, soumise à consultation) : isolement, recoupement, déduction ; approche simplifiée de la version 2.0 de l'outil |
+
+## Documents traités
+
+- 1 classeur Excel
+
+## Techniques appliquées
+
+- Masquage (remplacement par une balise) : 34 valeurs (Nom de famille : 24, Santé : 10)
+
+## Résultat par critère
+
+| Critère | Sujets qui passent | Sujets en échec |
+|---|---|---|
+| Isolement | 4 | 3 |
+| Recoupement | 7 | 0 |
+| Déduction | 7 | 0 |
+
+### Isolement
+
+- tableau 1, groupe 2 : groupe de 1 ligne, moins de 5
+- tableau 1, groupe 4 : groupe de 1 ligne, moins de 5
+- tableau 1, groupe 6 : groupe de 1 ligne, moins de 5
+
+### Recoupement
+
+Aucun échec.
+
+### Déduction
+
+Aucun échec.
+
+## Sujets évalués
+
+| Sujet | Isolement | Recoupement | Déduction | Groupe estimé | Indices visibles |
+|---|---|---|---|---|---|
+| tableau 1, groupe 1 | réussi | réussi | réussi | 5 | Autre, Lieu, Âge |
+| tableau 1, groupe 2 | échec | réussi | réussi | 1 | Autre, Lieu, Âge |
+| tableau 1, groupe 3 | réussi | réussi | réussi | 6 | Autre, Lieu, Âge |
+| tableau 1, groupe 4 | échec | réussi | réussi | 1 | Autre, Lieu, Âge |
+| tableau 1, groupe 5 | réussi | réussi | réussi | 5 | Autre, Lieu, Âge |
+| tableau 1, groupe 6 | échec | réussi | réussi | 1 | Autre, Lieu, Âge |
+| tableau 1, groupe 7 | réussi | réussi | réussi | 5 | Autre, Lieu, Âge |
+
+Les indices visibles sont ce qu'une IA pourrait croiser pour deviner qui est concerné (§ 82 et 83).
+
+## Risques résiduels acceptés
+
+- Risques acceptés : à compléter
+- Justification : à compléter
+- Hors de portée de l'outil : le recoupement avec des données externes qu'il ne connaît pas, et les indices de style (tournures, fautes récurrentes) qui trahissent un auteur.
+
+## Base légale et finalité
+
+- Base légale : à compléter
+- Finalité : à compléter
+
+## Réévaluation
+
+Réévaluation conseillée au plus tard le 15/11/2027 (12 mois, § 35).
+
+Réévaluez plus tôt en cas de :
+
+- incident de sécurité ;
+- nouvelle publication de données sur les mêmes personnes ;
+- diffusion plus large que le destinataire prévu.
+
+## Responsabilité
+
+L'outil documente une évaluation prudente, à titre d'aide à la décision ; ses estimations donnent un ordre de grandeur. Le responsable de traitement décide et répond de sa décision (RGPD, art. 5, § 2, et art. 24). Conservez cette fiche avec le dossier (§ 41).
+
+Cette fiche ne contient que des balises, des catégories et des nombres.

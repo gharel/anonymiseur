@@ -25,7 +25,40 @@ use anonymiseur::ui::{AnonApp, theme};
 use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::{Harness, SnapshotResults};
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError};
+
+/// Rendus simultanés au plus dans ce binaire. `cargo test` lance les tests sur
+/// autant de fils que de cœurs ; au-delà de deux rendus wgpu à la fois, le
+/// processus plante sous Windows (STATUS_ACCESS_VIOLATION). Chaque test qui crée
+/// un `Harness` prend une place pour toute sa durée : le binaire passe sans
+/// `--test-threads`.
+const MAX_RENDUS: usize = 2;
+
+/// Places de rendu occupées, et l'avis d'une place libérée.
+static RENDUS: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
+
+/// Place de rendu, rendue à la fin du test (même en cas d'échec).
+struct Rendu;
+
+/// Attend une place de rendu libre.
+fn rendu() -> Rendu {
+    let (occupees, liberee) = &RENDUS;
+    let mut n = occupees.lock().unwrap_or_else(PoisonError::into_inner);
+    while *n >= MAX_RENDUS {
+        n = liberee.wait(n).unwrap_or_else(PoisonError::into_inner);
+    }
+    *n += 1;
+    Rendu
+}
+
+impl Drop for Rendu {
+    fn drop(&mut self) {
+        let (occupees, liberee) = &RENDUS;
+        let mut n = occupees.lock().unwrap_or_else(PoisonError::into_inner);
+        *n = n.saturating_sub(1);
+        liberee.notify_one();
+    }
+}
 
 /// Deux tailles de fenêtre, plus une page haute pour voir tout le contenu, et
 /// le thème sombre.
@@ -302,11 +335,13 @@ fn gallery_in(choice: ThemeChoice, name: &str) {
 
 #[test]
 fn gallery() {
+    let _rendu = rendu();
     gallery_in(ThemeChoice::Light, "galerie");
 }
 
 #[test]
 fn gallery_dark() {
+    let _rendu = rendu();
     gallery_in(ThemeChoice::Dark, "galerie_sombre");
 }
 
@@ -314,11 +349,13 @@ fn gallery_dark() {
 
 #[test]
 fn home() {
+    let _rendu = rendu();
     snap("accueil_0", |_| {});
 }
 
 #[test]
 fn home_with_refused_files() {
+    let _rendu = rendu();
     snap("accueil_1_fichiers_refuses", |app| {
         app.add_paths(vec![
             exemple("ancien-rapport.doc"),
@@ -330,6 +367,7 @@ fn home_with_refused_files() {
 
 #[test]
 fn verify_busy() {
+    let _rendu = rendu();
     snap("dossier_0_analyse_en_cours", |app| {
         let supported = app.engine.as_ref().unwrap().supported_extensions();
         app.anonymize
@@ -343,11 +381,13 @@ fn verify_busy() {
 
 #[test]
 fn verify() {
+    let _rendu = rendu();
     snap("dossier_1_verifier", analyze);
 }
 
 #[test]
 fn verify_table() {
+    let _rendu = rendu();
     snap("dossier_1d_vue_tableau", |app| {
         analyze(app);
         app.anonymize.review.mode = VerifyMode::Table;
@@ -356,6 +396,7 @@ fn verify_table() {
 
 #[test]
 fn verify_selection() {
+    let _rendu = rendu();
     snap("dossier_1e_selection", |app| {
         analyze_these(app, &["notes.txt"]);
         app.anonymize.review.queue_open = true;
@@ -366,6 +407,7 @@ fn verify_selection() {
 
 #[test]
 fn verify_less_precise() {
+    let _rendu = rendu();
     snap("dossier_1b_moins_precis", |app| {
         analyze_these(app, &["notes.txt"]);
         let session = app.session.clone();
@@ -387,6 +429,7 @@ fn verify_less_precise() {
 
 #[test]
 fn verify_images() {
+    let _rendu = rendu();
     snap("dossier_1c_images", |app| {
         analyze_these(app, &["carte-visite.png", "courrier-scanne.pdf"]);
         let info = app.anonymize.images()[0].clone();
@@ -405,6 +448,7 @@ fn verify_images() {
 
 #[test]
 fn bilan() {
+    let _rendu = rendu();
     // Verdict non anonyme : un tableau dont des groupes de lignes restent isolables.
     snap("dossier_2_bilan", |app| {
         analyze_these(app, &BILAN);
@@ -415,6 +459,7 @@ fn bilan() {
 
 #[test]
 fn bilan_corrected() {
+    let _rendu = rendu();
     // Après « Tout corriger » : aucune personne reconnaissable.
     snap("dossier_2b_bilan_corrige", |app| {
         analyze_these(app, &BILAN);
@@ -425,6 +470,7 @@ fn bilan_corrected() {
 
 #[test]
 fn send() {
+    let _rendu = rendu();
     // Phrase de passe proposée, dossier des clés, conservation, fiche.
     snap("dossier_3_envoyer", |app| {
         analyze(app);
@@ -435,6 +481,7 @@ fn send() {
 
 #[test]
 fn send_without_key() {
+    let _rendu = rendu();
     // « Anonymiser définitivement », évaluation non concluante : confirmation.
     snap("dossier_3d_envoyer_sans_cle", |app| {
         analyze_these(app, &BILAN);
@@ -446,6 +493,7 @@ fn send_without_key() {
 
 #[test]
 fn sent() {
+    let _rendu = rendu();
     snap("dossier_3b_envoye", |app| {
         anonymize_all(app, out_dir("envoye"));
     });
@@ -475,6 +523,7 @@ fn with_unrestorable_warning(app: &mut AnonApp, tag: &str) {
 
 #[test]
 fn sent_unrestorable() {
+    let _rendu = rendu();
     snap("dossier_3c_image_non_restaurable", |app| {
         with_unrestorable_warning(app, "non-restaurables")
     });
@@ -482,6 +531,7 @@ fn sent_unrestorable() {
 
 #[test]
 fn response_locked_key() {
+    let _rendu = rendu();
     snap("dossier_4_reponse_cle", |app| {
         app.add_paths(vec![PathBuf::from("C:/Dossiers/table_anonymiseur.anonmap")]);
         app.deanonymize
@@ -491,6 +541,7 @@ fn response_locked_key() {
 
 #[test]
 fn response() {
+    let _rendu = rendu();
     snap("dossier_4b_reponse", |app| {
         anonymize_all(app, out_dir("reponse"));
         app.workspace.enter(Step::Response);
@@ -504,6 +555,7 @@ fn response() {
 
 #[test]
 fn response_expired_key() {
+    let _rendu = rendu();
     // Durée de conservation dépassée : rappel en tête, destruction à confirmer.
     snap("dossier_4c_cle_expiree", |app| {
         anonymize_all(app, out_dir("cle-expiree"));
@@ -517,6 +569,7 @@ fn response_expired_key() {
 
 #[test]
 fn command_palette() {
+    let _rendu = rendu();
     snap("palette", |app| {
         analyze_these(app, &["notes.txt"]);
         app.palette.open();
@@ -525,6 +578,7 @@ fn command_palette() {
 
 #[test]
 fn shortcuts_panel() {
+    let _rendu = rendu();
     snap("raccourcis", |app| {
         app.show_shortcuts = true;
     });
@@ -553,6 +607,7 @@ fn hover_files(harness: &mut Harness<'_, AnonApp>, paths: &[PathBuf]) {
 
 #[test]
 fn home_drop_overlay() {
+    let _rendu = rendu();
     // Voile pendant le survol de fichiers, en clair et en sombre.
     let mut results = SnapshotResults::new();
     for (theme, label) in [
@@ -620,6 +675,7 @@ fn tab_to_field(h: &mut Harness<'_, AnonApp>, id: egui::Id, max: usize) {
 
 #[test]
 fn parcours_complet_au_clavier() {
+    let _rendu = rendu();
     let dir = examples_dir("clavier");
     let keys = out_dir("clavier-cles");
     let platform = NullPlatform {
@@ -745,6 +801,7 @@ fn parcours_complet_au_clavier() {
 
 #[test]
 fn palette_de_commandes() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, analyze);
     h.run();
     // Recherche sans accents ni majuscules, Entrée.
@@ -801,6 +858,7 @@ fn palette_de_commandes() {
 
 #[test]
 fn texte_colle_devient_un_document() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |_| {});
     h.run();
     h.input_mut().events.push(egui::Event::Paste(
@@ -828,6 +886,7 @@ fn texte_colle_devient_un_document() {
 
 #[test]
 fn objectif_anonymiser_definitivement_sans_cle() {
+    let _rendu = rendu();
     let dir = out_dir("sans-cle");
     let mut h = app(1280.0, 1600.0, |app| {
         analyze_these(app, &["notes.txt"]);
@@ -897,6 +956,7 @@ fn objectif_anonymiser_definitivement_sans_cle() {
 
 #[test]
 fn cle_ouverte_depuis_l_accueil_mene_a_la_reponse() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |_| {});
     h.run();
     h.input_mut()
@@ -925,6 +985,7 @@ fn cle_ouverte_depuis_l_accueil_mene_a_la_reponse() {
 
 #[test]
 fn dropped_files_are_analyzed_or_refused() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |_| {});
     h.run();
     for p in [
@@ -952,6 +1013,7 @@ fn dropped_files_are_analyzed_or_refused() {
 
 #[test]
 fn retour_a_l_accueil_et_reprise_du_dossier() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 1600.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     h.get_by_label("Accueil").click();
@@ -972,6 +1034,7 @@ fn step_tab<'h>(h: &'h Harness<'_, AnonApp>, label: &'h str) -> egui_kittest::No
 
 #[test]
 fn etapes_par_clic_et_clavier() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     step_tab(&h, "Bilan").click();
@@ -1001,6 +1064,7 @@ fn etapes_par_clic_et_clavier() {
 
 #[test]
 fn annuler_retablir_une_zone_tracee() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 2400.0, |app| {
         analyze_these(app, &["carte-visite.png"]);
     });
@@ -1037,6 +1101,7 @@ fn annuler_retablir_une_zone_tracee() {
 
 #[test]
 fn rapport_signale_les_images_non_restaurables() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 2400.0, |app| {
         with_unrestorable_warning(app, "non-restaurables-rapport");
         neutralize_paths(app);
@@ -1047,6 +1112,7 @@ fn rapport_signale_les_images_non_restaurables() {
 
 #[test]
 fn bouton_exemples_sans_documents_demande_un_dossier() {
+    let _rendu = rendu();
     // Dossier Documents introuvable : repli sur le dialogue, annulé ici.
     let mut h = app(1280.0, 800.0, |_| {});
     h.run();
@@ -1058,6 +1124,7 @@ fn bouton_exemples_sans_documents_demande_un_dossier() {
 
 #[test]
 fn bouton_exemples_reutilise_le_meme_dossier() {
+    let _rendu = rendu();
     let dir = examples_dir("exemples-un-clic");
     let platform = NullPlatform {
         examples: Some(dir.clone()),
@@ -1133,6 +1200,7 @@ fn assert_centered(screen: &str, name: &str, r: egui::Rect, first: &str, r0: egu
 
 #[test]
 fn controles_alignes_sur_chaque_ecran() {
+    let _rendu = rendu();
     use anonymiseur::ui::theme::{CONTROL_MD, CONTROL_SM};
     // Accueil : boutons de la zone de dépôt, liens.
     let mut h = app(1280.0, 800.0, |_| {});
@@ -1245,6 +1313,7 @@ fn controles_alignes_sur_chaque_ecran() {
 
 #[test]
 fn premiere_decision_visible_sans_defiler() {
+    let _rendu = rendu();
     // Dans le document : la valeur courante de la file et ses boutons M et G,
     // au-dessus de la barre d'action, en 1280 × 800 comme en 900 × 650.
     for (w, hh) in [(1280.0, 800.0), (900.0, 650.0)] {
@@ -1283,6 +1352,7 @@ fn premiere_decision_visible_sans_defiler() {
 
 #[test]
 fn zones_de_texte_lisibles() {
+    let _rendu = rendu();
     // 1280 × 800 : au moins 12 lignes visibles dans la réponse collée, texte de 15 px.
     let mut h = app(1280.0, 800.0, |app| {
         anonymize_all(app, out_dir("zones"));
@@ -1297,6 +1367,7 @@ fn zones_de_texte_lisibles() {
 
 #[test]
 fn choix_du_theme_depuis_l_en_tete() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |_| {});
     h.run();
     assert_eq!(h.ctx.theme(), egui::Theme::Light);
@@ -1311,6 +1382,7 @@ fn choix_du_theme_depuis_l_en_tete() {
 
 #[test]
 fn destinataire_et_objectif_depuis_la_barre_du_dossier() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     h.get_by_label("Pour : Assistant IA grand public").click();
@@ -1344,6 +1416,7 @@ use anonymiseur::ui::widgets::field::field_id;
 
 #[test]
 fn copie_avec_notification_et_libelle_copie() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 1600.0, |app| {
         anonymize_all(app, out_dir("copie"));
         neutralize_paths(app);
@@ -1371,6 +1444,7 @@ fn copie_avec_notification_et_libelle_copie() {
 
 #[test]
 fn action_desactivee_dit_pourquoi() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 1600.0, |app| {
         analyze_these(app, &["notes.txt"]);
         app.workspace.enter(Step::Send);
@@ -1383,6 +1457,7 @@ fn action_desactivee_dit_pourquoi() {
 
 #[test]
 fn raccourcis_clavier() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 1600.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     // Recherche dans le tableau.
@@ -1419,6 +1494,7 @@ fn raccourcis_clavier() {
 
 #[test]
 fn tableau_tri_recherche_et_clavier() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 2400.0, |app| {
         analyze_these(app, &["notes.txt"]);
         app.anonymize.review.mode = VerifyMode::Table;
@@ -1471,6 +1547,7 @@ fn tableau_tri_recherche_et_clavier() {
 
 #[test]
 fn voile_de_depot_selon_l_etape() {
+    let _rendu = rendu();
     // Accueil : le voile annonce ce qui va se passer.
     let mut h = app(1280.0, 800.0, |_| {});
     h.run();
@@ -1499,6 +1576,7 @@ fn voile_de_depot_selon_l_etape() {
 
 #[test]
 fn coller_et_restaurer_en_un_geste() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 1600.0, |app| {
         anonymize_all(app, out_dir("coller"));
         app.workspace.enter(Step::Response);
@@ -1529,6 +1607,7 @@ fn coller_et_restaurer_en_un_geste() {
 
 #[test]
 fn avancement_par_fichier() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 1600.0, |app| {
         let supported = app.engine.as_ref().unwrap().supported_extensions();
         app.anonymize
@@ -1627,6 +1706,7 @@ fn every_screen() -> Vec<(&'static str, Setup)> {
 
 #[test]
 fn chaque_bouton_a_un_nom() {
+    let _rendu = rendu();
     for (screen, setup) in every_screen() {
         let mut h = app(1280.0, 2400.0, setup);
         h.run();
@@ -1655,6 +1735,7 @@ fn all_texts(h: &Harness<'_, AnonApp>) -> Vec<String> {
 
 #[test]
 fn vocabulaire_v2_sur_chaque_ecran() {
+    let _rendu = rendu();
     // Termes de la V1 remplacés (plan V2, section 7.4), et le mot « anonyme »
     // réservé à une évaluation réussie (invariant 9) : absents de l'interface.
     // Les noms de fichiers (suffixe de la V1, gardé jusqu'au lot 8) et les
@@ -1748,6 +1829,7 @@ fn is_masked(h: &Harness<'_, AnonApp>, id: usize) -> bool {
 
 #[test]
 fn decisions_par_document_d_exemple() {
+    let _rendu = rendu();
     // Plan V2, section 8 : au plus une dizaine de décisions par document
     // d'exemple (95 valeurs listées en V1). Mesure sur le dossier d'exemples
     // complet, tel que « Essayer avec des exemples » l'analyse ; le compteur de
@@ -1791,6 +1873,7 @@ fn decisions_par_document_d_exemple() {
 
 #[test]
 fn verifier_au_clavier_dans_le_document() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     let doc = h.state().anonymize.review_document_name().unwrap();
@@ -1866,6 +1949,7 @@ fn verifier_au_clavier_dans_le_document() {
 
 #[test]
 fn clic_sur_un_surlignage_et_infobulle() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     // Première occurrence d'une valeur sûre, masquée d'office.
@@ -1921,6 +2005,7 @@ fn clic_sur_un_surlignage_et_infobulle() {
 
 #[test]
 fn selection_masquee_partout_puis_annulee() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     // Recherche dans le document (/) : le passage trouvé est sélectionné.
@@ -2007,6 +2092,7 @@ fn selection_masquee_partout_puis_annulee() {
 
 #[test]
 fn bascule_vers_la_vue_tableau_et_retour() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
     h.run();
     assert!(h.query_by_label("Trier par Valeur").is_none());
@@ -2030,6 +2116,7 @@ fn bascule_vers_la_vue_tableau_et_retour() {
 
 #[test]
 fn documents_et_file_en_fenetre_etroite() {
+    let _rendu = rendu();
     // 900 × 650 : deux colonnes, la file en panneau repliable ; 800 : une
     // colonne, le document se choisit en haut.
     let mut h = app(900.0, 650.0, analyze);
@@ -2068,6 +2155,7 @@ fn verdict(h: &Harness<'_, AnonApp>) -> Option<Verdict> {
 
 #[test]
 fn ligne_de_bilan_dans_la_barre_de_verification() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 800.0, |app| analyze_these(app, &BILAN));
     h.run();
     assert_eq!(h.state().workspace.step, Step::Verify);
@@ -2089,6 +2177,7 @@ fn ligne_de_bilan_dans_la_barre_de_verification() {
 
 #[test]
 fn bilan_appliquer_annuler_tout_corriger() {
+    let _rendu = rendu();
     let mut h = app(1280.0, 2400.0, |app| {
         analyze_these(app, &BILAN);
         app.workspace.enter(Step::Bilan);
@@ -2160,6 +2249,7 @@ fn bilan_appliquer_annuler_tout_corriger() {
 
 #[test]
 fn questions_de_contexte_reportees_dans_la_fiche() {
+    let _rendu = rendu();
     let save = out_dir("fiche");
     let platform = NullPlatform {
         save_to: Some(save.clone()),
@@ -2197,6 +2287,7 @@ fn questions_de_contexte_reportees_dans_la_fiche() {
 
 #[test]
 fn trousseau_retenir_rouvrir_sans_mot_de_passe_detruire() {
+    let _rendu = rendu();
     let dir = out_dir("trousseau");
     let keys = dir.join("Clés");
     let platform = NullPlatform {
@@ -2253,6 +2344,7 @@ fn trousseau_retenir_rouvrir_sans_mot_de_passe_detruire() {
 
 #[test]
 fn mot_de_passe_saisi_et_retenu_a_l_ouverture() {
+    let _rendu = rendu();
     // Une clé sans mot de passe retenu : il est demandé, avec « Retenir sur
     // cet ordinateur » ; la fois suivante, plus rien n'est demandé.
     let dir = out_dir("retenir-a-l-ouverture");
@@ -2303,6 +2395,7 @@ fn mot_de_passe_saisi_et_retenu_a_l_ouverture() {
 
 #[test]
 fn reponse_exportee_en_md_et_docx() {
+    let _rendu = rendu();
     let save = out_dir("export-reponse");
     let platform = NullPlatform {
         save_to: Some(save.clone()),
@@ -2396,6 +2489,7 @@ fn not_anonymous_screens() -> Vec<(&'static str, Setup)> {
 
 #[test]
 fn anonyme_reserve_a_une_evaluation_qui_conclut() {
+    let _rendu = rendu();
     // Invariant 9 : le mot « anonyme » (ou « anonymes », mot entier, toutes
     // casses) n'apparaît sur aucun écran tant que l'évaluation ne conclut pas
     // à l'anonymat. « Anonymiser définitivement », « anonymiser » et
@@ -2457,6 +2551,7 @@ fn anonyme_reserve_a_une_evaluation_qui_conclut() {
 
 #[test]
 fn controles_alignes_bilan_envoi_reponse() {
+    let _rendu = rendu();
     use anonymiseur::ui::theme::CONTROL_SM;
     // Bilan : correction conseillée, « Appliquer » et « Autre » sur une ligne.
     let mut h = app(1280.0, 2400.0, |app| {

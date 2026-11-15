@@ -1,15 +1,21 @@
-//! Table de correspondance d'une session : balises ↔ valeurs réelles.
+//! Table de correspondance d'une session (« clé de restauration » en V2) :
+//! balises ↔ valeurs réelles.
 //!
 //! Les **structures** ci-dessous sont un CONTRAT : elles sont sérialisées telles
-//! quelles dans le fichier `.anonmap` (voir `mapping`). Toute évolution passe par
-//! `FORMAT_VERSION` et un test de relecture de l'ancienne version.
+//! quelles dans le fichier `.anonmap` (crate `anon-vault`). Toute évolution passe
+//! par `FORMAT_VERSION` et un test de relecture de l'ancienne version.
 
+use crate::assess::{Goal, Recipient};
 use crate::entities::{Source, Tag};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Version du format sérialisé.
-pub const FORMAT_VERSION: u32 = 1;
+///
+/// - 1 : V1.
+/// - 2 : ajoute `goal`, `recipient`, `created_on` et `keep_until`, tous facultatifs
+///   à la lecture : une clé de la V1 se relit avec leurs valeurs par défaut.
+pub const FORMAT_VERSION: u32 = 2;
 
 /// Ce qui remplace la valeur dans le document anonymisé.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,8 +76,12 @@ impl fmt::Debug for MediaOriginal {
 
 /// Table d'une session. Une session couvre plusieurs fichiers et le texte libre :
 /// une même valeur y reçoit toujours la même balise.
+///
+/// Les champs ajoutés après la V1 portent `#[serde(default)]` : un fichier qui ne
+/// les contient pas se relit avec leur valeur par défaut.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
+    /// Version du format du fichier relu ([`FORMAT_VERSION`] pour une session neuve).
     pub format_version: u32,
     pub entities: Vec<Entity>,
     /// Liste « ne jamais anonymiser » (formes telles que saisies).
@@ -79,6 +89,18 @@ pub struct Session {
     pub media: Vec<MediaOriginal>,
     /// Mode irréversible : la table n'est pas enregistrée sur disque.
     pub irreversible: bool,
+    /// Objectif du dossier (V2). `Goal::Mask` pour une clé de la V1.
+    #[serde(default)]
+    pub goal: Goal,
+    /// Destinataire pour lequel le dossier a été préparé (V2).
+    #[serde(default)]
+    pub recipient: Recipient,
+    /// Date de création de la clé, au format `AAAA-MM-JJ` (V2).
+    #[serde(default)]
+    pub created_on: Option<String>,
+    /// Date jusqu'à laquelle conserver la clé, au format `AAAA-MM-JJ` (V2).
+    #[serde(default)]
+    pub keep_until: Option<String>,
 }
 
 impl Default for Session {
@@ -89,6 +111,10 @@ impl Default for Session {
             never: Vec::new(),
             media: Vec::new(),
             irreversible: false,
+            goal: Goal::default(),
+            recipient: Recipient::default(),
+            created_on: None,
+            keep_until: None,
         }
     }
 }

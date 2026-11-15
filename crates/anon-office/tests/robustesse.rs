@@ -18,6 +18,7 @@ fn exercise(h: &dyn Handler, bytes: &[u8]) {
     let r = Replacer::new(&session);
     let _ = h.extract(bytes);
     let _ = h.deep_scan(bytes);
+    let _ = h.tables(bytes);
     let _ = h.transform(bytes, &r, &TransformOptions::anonymize());
 }
 

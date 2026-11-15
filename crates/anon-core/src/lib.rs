@@ -4,17 +4,24 @@
 //! Ne pas en changer la forme sans mettre à jour `AGENTS.md` et les crates
 //! consommateurs.
 
+pub mod assess;
 pub mod detect;
 pub mod entities;
 pub mod format;
 pub mod session;
 pub mod text;
 
+pub use assess::{
+    Approach, AssessInput, AssessSettings, Assessment, ColumnRole, ContextAnswers, Criterion,
+    Failure, FailureReason, Fix, Goal, ImageInput, Mention, Recipient, Shown, SubjectRef,
+    SubjectReport, TableCell, TableInput, TextUnit, Verdict,
+};
 pub use detect::{DetectOptions, Detector, Profile};
 pub use entities::{Detection, EntityKind, Family, Source, Tag};
 pub use format::{
     Direction, Extraction, FormatError, Handler, ImageProcessor, MaskRegion, MediaItem,
-    MediaTransform, OcrPage, OcrWord, Output, PixelRect, TransformOptions, Warning, WarningCode,
+    MediaTransform, OcrPage, OcrWord, Output, PixelRect, TableData, TransformOptions, Warning,
+    WarningCode,
 };
 pub use session::{Entity, MediaOriginal, Session, Treatment};
 pub use text::{BlockContext, BlockRole, Replacement, TextBlock, TextTransform};

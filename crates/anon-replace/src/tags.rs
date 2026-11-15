@@ -95,6 +95,14 @@ mod tests {
         assert_eq!(parse_prefix("DATE\\_NAISS"), Some(EntityKind::DateNaiss));
         assert_eq!(parse_prefix("Date-Naiss"), Some(EntityKind::DateNaiss));
         assert_eq!(parse_prefix("NOTE"), None);
+        // Types ajoutés en V2, écrits avec ou sans accents par l'IA.
+        assert_eq!(parse_prefix("SANTÉ"), Some(EntityKind::Sante));
+        assert_eq!(parse_prefix("Événement"), Some(EntityKind::Evenement));
+        assert_eq!(parse_prefix("génétique"), Some(EntityKind::Genetique));
+        assert_eq!(parse_prefix("BIOMÉTRIE"), Some(EntityKind::Biometrie));
+        for kind in EntityKind::ALL {
+            assert_eq!(parse_prefix(kind.prefix()), Some(*kind), "{kind:?}");
+        }
     }
 
     fn one(text: &str, uri: bool) -> Option<(Tag, &str)> {

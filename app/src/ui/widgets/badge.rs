@@ -87,6 +87,9 @@ pub fn family_tint(family: Family) -> Tinted {
         Family::Identifiants => p.gestion,
         Family::Finances => p.data,
         Family::Contexte => neutral_tint(),
+        // Pas de nouvelle couleur : le rose de la catégorie gestion, partagé avec
+        // les identifiants (le jaune data sert déjà à « à décider »).
+        Family::Sensibles => p.gestion,
     }
 }
 
@@ -106,17 +109,19 @@ pub fn family_label(family: Family) -> &'static str {
         Family::Identifiants => "Identifiants",
         Family::Finances => "Finances",
         Family::Contexte => "Contexte",
+        Family::Sensibles => "Sensibles",
     }
 }
 
 /// Toutes les familles, dans l'ordre d'affichage.
-pub const FAMILIES: [Family; 7] = [
+pub const FAMILIES: [Family; 8] = [
     Family::Personnes,
     Family::Organisations,
     Family::Lieux,
     Family::Contacts,
     Family::Identifiants,
     Family::Finances,
+    Family::Sensibles,
     Family::Contexte,
 ];
 
@@ -186,6 +191,21 @@ mod tests {
             family_colors(Family::Contexte),
             (p.neutral.fill, p.neutral.ink)
         );
+        assert_eq!(
+            family_colors(Family::Sensibles),
+            (p.gestion.fill, p.gestion.ink)
+        );
+    }
+
+    #[test]
+    fn families_list_covers_every_kind() {
+        for kind in EntityKind::ALL {
+            assert!(FAMILIES.contains(&kind.family()), "{kind:?}");
+        }
+        let mut seen = FAMILIES.to_vec();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), FAMILIES.len());
     }
 
     #[test]

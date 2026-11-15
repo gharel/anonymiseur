@@ -32,14 +32,15 @@ impl Default for DetectOptions {
 }
 
 impl DetectOptions {
-    /// Vrai si ce type doit être détecté avec ces réglages.
+    /// Vrai si ce type doit être détecté avec ces réglages. Les catégories
+    /// particulières (santé, religion…) sont voulues dans les deux profils.
     pub fn wants(&self, kind: EntityKind) -> bool {
         if self.disabled.contains(&kind) {
             return false;
         }
         match self.profile {
             Profile::Renforce => true,
-            Profile::Standard => !kind.is_quasi_identifier(),
+            Profile::Standard => kind.is_sensitive() || !kind.is_quasi_identifier(),
         }
     }
 }
@@ -68,6 +69,24 @@ mod tests {
             ..Default::default()
         };
         assert!(renforce.wants(EntityKind::Date));
+    }
+
+    #[test]
+    fn sensitive_kinds_are_wanted_in_both_profiles() {
+        let renforce = DetectOptions {
+            profile: Profile::Renforce,
+            ..Default::default()
+        };
+        for kind in EntityKind::SENSITIVE {
+            assert!(DetectOptions::default().wants(*kind), "{kind:?}");
+            assert!(renforce.wants(*kind), "{kind:?}");
+        }
+        // L'événement personnel est un indice : profil « Renforcé » seulement.
+        assert!(!DetectOptions::default().wants(EntityKind::Evenement));
+        assert!(renforce.wants(EntityKind::Evenement));
+        let mut off = renforce.clone();
+        off.disabled.insert(EntityKind::Sante);
+        assert!(!off.wants(EntityKind::Sante));
     }
 
     #[test]

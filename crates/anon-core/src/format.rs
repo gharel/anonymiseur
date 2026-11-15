@@ -167,6 +167,29 @@ impl fmt::Debug for Output {
     }
 }
 
+/// Tableau lu dans un fichier (feuille de calcul, CSV), pour l'évaluation des
+/// trois critères : une ligne est un enregistrement.
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct TableData {
+    /// Nom de la feuille (emplacement ; peut contenir du contenu utilisateur,
+    /// donc absent de `Debug`).
+    pub sheet: String,
+    /// En-têtes de colonnes (contenu utilisateur).
+    pub headers: Vec<String>,
+    /// Lignes de données, sans la ligne d'en-tête (contenu utilisateur).
+    pub rows: Vec<Vec<String>>,
+}
+
+impl fmt::Debug for TableData {
+    /// N'affiche que des nombres : aucun contenu utilisateur dans les journaux.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableData")
+            .field("columns", &self.headers.len())
+            .field("rows", &self.rows.len())
+            .finish_non_exhaustive()
+    }
+}
+
 /// Gestionnaire d'un format de fichier. Sans état : toute l'information vient
 /// des octets d'entrée. Ne doit jamais paniquer sur une entrée corrompue.
 pub trait Handler: Sync {
@@ -191,6 +214,13 @@ pub trait Handler: Sync {
         tr: &dyn TextTransform,
         opts: &TransformOptions<'_>,
     ) -> Result<Output, FormatError>;
+
+    /// Tableaux du fichier (une entrée par feuille), pour l'évaluation des
+    /// tableaux. Par défaut : aucun (formats de texte, PDF, images).
+    fn tables(&self, input: &[u8]) -> Result<Vec<TableData>, FormatError> {
+        let _ = input;
+        Ok(Vec::new())
+    }
 }
 
 /// Rectangle en pixels, origine en haut à gauche.
@@ -305,6 +335,46 @@ mod tests {
         assert_eq!(text, "Jean Dupont");
         assert_eq!(&text[spans[1].clone()], "Dupont");
         assert!((page.mean_confidence() - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn table_data_debug_hides_content() {
+        let t = TableData {
+            sheet: "Clients Exemple".into(),
+            headers: vec!["Nom".into(), "Commune".into()],
+            rows: vec![vec!["Dupont".into(), "Farino".into()]],
+        };
+        let s = format!("{t:?}");
+        assert!(s.contains("columns: 2") && s.contains("rows: 1"), "{s}");
+        for secret in ["Clients", "Nom", "Commune", "Dupont", "Farino"] {
+            assert!(!s.contains(secret), "{s}");
+        }
+    }
+
+    #[test]
+    fn handler_has_no_tables_by_default() {
+        struct Plain;
+        impl Handler for Plain {
+            fn extensions(&self) -> &'static [&'static str] {
+                &["txt"]
+            }
+            fn extract(&self, _: &[u8]) -> Result<Extraction, FormatError> {
+                Ok(Extraction::default())
+            }
+            fn transform(
+                &self,
+                input: &[u8],
+                _: &dyn TextTransform,
+                _: &TransformOptions<'_>,
+            ) -> Result<Output, FormatError> {
+                Ok(Output {
+                    bytes: input.to_vec(),
+                    replacements: 0,
+                    warnings: Vec::new(),
+                })
+            }
+        }
+        assert!(Plain.tables(b"Nom;Commune").is_ok_and(|t| t.is_empty()));
     }
 
     #[test]

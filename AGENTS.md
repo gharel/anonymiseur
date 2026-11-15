@@ -52,6 +52,7 @@ Espace de travail Cargo. Les dépendances ne vont que vers le bas de cette liste
 | `crates/anon-office` | Gestionnaires Word/Excel/PowerPoint (OOXML), ODF, texte brut. Pur Rust. |
 | `crates/anon-pdf` | PDF, images, OCR (MuPDF + Tesseract). Seul crate autorisé à utiliser `unsafe` (FFI). |
 | `crates/anon-ner` | Détection de noms par modèle ONNX. Optionnel (fonctionnalité `ia`). |
+| `crates/anon-assess` | (À venir.) Évaluation des trois critères du CEPD : tableaux, textes, images. |
 | `crates/anon-detect` | Règles à clé, colonnes de tableur, quasi-identifiants, listes, fusion des détections. |
 | `crates/anon-dict` | Dictionnaires embarqués (prénoms, noms, communes) et leur détecteur. |
 | `crates/anon-replace` | Normalisation, `Replacer`, `Restorer`, enregistrement des valeurs dans la session. |
@@ -62,13 +63,14 @@ Espace de travail Cargo. Les dépendances ne vont que vers le bas de cette liste
 
 ### Contrats (`anon-core`)
 
-- `entities` : `EntityKind` (le préfixe de balise est figé), `Tag`, `Detection`, `Source`.
+- `entities` : `EntityKind` (le préfixe de balise est figé), `Family`, `Tag`, `Detection`, `Source`.
 - `text` : `TextBlock`, `BlockContext`, `Replacement`, trait `TextTransform`.
-- `format` : trait `Handler` (`extract`, `deep_scan`, `transform`), `MediaTransform`, `ImageProcessor`, `Warning`.
+- `format` : trait `Handler` (`extract`, `deep_scan`, `transform`, `tables`), `TableData`, `MediaTransform`, `ImageProcessor`, `Warning`.
 - `detect` : trait `Detector`, `DetectOptions`, `Profile`.
-- `session` : `Session`, `Entity` — sérialisés dans `.anonmap`.
+- `session` : `Session` (dont objectif, destinataire, dates de la clé), `Entity` — sérialisés dans `.anonmap`.
+- `assess` : `Goal`, `Recipient`, `AssessSettings`, `AssessInput` (textes, tableaux, images), `Criterion`, `Assessment`, `Verdict`, `Failure`, `Fix`, seuils `K_MIN_*`.
 
-Changer un contrat = mettre à jour tous les crates consommateurs, ce fichier et, pour `session`, `FORMAT_VERSION` avec un test de relecture de l'ancien format.
+Changer un contrat = mettre à jour tous les crates consommateurs et ce fichier ; pour `session`, incrémenter `FORMAT_VERSION` avec un test de relecture de l'ancien format (`crates/anon-vault/tests/fixtures`) ; pour `entities`, ajouter un type nouveau en fin d'`EntityKind`, sans jamais renommer ni réordonner l'existant.
 
 ### Modèle de fonctionnement
 
@@ -89,6 +91,7 @@ Changer un contrat = mettre à jour tous les crates consommateurs, ce fichier et
 6. **La table de correspondance ne touche le disque que chiffrée**, à l'endroit choisi par l'utilisateur. Aucun fichier temporaire contenant des données en clair.
 7. **Le dépôt `design-skazy` (dossier voisin `../design-skazy`, ou variable `DESIGN_SKAZY`) est la source de la charte.** `assets/charte/` est une copie générée : ne pas l'éditer à la main, ne rien écrire dans `design-skazy`.
 8. **Textes de l'interface** : français, vouvoiement, aucun emoji, titres en majuscule initiale.
+9. **Le mot « anonyme » n'apparaît (écran, nom de fichier, fiche d'évaluation) que si l'évaluation des trois critères conclut à l'anonymat.**
 
 ## Définition de « terminé »
 

@@ -334,6 +334,29 @@ mod tests {
     }
 
     #[test]
+    fn pipeline_keeps_sensitive_kinds_in_both_profiles() {
+        let text = "asthme ; licenciement";
+        let pipeline = Pipeline::new(vec![Box::new(Fixed(vec![
+            det(EntityKind::Sante, 0, 6, Source::Rule, 0.9),
+            // Événement personnel : un indice, retiré en profil Standard.
+            det(EntityKind::Evenement, 9, 21, Source::Rule, 0.9),
+        ]))]);
+        let out = pipeline.detect(&block(text), &DetectOptions::default());
+        assert_eq!(spans(&out), vec![(0, 6, EntityKind::Sante)]);
+        let renforce = DetectOptions {
+            profile: Profile::Renforce,
+            ..Default::default()
+        };
+        assert_eq!(
+            spans(&pipeline.detect(&block(text), &renforce)),
+            vec![(0, 6, EntityKind::Sante), (9, 21, EntityKind::Evenement)]
+        );
+        let mut off = DetectOptions::default();
+        off.disabled.insert(EntityKind::Sante);
+        assert!(pipeline.detect(&block(text), &off).is_empty());
+    }
+
+    #[test]
     fn pipeline_runs_all_detectors_and_merges() {
         let text = "Écrire à jean@example.com";
         let manual = Fixed(vec![det(EntityKind::Personne, 11, 15, Source::Manual, 1.0)]);

@@ -145,7 +145,8 @@ pub fn password_strength(password: &str) -> PasswordStrength {
     }
 }
 
-/// Scelle la session dans un fichier `.anonmap` (sel et nonce aléatoires).
+/// Scelle la session dans un fichier `.anonmap` (sel et nonce aléatoires). Une
+/// session relue d'une clé plus ancienne est écrite au format courant (`FORMAT_VERSION`).
 pub fn seal(session: &Session, password: &str) -> Result<Vec<u8>, VaultError> {
     let mut salt = [0u8; SALT_LEN];
     let mut nonce = [0u8; NONCE_LEN];
@@ -205,6 +206,18 @@ fn seal_params(
         return Err(VaultError::Irreversible);
     }
     let argon_params = params.validate()?;
+    // Un fichier scellé par ce code est au format de ce code, même quand la session
+    // vient d'une clé plus ancienne (reprise d'une table existante).
+    let upgraded;
+    let session = if session.format_version < FORMAT_VERSION {
+        upgraded = Session {
+            format_version: FORMAT_VERSION,
+            ..session.clone()
+        };
+        &upgraded
+    } else {
+        session
+    };
 
     let mut out = Vec::with_capacity(HEADER_LEN + 1024);
     out.extend_from_slice(MAGIC);
@@ -294,6 +307,7 @@ fn take<const N: usize>(bytes: &[u8], pos: &mut usize) -> Result<[u8; N], VaultE
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use anon_core::assess::{Goal, Recipient};
     use anon_core::entities::{EntityKind, Source, Tag};
     use anon_core::session::{Entity, MediaOriginal, Treatment};
 
@@ -354,6 +368,10 @@ mod tests {
                 original,
             }],
             irreversible: false,
+            goal: Goal::Mask,
+            recipient: Recipient::OrganizationAi,
+            created_on: Some("2026-11-15".to_string()),
+            keep_until: Some("2027-11-15".to_string()),
         }
     }
 
@@ -483,6 +501,17 @@ mod tests {
     }
 
     #[test]
+    fn older_session_is_sealed_at_current_version() {
+        let old = Session {
+            format_version: 1,
+            ..rich_session()
+        };
+        let opened = open(&seal_fast(&old), PASSWORD).unwrap();
+        assert_eq!(opened.format_version, FORMAT_VERSION);
+        assert_eq!(opened, rich_session());
+    }
+
+    #[test]
     fn newer_session_format_refused() {
         let s = Session {
             format_version: FORMAT_VERSION + 1,
@@ -541,7 +570,8 @@ mod tests {
 
     // --- Stabilité du format --------------------------------------------------
 
-    /// Session fictive de référence pour `tests/fixtures/v1.anonmap`.
+    /// Session fictive de référence pour `tests/fixtures/v1.anonmap`, telle que
+    /// le code actuel la relit (champs de la V2 à leur valeur par défaut).
     fn fixture_session() -> Session {
         let mut generalized = entity(EntityKind::DateNaiss, 1, "03/04/1990", &[]);
         generalized.treatment = Treatment::Generalize("1990".to_string());
@@ -566,35 +596,65 @@ mod tests {
                 original: vec![1, 2, 3, 4, 5, 250, 251, 252],
             }],
             irreversible: false,
+            goal: Goal::Mask,
+            recipient: Recipient::PublicAi,
+            created_on: None,
+            keep_until: None,
         }
     }
 
-    /// Mot de passe, sel et nonce fictifs de la référence.
-    const FIXTURE_PASSWORD: &str = "correct-horse-é-battery-staple";
-    const FIXTURE_SALT: [u8; SALT_LEN] = *b"fixture-salt-v1!";
-    const FIXTURE_NONCE: [u8; NONCE_LEN] = *b"fixture-n-v1";
-    const FIXTURE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v1.anonmap");
+    /// Session fictive de référence pour `tests/fixtures/v2.anonmap` : la V1 plus
+    /// les champs de la V2, et une entité d'un type ajouté en V2.
+    fn fixture_session_v2() -> Session {
+        let mut s = fixture_session();
+        s.format_version = 2;
+        s.entities.push(entity(EntityKind::Sante, 1, "asthme", &[]));
+        s.goal = Goal::Mask;
+        s.recipient = Recipient::ExternalShare;
+        s.created_on = Some("2026-11-15".to_string());
+        s.keep_until = Some("2027-11-15".to_string());
+        s
+    }
 
-    /// Protège la relecture des anciens fichiers : si ce test échoue, le format a
-    /// changé. Ne pas régénérer la référence ; incrémenter la version et en ajouter une.
-    /// Création initiale : `ANON_VAULT_WRITE_FIXTURE=1 cargo test -p anon-vault v1_fixture`.
+    /// Mot de passe fictif des références. `v1.anonmap` a été scellé avec le sel
+    /// `fixture-salt-v1!` et le nonce `fixture-n-v1`.
+    const FIXTURE_PASSWORD: &str = "correct-horse-é-battery-staple";
+    const FIXTURE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v1.anonmap");
+    const FIXTURE_V2_SALT: [u8; SALT_LEN] = *b"fixture-salt-v2!";
+    const FIXTURE_V2_NONCE: [u8; NONCE_LEN] = *b"fixture-n-v2";
+    const FIXTURE_V2_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v2.anonmap");
+
+    /// Relecture d'un fichier écrit par la V1 (référence produite par le code de la
+    /// V1, à ne jamais régénérer). Depuis la V2, le code n'écrit plus ces octets :
+    /// la stabilité de l'écriture est vérifiée par `v2_fixture_is_stable_and_readable`.
     #[test]
-    fn v1_fixture_is_stable_and_readable() {
+    fn v1_fixture_is_readable() {
+        let reference = std::fs::read(FIXTURE_PATH).expect("référence v1.anonmap manquante");
+        let opened = open(&reference, FIXTURE_PASSWORD).unwrap();
+        assert_eq!(opened.format_version, 1);
+        assert_eq!(opened, fixture_session());
+    }
+
+    /// Protège la relecture des fichiers de la V2 : si ce test échoue, le format a
+    /// changé. Ne pas régénérer la référence ; incrémenter la version et en ajouter une.
+    /// Création initiale : `ANON_VAULT_WRITE_FIXTURE=1 cargo test -p anon-vault v2_fixture`.
+    #[test]
+    fn v2_fixture_is_stable_and_readable() {
         let produced = seal_with(
-            &fixture_session(),
+            &fixture_session_v2(),
             FIXTURE_PASSWORD,
-            FIXTURE_SALT,
-            FIXTURE_NONCE,
+            FIXTURE_V2_SALT,
+            FIXTURE_V2_NONCE,
         )
         .unwrap();
         if std::env::var_os("ANON_VAULT_WRITE_FIXTURE").is_some() {
-            std::fs::write(FIXTURE_PATH, &produced).unwrap();
+            std::fs::write(FIXTURE_V2_PATH, &produced).unwrap();
         }
-        let reference = std::fs::read(FIXTURE_PATH).expect("référence v1.anonmap manquante");
-        assert_eq!(produced, reference, "le format v1 a changé");
+        let reference = std::fs::read(FIXTURE_V2_PATH).expect("référence v2.anonmap manquante");
+        assert_eq!(produced, reference, "le format v2 a changé");
         assert_eq!(
             open(&reference, FIXTURE_PASSWORD).unwrap(),
-            fixture_session()
+            fixture_session_v2()
         );
     }
 }

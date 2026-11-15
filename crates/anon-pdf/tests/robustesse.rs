@@ -17,6 +17,7 @@ fn all_ops(h: &dyn Handler, bytes: &[u8]) {
     let (s, _) = session(&[(anon_core::EntityKind::Personne, "Jean Dupont".into())]);
     let _ = h.extract(bytes);
     let _ = h.deep_scan(bytes);
+    let _ = h.tables(bytes);
     let _ = h.transform(bytes, &replacer(&s), &TransformOptions::anonymize());
 }
 

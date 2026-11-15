@@ -309,7 +309,7 @@ impl AnonApp {
                     inputs,
                     analysis,
                 } => {
-                    self.session = session;
+                    self.session = *session;
                     self.anonymize.anonymize_done(report, inputs, analysis);
                 }
                 Msg::ExistingOpened(r) => {
@@ -533,7 +533,7 @@ impl AnonApp {
                     drop(job.protection);
                     Msg::Anonymized {
                         report,
-                        session,
+                        session: Box::new(session),
                         inputs: job.inputs,
                         analysis: job.analysis,
                     }

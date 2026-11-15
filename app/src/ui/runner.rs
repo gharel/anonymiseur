@@ -150,7 +150,8 @@ pub enum Msg {
     },
     Anonymized {
         report: BatchReport,
-        session: Session,
+        /// En boîte : la session est la plus grosse charge du message.
+        session: Box<Session>,
         inputs: Vec<InputFile>,
         analysis: Analysis,
     },

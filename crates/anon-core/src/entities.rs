@@ -32,6 +32,28 @@ pub enum EntityKind {
     Plaque,
     Identifiant,
     Autre,
+    // --- V2 : catégories particulières (RGPD, art. 9 et 10) ---------------
+    /// Donnée de santé.
+    Sante,
+    /// Opinion politique ou conviction philosophique.
+    Opinion,
+    /// Religion ou conviction religieuse.
+    Religion,
+    /// Appartenance syndicale.
+    Syndicat,
+    /// Vie ou orientation sexuelle.
+    Orientation,
+    /// Origine raciale ou ethnique.
+    Origine,
+    /// Donnée génétique.
+    Genetique,
+    /// Donnée biométrique.
+    Biometrie,
+    /// Condamnation pénale ou infraction (art. 10).
+    Judiciaire,
+    /// Événement personnel (licenciement, divorce, procédure, arrêt de travail) :
+    /// un indice, pas une catégorie particulière.
+    Evenement,
 }
 
 /// Regroupement pour l'affichage (couleur des badges) et les profils.
@@ -44,6 +66,8 @@ pub enum Family {
     Identifiants,
     Finances,
     Contexte,
+    /// Catégories particulières de données (RGPD, art. 9 et 10).
+    Sensibles,
 }
 
 impl EntityKind {
@@ -71,7 +95,30 @@ impl EntityKind {
         EntityKind::Matricule,
         EntityKind::Plaque,
         EntityKind::Identifiant,
+        EntityKind::Sante,
+        EntityKind::Opinion,
+        EntityKind::Religion,
+        EntityKind::Syndicat,
+        EntityKind::Orientation,
+        EntityKind::Origine,
+        EntityKind::Genetique,
+        EntityKind::Biometrie,
+        EntityKind::Judiciaire,
+        EntityKind::Evenement,
         EntityKind::Autre,
+    ];
+
+    /// Catégories particulières (RGPD, art. 9 et 10), dans l'ordre de [`ALL`](Self::ALL).
+    pub const SENSITIVE: &'static [EntityKind] = &[
+        EntityKind::Sante,
+        EntityKind::Opinion,
+        EntityKind::Religion,
+        EntityKind::Syndicat,
+        EntityKind::Orientation,
+        EntityKind::Origine,
+        EntityKind::Genetique,
+        EntityKind::Biometrie,
+        EntityKind::Judiciaire,
     ];
 
     /// Préfixe de balise, en majuscules ASCII (`PERSONNE`, `DATE_NAISS`…).
@@ -101,6 +148,16 @@ impl EntityKind {
             EntityKind::Plaque => "PLAQUE",
             EntityKind::Identifiant => "IDENTIFIANT",
             EntityKind::Autre => "AUTRE",
+            EntityKind::Sante => "SANTE",
+            EntityKind::Opinion => "OPINION",
+            EntityKind::Religion => "RELIGION",
+            EntityKind::Syndicat => "SYNDICAT",
+            EntityKind::Orientation => "ORIENTATION",
+            EntityKind::Origine => "ORIGINE",
+            EntityKind::Genetique => "GENETIQUE",
+            EntityKind::Biometrie => "BIOMETRIE",
+            EntityKind::Judiciaire => "JUDICIAIRE",
+            EntityKind::Evenement => "EVENEMENT",
         }
     }
 
@@ -136,6 +193,16 @@ impl EntityKind {
             EntityKind::Plaque => "Plaque d'immatriculation",
             EntityKind::Identifiant => "Identifiant",
             EntityKind::Autre => "Autre",
+            EntityKind::Sante => "Santé",
+            EntityKind::Opinion => "Opinion politique ou philosophique",
+            EntityKind::Religion => "Religion",
+            EntityKind::Syndicat => "Appartenance syndicale",
+            EntityKind::Orientation => "Orientation sexuelle",
+            EntityKind::Origine => "Origine ethnique",
+            EntityKind::Genetique => "Donnée génétique",
+            EntityKind::Biometrie => "Donnée biométrique",
+            EntityKind::Judiciaire => "Condamnation ou infraction",
+            EntityKind::Evenement => "Événement personnel",
         }
     }
 
@@ -158,8 +225,25 @@ impl EntityKind {
             | EntityKind::Date
             | EntityKind::Age
             | EntityKind::Fonction
+            | EntityKind::Evenement
             | EntityKind::Autre => Family::Contexte,
+            EntityKind::Sante
+            | EntityKind::Opinion
+            | EntityKind::Religion
+            | EntityKind::Syndicat
+            | EntityKind::Orientation
+            | EntityKind::Origine
+            | EntityKind::Genetique
+            | EntityKind::Biometrie
+            | EntityKind::Judiciaire => Family::Sensibles,
         }
+    }
+
+    /// Vrai pour les catégories particulières de données (RGPD, art. 9 et 10).
+    /// Détectées dans les deux profils ; liées à une personne isolable, elles
+    /// font échouer le critère de déduction.
+    pub fn is_sensitive(self) -> bool {
+        self.family() == Family::Sensibles
     }
 
     /// Vrai pour les quasi-identifiants : ils n'identifient pas seuls, mais leur
@@ -173,6 +257,7 @@ impl EntityKind {
                 | EntityKind::Montant
                 | EntityKind::Lieu
                 | EntityKind::Matricule
+                | EntityKind::Evenement
         )
     }
 
@@ -268,6 +353,89 @@ mod tests {
             assert!(p.chars().all(|c| c.is_ascii_uppercase() || c == '_'), "{p}");
             assert!(seen.insert(p), "préfixe en double : {p}");
         }
+    }
+
+    #[test]
+    fn all_lists_every_kind_once() {
+        // Ce `match` exhaustif ne compile plus quand une variante est ajoutée :
+        // l'ajouter alors aussi à `ALL` (et à `SENSITIVE` s'il le faut).
+        let listed = |k: EntityKind| match k {
+            EntityKind::Personne
+            | EntityKind::Nom
+            | EntityKind::Prenom
+            | EntityKind::Societe
+            | EntityKind::Lieu
+            | EntityKind::Adresse
+            | EntityKind::Email
+            | EntityKind::Tel
+            | EntityKind::Iban
+            | EntityKind::Nir
+            | EntityKind::Siret
+            | EntityKind::Ridet
+            | EntityKind::Cb
+            | EntityKind::Ip
+            | EntityKind::Url
+            | EntityKind::DateNaiss
+            | EntityKind::Date
+            | EntityKind::Age
+            | EntityKind::Fonction
+            | EntityKind::Montant
+            | EntityKind::Matricule
+            | EntityKind::Plaque
+            | EntityKind::Identifiant
+            | EntityKind::Autre
+            | EntityKind::Sante
+            | EntityKind::Opinion
+            | EntityKind::Religion
+            | EntityKind::Syndicat
+            | EntityKind::Orientation
+            | EntityKind::Origine
+            | EntityKind::Genetique
+            | EntityKind::Biometrie
+            | EntityKind::Judiciaire
+            | EntityKind::Evenement => EntityKind::ALL.contains(&k),
+        };
+        assert!(EntityKind::ALL.iter().all(|k| listed(*k)));
+        assert_eq!(EntityKind::ALL.len(), 34);
+        let set: std::collections::BTreeSet<_> = EntityKind::ALL.iter().collect();
+        assert_eq!(set.len(), EntityKind::ALL.len());
+        // `Autre` reste en dernier : les listes de l'interface finissent par lui.
+        assert_eq!(EntityKind::ALL.last(), Some(&EntityKind::Autre));
+    }
+
+    /// Le nom sérialisé dans `.anonmap` est le préfixe de balise : tous deux figés.
+    #[test]
+    fn serialized_names_match_prefixes() {
+        use serde::de::IntoDeserializer;
+        for kind in EntityKind::ALL {
+            let d: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
+                kind.prefix().into_deserializer();
+            assert_eq!(EntityKind::deserialize(d).ok(), Some(*kind));
+        }
+    }
+
+    #[test]
+    fn sensitive_kinds() {
+        let sensitive: Vec<EntityKind> = EntityKind::ALL
+            .iter()
+            .copied()
+            .filter(|k| k.is_sensitive())
+            .collect();
+        assert_eq!(sensitive, EntityKind::SENSITIVE);
+        assert_eq!(sensitive.len(), 9);
+        for k in EntityKind::SENSITIVE {
+            assert_eq!(k.family(), Family::Sensibles);
+            assert!(!k.is_quasi_identifier(), "{k:?}");
+        }
+        // Un événement personnel est un indice, pas une catégorie particulière.
+        assert!(!EntityKind::Evenement.is_sensitive());
+        assert!(EntityKind::Evenement.is_quasi_identifier());
+        assert_eq!(EntityKind::Evenement.family(), Family::Contexte);
+        assert_eq!(Tag::new(EntityKind::Sante, 1).to_string(), "[SANTE_1]");
+        assert_eq!(
+            Tag::new(EntityKind::Evenement, 2).to_string(),
+            "[EVENEMENT_2]"
+        );
     }
 
     #[test]

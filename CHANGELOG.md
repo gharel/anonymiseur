@@ -4,6 +4,12 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+### Ajouté
+- **Contrats de la V2** (`anon-core`, module `assess`) : objectif (« Masquer pour l'IA », « Anonymiser définitivement »), destinataire, approche simplifiée ou contextuelle, entrées et résultat de l'évaluation des trois critères du CEPD (isolement, recoupement, déduction), corrections proposées. Aucun calcul encore.
+- **Catégories particulières de données** (RGPD, art. 9 et 10) : santé, opinion politique ou philosophique, religion, appartenance syndicale, orientation sexuelle, origine ethnique, données génétiques et biométriques, condamnations ou infractions, dans une nouvelle famille « Sensibles », cherchée dans les deux profils. Nouveau type « Événement personnel » (licenciement, divorce, procédure), un indice du profil Renforcé. Pas encore de détection automatique : ces types se choisissent à la main.
+- **Clé de restauration, format 2** : le fichier `.anonmap` retient l'objectif, le destinataire, la date de création et la date jusqu'à laquelle garder la clé. Les tables de la version 0.1 se relisent sans changement.
+- **Lecture des tableaux** : contrat `Handler::tables` (une entrée par feuille), à implémenter pour Excel, Calc et CSV.
+
 ### Corrigé
 - **Conseil du rapport de risque** : en profil Renforcé, un risque élevé invite à cocher dans la liste les informations indirectes restées visibles, ou à les retirer du document. Le rapport recommandait jusqu'ici le profil Renforcé, déjà actif.
 

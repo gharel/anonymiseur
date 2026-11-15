@@ -71,6 +71,10 @@ fn advice_for(kind: EntityKind) -> Option<&'static str> {
             "Des montants restent visibles : arrondissez-les ou remplacez-les par une balise."
         }
         EntityKind::Matricule => "Des matricules restent visibles : remplacez-les par une balise.",
+        EntityKind::Evenement => {
+            "Des événements personnels restent visibles (licenciement, divorce, procédure) : \
+             avec d'autres indices, ils peuvent désigner une personne."
+        }
         _ => return None,
     })
 }
@@ -141,6 +145,24 @@ mod tests {
         // Les identifiants directs ne sont pas des signaux de risque résiduel.
         let direct = assess(&BTreeMap::from([(EntityKind::Email, 4)]), Profile::Standard);
         assert_eq!(direct.level, RiskLevel::Faible);
+    }
+
+    /// Chaque quasi-identifiant a son conseil.
+    #[test]
+    fn every_quasi_identifier_has_advice() {
+        for kind in EntityKind::ALL.iter().filter(|k| k.is_quasi_identifier()) {
+            assert!(advice_for(*kind).is_some(), "{kind:?}");
+        }
+        let ev = assess(
+            &BTreeMap::from([(EntityKind::Evenement, 1)]),
+            Profile::Renforce,
+        );
+        assert_eq!(ev.level, RiskLevel::Modere);
+        assert!(
+            ev.advice
+                .iter()
+                .any(|a| a.contains("événements personnels"))
+        );
     }
 
     /// Le profil Renforcé n'est conseillé qu'à qui ne l'utilise pas encore.

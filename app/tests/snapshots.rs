@@ -1883,7 +1883,10 @@ fn decisions_par_document_d_exemple() {
 #[test]
 fn verifier_au_clavier_dans_le_document() {
     let _rendu = rendu();
-    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
+    // Un document dont les valeurs à décider viennent des dictionnaires
+    // (métiers de la colonne « Poste ») : au moins deux, avec ou sans IA de
+    // noms. Dans notes.txt, l'édition Lite n'en trouve qu'une.
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["planning.ods"]));
     h.run();
     let doc = h.state().anonymize.review_document_name().unwrap();
     let queue = h.state().anonymize.queue();

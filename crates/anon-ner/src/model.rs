@@ -17,7 +17,7 @@ pub(crate) const MAX_BATCH_WINDOWS: usize = 8;
 /// Environnement ONNX Runtime partagé, créé une seule fois, télémétrie coupée.
 static ENVIRONMENT: OnceLock<Result<ort::environment::Environment, NerError>> = OnceLock::new();
 
-fn environment() -> Result<&'static ort::environment::Environment, NerError> {
+pub(crate) fn environment() -> Result<&'static ort::environment::Environment, NerError> {
     ENVIRONMENT
         .get_or_init(|| {
             ort::init()

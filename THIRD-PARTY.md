@@ -23,6 +23,14 @@ Les licences de Tesseract, de Leptonica et d'ONNX Runtime sont celles publiées 
 
 Le modèle pii-medium s'appuie sur mMiniLMv2 (Microsoft, MIT) et le tokeniseur XLM-R (MIT). Powered by newmean.ai. Son fichier NOTICE est reproduit tel quel dans `licences/NOTICE-pii-medium.txt`. Révisions exactes et empreintes SHA-256 : `assets/ner/LISEZMOI.md`.
 
+## Modèle de détection des visages (édition complète)
+
+| Modèle | Auteurs | Licence | Source |
+|---|---|---|---|
+| YuNet, `face_detection_yunet_2026may.onnx` (mêmes poids que `face_detection_yunet_2023mar.onnx`, entrée de taille libre), 229 738 octets, SHA-256 `ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0` | Shiqi Yu, Wei Wu, Hanyang Peng (libfacedetection), OpenCV Zoo | MIT, texte dans `assets/faces/LICENSE` | https://github.com/opencv/opencv_zoo/tree/eb9f4f2d4b79b58e5513b5d25d5f0243a8357bf4/models/face_detection_yunet |
+
+Le fichier est versionné dans `assets/faces/` avec ses empreintes (`SHA256SUMS`) ; `tools/prepare_faces.py` le télécharge depuis ce commit et vérifie l'empreinte. Le décodage des sorties et la suppression des non-maxima sont réécrits en Rust d'après `modules/objdetect/src/face_detect.cpp` et `modules/dnn/src/nms.inl.hpp` d'OpenCV 4.x (Apache-2.0, https://github.com/opencv/opencv). Les images des tests sont des peintures du domaine public : `crates/anon-ner/tests/fixtures/SOURCES.md`.
+
 ## Données de détection
 
 | Donnée | Licence | Source |

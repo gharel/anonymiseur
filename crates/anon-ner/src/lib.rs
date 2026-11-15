@@ -17,10 +17,14 @@
 //! ou inclus dans le binaire ([`NerDetector::embedded`], fonctionnalité `embed`).
 //! Sans la fonctionnalité `ia`, le crate compile sans ONNX Runtime et les
 //! constructeurs renvoient [`NerError::Unavailable`].
+//!
+//! Le module [`faces`] détecte les visages dans les images (modèle YuNet, même
+//! environnement ONNX Runtime) ; sans `ia`, il renvoie [`faces::FaceError::Unavailable`].
 
 // Sans `ia`, la partie pure reste compilée et testée mais n'est pas appelée.
 #[cfg_attr(not(feature = "ia"), allow(dead_code))]
 mod aggregate;
+pub mod faces;
 #[cfg(feature = "ia")]
 mod filter;
 #[cfg_attr(not(feature = "ia"), allow(dead_code))]

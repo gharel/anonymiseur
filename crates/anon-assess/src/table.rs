@@ -32,6 +32,11 @@ use std::collections::{HashMap, HashSet};
 /// Forme la plus générale d'une valeur, au-delà de sa hiérarchie (Datafly).
 const SUPPRESSED: &str = "*";
 
+/// Longueur (en caractères) en dessous de laquelle une valeur est « courte ».
+/// Une valeur courte partagée par au moins `k_min` lignes n'est jamais masquée
+/// lors d'une suppression de lignes : le masquage s'appliquerait à tout le dossier.
+const SUPPRESS_MIN_CHARS: usize = 3;
+
 /// Texte affiché d'une cellule dans le document produit.
 fn displayed(cell: &TableCell) -> Cow<'_, str> {
     match &cell.shown {
@@ -271,6 +276,7 @@ fn plan_fixes(
     clues: &[ClueColumn<'_>],
     plan: &Plan,
     rows: &[Vec<TableCell>],
+    k_min: u32,
 ) -> Vec<Fix> {
     let mut fixes = Vec::new();
     let mut items: Vec<(usize, String)> = Vec::new();
@@ -304,6 +310,16 @@ fn plan_fixes(
         fixes.push(Fix::GeneralizeMany { items });
     }
     if !plan.suppressed.is_empty() && !plan.over_budget {
+        // Le moteur remplace une valeur partout dans le dossier : seules les
+        // valeurs rares de la ligne sont masquées (voir `SUPPRESS_MIN_CHARS`).
+        let mut counts: HashMap<(usize, &str), u32> = HashMap::new();
+        for r in rows {
+            for c in clues {
+                if let Some(cell) = cell_at(r, c.col) {
+                    *counts.entry((c.col, cell.value.trim())).or_insert(0) += 1;
+                }
+            }
+        }
         let mut value_ids = Vec::new();
         let mut seen: HashSet<usize> = HashSet::new();
         for row in &plan.suppressed {
@@ -311,7 +327,14 @@ fn plan_fixes(
                 let Some(cell) = rows.get(*row).and_then(|r| cell_at(r, c.col)) else {
                     continue;
                 };
-                if cell.value.trim().is_empty() {
+                let text = cell.value.trim();
+                if text.is_empty() {
+                    continue;
+                }
+                let count = counts.get(&(c.col, text)).copied().unwrap_or(0);
+                // Partagée par au moins `k_min` lignes (a fortiori si elle est
+                // courte, comme « M » ou « 75 ») : elle n'isole personne seule.
+                if count >= k_min || (text.chars().count() < SUPPRESS_MIN_CHARS && count >= k_min) {
                     continue;
                 }
                 let Some(id) = cell.value_id else {
@@ -406,7 +429,7 @@ pub(crate) fn assess_table(
     // les suivants, qui la partagent.
     let mut isolation_fixes = if needs_plan {
         let plan = datafly(&mut clues, n, k_min);
-        plan_fixes(index, &clues, &plan, rows)
+        plan_fixes(index, &clues, &plan, rows, k_min)
     } else {
         Vec::new()
     };

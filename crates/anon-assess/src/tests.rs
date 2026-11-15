@@ -245,6 +245,34 @@ fn few_outliers_are_suppressed_without_generalizing() {
     assert_eq!(value_ids.len(), 1);
 }
 
+/// Les valeurs courantes (« M », « F ») ne sont jamais masquées par la
+/// suppression d'une ligne : seules les valeurs rares le sont.
+#[test]
+fn suppressed_rows_only_mask_rare_values() {
+    let roles = [Clue(Autre), Clue(Age)];
+    let mut rows: Vec<&[&str]> = vec![&["M", "40 ans"]; 30];
+    rows.extend(vec![&["F", "41 ans"][..]; 30]);
+    rows.push(&["M", "97 ans"]);
+    let t = table(&roles, &rows);
+    let id_m = t.rows[0][0].value_id.unwrap();
+    let id_f = t.rows[30][0].value_id.unwrap();
+    let id_age = t.rows[60][1].value_id.unwrap();
+    let a = assess(&input(vec![t]), &settings(5));
+    let ids: Vec<usize> = a
+        .failures
+        .iter()
+        .flat_map(|f| &f.fixes)
+        .filter_map(|f| match f {
+            Fix::SuppressRows { value_ids, .. } => Some(value_ids.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert!(!ids.is_empty(), "{:?}", a.failures);
+    assert!(!ids.contains(&id_m) && !ids.contains(&id_f), "{ids:?}");
+    assert!(ids.contains(&id_age), "{ids:?}");
+}
+
 #[test]
 fn direct_and_stable_identifiers() {
     let roles = [Direct(Nom), Stable(EntityKind::Matricule), Clue(Autre)];

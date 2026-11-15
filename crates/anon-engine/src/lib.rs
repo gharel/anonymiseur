@@ -28,7 +28,8 @@ pub use engine::{
 pub use error::{EngineError, Leak};
 pub use media::{LOW_OCR_CONFIDENCE, MASK_MARGIN_PX, ManualMask, sha256_hex};
 pub use risk::{
-    RISK_HIGH_KINDS, RISK_HIGH_TOTAL, RISK_MODERATE_TOTAL, RISK_REMINDER, RiskLevel, RiskReport,
+    RISK_COMBINED_RENFORCE, RISK_COMBINED_STANDARD, RISK_HIGH_KINDS, RISK_HIGH_TOTAL,
+    RISK_MODERATE_TOTAL, RISK_REMINDER, RiskLevel, RiskReport,
 };
 
 pub use anon_replace::RestoreReport;

@@ -4,6 +4,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+### Corrigé
+- **Conseil du rapport de risque** : en profil Renforcé, un risque élevé invite à cocher dans la liste les informations indirectes restées visibles, ou à les retirer du document. Le rapport recommandait jusqu'ici le profil Renforcé, déjà actif.
+
 ## [0.1.1] - 2026-11-14
 
 ### Corrigé

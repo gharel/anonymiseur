@@ -5,8 +5,8 @@
 use crate::error::EngineError;
 use crate::media::{LOW_OCR_CONFIDENCE, regions_for};
 use anon_core::{
-    DetectOptions, EntityKind, OcrPage, PixelRect, Session, Source, Tag, TextBlock, Treatment,
-    Warning,
+    DetectOptions, EntityKind, OcrPage, PixelRect, Profile, Session, Source, Tag, TextBlock,
+    Treatment, Warning,
 };
 use anon_replace::session_ext::match_key;
 use anon_replace::{CASE_SENSITIVE_MAX_CHARS, Replacer, SessionExt, key};
@@ -172,6 +172,8 @@ pub struct Analysis {
     pub cancelled: bool,
     pub(crate) never: Vec<String>,
     pub(crate) store: Vec<FileData>,
+    /// Profil de l'analyse : il oriente les conseils du bilan de risque.
+    pub(crate) profile: Profile,
     next_id: usize,
 }
 
@@ -181,6 +183,7 @@ impl fmt::Debug for Analysis {
             .field("files", &self.files)
             .field("candidates", &self.candidates)
             .field("cancelled", &self.cancelled)
+            .field("profile", &self.profile)
             .finish_non_exhaustive()
     }
 }
@@ -311,6 +314,7 @@ impl Analysis {
         never: Vec<String>,
         session: &Session,
         cancelled: bool,
+        profile: Profile,
     ) -> Self {
         let mut a = Analysis {
             files,
@@ -318,6 +322,7 @@ impl Analysis {
             cancelled,
             never,
             store,
+            profile,
             next_id: 1,
         };
         for g in agg.groups {

@@ -8,7 +8,7 @@ use anon_core::text::apply_replacements;
 use anon_core::{
     BlockRole, EntityKind, Handler, Profile, Session, Source, Tag, TextTransform, Treatment,
 };
-use anon_engine::{AnonymizeOptions, Engine, InputFile, NoProgress, ai_instruction};
+use anon_engine::{AnonymizeOptions, Engine, InputFile, NoProgress, RiskLevel, ai_instruction};
 use anon_office::handler_for;
 use anon_replace::{Replacer, Restorer, SessionExt};
 use common::*;
@@ -375,6 +375,40 @@ fn options_utilisateur() {
     let (back, _) = engine.restore_text(&out, &s);
     assert!(back.contains("40-49 ans"));
     assert!(back.contains("Hélène Kaloï"));
+}
+
+/// Le conseil « utilisez le profil Renforcé » ne s'affiche qu'en profil Standard.
+/// En Renforcé, le bilan invite à cocher les informations restées visibles.
+#[test]
+fn conseil_de_risque_selon_le_profil() {
+    const NOTE: &str = "Réunion du 12 mars 2024 à Dumbéa. Hélène Kaloï, 44 ans, \
+        infirmière, présente un budget de 12 500 euros.";
+    let engine = Engine::standard();
+    let file = InputFile::new("note.txt", NOTE.as_bytes().to_vec());
+    for profile in [Profile::Standard, Profile::Renforce] {
+        let mut analysis = analyze(&engine, std::slice::from_ref(&file), profile);
+        // Informations indirectes laissées visibles par l'utilisateur.
+        for c in &mut analysis.candidates {
+            if c.kind.is_quasi_identifier() {
+                c.selected = false;
+            }
+        }
+        let mut session = Session::new();
+        engine.apply_selection(&analysis, &mut session);
+        let risk = engine
+            .anonymize(&file, &analysis, &mut session, &AnonymizeOptions::default())
+            .unwrap()
+            .report
+            .risk;
+        assert_eq!(risk.level, RiskLevel::Eleve, "{profile:?}");
+        let suggests_renforce = risk.advice.iter().any(|a| a.contains("profil Renforcé"));
+        assert_eq!(
+            suggests_renforce,
+            profile == Profile::Standard,
+            "{profile:?} : {:?}",
+            risk.advice
+        );
+    }
 }
 
 /// Exigence 5 (suite) : mode irréversible : rien n'est gardé dans `session.media`

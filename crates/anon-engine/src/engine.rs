@@ -481,7 +481,15 @@ impl Engine {
             }
         }
         progress.step(total, total, "");
-        Analysis::finish(files, store, agg, never, session, cancelled)
+        Analysis::finish(
+            files,
+            store,
+            agg,
+            never,
+            session,
+            cancelled,
+            opts.detect.profile,
+        )
     }
 
     /// Analyse un lot de fichiers. Un fichier illisible n'interrompt pas les
@@ -525,8 +533,9 @@ impl Engine {
         analysis.apply_to(session);
     }
 
-    /// Quasi-identifiants encore visibles dans des blocs.
-    fn risk(&self, blocks: &[TextBlock]) -> RiskReport {
+    /// Quasi-identifiants encore visibles dans des blocs. Ils sont toujours
+    /// cherchés en profil Renforcé ; `profile` (celui de l'analyse) oriente les conseils.
+    fn risk(&self, blocks: &[TextBlock], profile: Profile) -> RiskReport {
         let opts = DetectOptions {
             profile: Profile::Renforce,
             disabled: BTreeSet::new(),
@@ -545,7 +554,7 @@ impl Engine {
                 }
             }
         }
-        assess(&counts)
+        assess(&counts, profile)
     }
 
     /// Anonymise un fichier avec la session : masquage des images, réécriture,
@@ -635,7 +644,7 @@ impl Engine {
             return Err(EngineError::Leak { leaks });
         }
 
-        let risk = self.risk(&deep);
+        let risk = self.risk(&deep, analysis.profile);
         if !session.irreversible {
             // Un format qui ne conserve pas l'image octet pour octet (page d'un PDF
             // scanné) ne permet pas de la reconnaître ensuite : garder son original

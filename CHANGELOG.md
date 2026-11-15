@@ -63,6 +63,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - **Nouvelle dépendance** `chrono` (MIT ou Apache-2.0, sans réseau, sans fonctionnalités par défaut) : l'heure locale du nom des clés et des fiches.
 
 ### Corrigé
+- **Réponse restaurée** : avec l'interligne des zones de texte, epaint peignait le fond d'une valeur sur toute la hauteur de ligne à partir du haut du texte. Le fond débordait sur la ligne suivante (un rectangle clair apparaissait sur le « . » entre deux valeurs voisines) et le soulignement tombait dans la ligne suivante, à moitié caché par ses fonds. Fond et soulignement sont maintenant peints à part, dans la hauteur de chaque ligne.
 - **Cellules de tableur sous un en-tête reconnu** : l'en-tête de la colonne l'emporte sur l'IA de noms pour la cellule entière. « Dupuis » sous « Nom » n'est plus pris pour une société, ni « Arthrose » sous « Diagnostic » pour une personne.
 - **Contrôle de fuite** : un identifiant de structure du fichier (numéro de ligne, référence de cellule, priorité d'un style Word, dimensions) n'est plus pris pour une valeur restée lisible. Un âge validé « 35 », « 62 » ou « 73 » bloquait tout document Word du dossier, un âge « 19 » un classeur de 19 lignes. Une valeur restée dans le contenu est toujours signalée.
 - **Mesure de revue** : les chiffres d'une balise (« 35 » dans `[NOM_35]`) ne comptent plus comme une valeur lisible, et un fichier refusé fait échouer la mesure au lieu d'en être retiré.

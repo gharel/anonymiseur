@@ -17,7 +17,7 @@ use crate::ui::state::deanonymize::{Busy, DeanonymizeState, MapStatus, tag_range
 use crate::ui::state::toasts::count_label;
 use crate::ui::theme::{CONTROL_MD, CONTROL_SM, Weight, font, palette, radius};
 use crate::ui::widgets::button::icon_button;
-use crate::ui::widgets::field::{Mark, area_height_for_rows, mono_job_marks};
+use crate::ui::widgets::field::{Mark, area_height_for_rows, marked_label, mono_format};
 use crate::ui::widgets::{
     Banner, Card, Checkbox, Icon, PillButton, TextField, body, caption, muted, subheading,
 };
@@ -355,8 +355,7 @@ fn side_by_side(ui: &mut Ui, st: &mut DeanonymizeState, view_h: f32, fx: &mut Ve
                                 )
                                 .collect();
                             marks.sort_by_key(|(m, _)| m.start);
-                            let job = mono_job_marks(text, &marks, ui.available_width());
-                            ui.add(egui::Label::new(job).wrap().selectable(true));
+                            marked_label(ui, text, &marks, &mono_format());
                         }
                         None => {
                             muted(

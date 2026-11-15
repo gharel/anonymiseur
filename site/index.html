@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Anonymiseur : protégez vos données avant d'utiliser une IA</title>
-<meta name="description" content="Anonymiseur remplace les données sensibles d'un document par des balises, puis les remet dans la réponse de l'IA. Application libre de Skazy Formation, 100 % locale, pour Windows et macOS.">
+<meta name="description" content="Anonymiseur remplace les données sensibles d'un document par des balises, vérifie que personne n'y reste reconnaissable, puis remet les vraies valeurs dans la réponse de l'IA. Application libre de Skazy Formation, 100 % locale, pour Windows et macOS.">
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" type="image/png" href="img/icon-256.png">
@@ -74,36 +74,40 @@
     <div>
       <span class="badge">Libre et gratuit</span>
       <h1>Anonymiseur</h1>
-      <p class="lead">Masquez les noms, adresses, numéros et montants d'un document avant de l'envoyer à une IA, puis remettez les vraies valeurs dans sa réponse. Tout se passe sur votre ordinateur.</p>
+      <p class="lead">Masquez les noms, adresses, numéros et indices d'un document avant de l'envoyer à une IA, vérifiez que personne n'y reste reconnaissable, puis remettez les vraies valeurs dans sa réponse. Tout se passe sur votre ordinateur.</p>
       <p><a class="btn" href="#telechargement"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Télécharger</a></p>
       <p class="sub" id="hero-os">Pour Windows et macOS. Aucune installation, aucune connexion à Internet.</p>
     </div>
     <figure class="shot">
       <picture>
-        <source srcset="captures/anonymiser_2_verifier_sombre_1280x800.png" media="(prefers-color-scheme: dark)">
-        <img src="captures/anonymiser_2_verifier_1280x800.png" width="1280" height="800" alt="Écran de vérification de l'application : la liste des données détectées, avec leur type, leur balise (par exemple [PERSONNE_1]) et le niveau de protection Standard ou Renforcé.">
+        <source srcset="captures/dossier_1_verifier_sombre_1280x800.png" media="(prefers-color-scheme: dark)">
+        <img src="captures/dossier_1_verifier_1280x800.png" width="1280" height="800" alt="Étape Vérifier : le texte d'un contrat fictif, chaque valeur surlignée en gris (masquée) ou en jaune (à décider), avec à droite la file « À décider » et ses boutons Masquer et Garder.">
       </picture>
-      <figcaption>Vous relisez et validez la liste avant toute anonymisation.</figcaption>
+      <figcaption>Vous vérifiez dans le document lui-même, valeur par valeur.</figcaption>
     </figure>
   </div>
 </div>
 
 <section id="principe" aria-labelledby="t-principe">
   <div class="wrap">
-    <h2 id="t-principe">Le principe en trois étapes</h2>
-    <p class="intro">Anonymiseur s'adresse aux apprenants et aux formateurs qui veulent se faire aider par une IA sur des documents contenant des données personnelles.</p>
-    <div class="grid c3">
+    <h2 id="t-principe">Le principe en quatre étapes</h2>
+    <p class="intro">Anonymiseur s'adresse aux apprenants et aux formateurs qui veulent se faire aider par une IA sur des documents contenant des données personnelles. Vous choisissez d'abord un objectif : <strong>masquer pour l'IA</strong> (vous récupérez la réponse avec les vraies valeurs) ou <strong>anonymiser définitivement</strong> (aucun retour possible).</p>
+    <div class="grid c2">
       <div class="card">
-        <h3><span class="step-n" aria-hidden="true">1</span>Anonymiser</h3>
-        <p>Déposez votre fichier. L'application propose une liste de données à masquer ; vous la relisez, la corrigez et la validez. Elle produit un fichier anonymisé et une table de correspondance protégée par un mot de passe que vous choisissez.</p>
+        <h3><span class="step-n" aria-hidden="true">1</span>Vérifier</h3>
+        <p>Déposez vos fichiers ou collez un texte. Le document s'affiche avec chaque valeur surlignée : en gris ce qui sera masqué, en jaune ce qui reste à décider. Les cas douteux viennent un par un ; une touche les masque ou les garde.</p>
       </div>
       <div class="card">
-        <h3><span class="step-n" aria-hidden="true">2</span>Envoyer à l'IA</h3>
-        <p>Donnez à l'IA le fichier anonymisé avec la consigne fournie par l'application. Elle demande à l'IA de conserver les balises telles quelles.</p>
+        <h3><span class="step-n" aria-hidden="true">2</span>Bilan</h3>
+        <p>Pour le destinataire choisi, l'outil applique les trois critères des lignes directrices européennes : peut-on isoler une personne, la relier à d'autres données, deviner une information sur elle ? Chaque échec vient avec sa correction, et « Tout corriger » les applique.</p>
       </div>
       <div class="card">
-        <h3><span class="step-n" aria-hidden="true">3</span>Désanonymiser</h3>
-        <p>Collez la réponse de l'IA et ouvrez votre table avec son mot de passe : les balises redeviennent les vraies valeurs. Une balise légèrement abîmée par l'IA est reconnue ; une balise inconnue est signalée et laissée intacte.</p>
+        <h3><span class="step-n" aria-hidden="true">3</span>Envoyer</h3>
+        <p>Les fichiers produits sont relus : s'il reste une valeur masquée, ils ne sont pas créés. Copiez le texte avec la consigne pour l'IA. La clé de restauration est chiffrée et rangée à part, avec une phrase de passe proposée.</p>
+      </div>
+      <div class="card">
+        <h3><span class="step-n" aria-hidden="true">4</span>Réponse</h3>
+        <p>Collez la réponse de l'IA : elle s'affiche à côté de sa version restaurée. Une balise légèrement abîmée par l'IA est reconnue ; une balise inconnue est signalée et laissée intacte.</p>
       </div>
     </div>
 
@@ -120,13 +124,14 @@
       </div>
     </div>
     <p class="note" style="margin-top:12px">L'IA répond en réutilisant les balises ; Anonymiseur les remplace par les vraies valeurs. Les noms de cet exemple sont fictifs.</p>
+    <p style="margin-top:16px"><strong>Presse-papiers express.</strong> Copiez un texte, pressez Ctrl+Alt+M (Cmd+Option+M sur Mac) : il est masqué avec les balises du dossier ouvert, prêt à coller dans l'IA. Copiez sa réponse, pressez Ctrl+Alt+R : les vraies valeurs reviennent. Les deux raccourcis marchent même quand l'application est en arrière-plan.</p>
 
     <figure class="shot" style="margin-top:32px">
       <picture>
-        <source srcset="captures/desanonymiser_3_resultat_sombre_1280x800.png" media="(prefers-color-scheme: dark)">
-        <img src="captures/desanonymiser_3_resultat_1280x800.png" width="1280" height="800" loading="lazy" alt="Écran de désanonymisation : la table de correspondance est ouverte et la réponse de l'IA, avec ses balises, est collée à droite.">
+        <source srcset="captures/dossier_4b_reponse_sombre_1280x800.png" media="(prefers-color-scheme: dark)">
+        <img src="captures/dossier_4b_reponse_1280x800.png" width="1280" height="800" loading="lazy" alt="Étape Réponse : à gauche la réponse de l'IA avec ses balises, à droite la même réponse avec les vraies valeurs surlignées, et une balise inconnue signalée.">
       </picture>
-      <figcaption>Désanonymisation : la table est ouverte, la réponse de l'IA est collée.</figcaption>
+      <figcaption>Réponse : les balises redeviennent les vraies valeurs.</figcaption>
     </figure>
   </div>
 </section>
@@ -138,16 +143,13 @@
       <div class="card">
         <h3>Données reconnues</h3>
         <ul class="tags">
-          <li>Noms et prénoms</li><li>Sociétés</li><li>Lieux</li><li>Adresses</li><li>Emails</li><li>Téléphones</li><li>IBAN</li><li>Numéros de sécurité sociale</li><li>SIRET et SIREN</li><li>RIDET</li><li>Cartes bancaires</li><li>Adresses IP</li><li>Liens</li><li>Dates de naissance</li><li>Plaques d'immatriculation</li><li>Matricules et identifiants</li>
+          <li>Noms et prénoms</li><li>Sociétés</li><li>Lieux</li><li>Adresses</li><li>Emails</li><li>Téléphones</li><li>IBAN</li><li>Numéros de sécurité sociale</li><li>SIRET et SIREN</li><li>RIDET</li><li>Cartes bancaires</li><li>Adresses IP</li><li>Liens</li><li>Dates de naissance</li><li>Plaques d'immatriculation</li><li>Matricules et identifiants</li><li>Données de santé</li><li>Opinions, religion, syndicat</li><li>Condamnations</li><li>Visages (édition complète)</li>
         </ul>
       </div>
       <div class="card">
-        <h3>Deux profils</h3>
-        <ul class="clean">
-          <li><strong>Standard</strong> : les identifiants directs (nom, email, téléphone, IBAN, etc.).</li>
-          <li><strong>Renforcé</strong> : le profil Standard, plus les informations indirectes qui peuvent désigner une personne par recoupement : dates, âges, fonctions, lieux, montants, matricules.</li>
-        </ul>
-        <p style="margin-top:12px">À la fin, un rapport de risque (Faible, Modéré, Élevé) vous conseille d'après ce qui reste visible.</p>
+        <h3>Indices et bilan</h3>
+        <p>Une date, un âge, une fonction, une petite commune : pris ensemble, ces indices peuvent suffire à reconnaître quelqu'un. L'outil les repère et estime, d'après les chiffres de population de l'Insee et de l'ISEE (France et Nouvelle-Calédonie), combien de personnes les partagent.</p>
+        <p style="margin-top:12px">Si ce groupe est trop petit, le bilan propose de rendre un indice moins précis : une commune devient un département, un âge une tranche de dix ans.</p>
       </div>
       <div class="card">
         <h3>Formats pris en charge</h3>
@@ -175,18 +177,20 @@
       <div class="card">
         <h3><svg class="i lg" aria-hidden="true"><use href="#i-shield-check"/></svg>Tout reste chez vous</h3>
         <ul class="clean">
-          <li>Vos documents ne quittent jamais votre ordinateur : l'application ne se connecte pas à Internet. L'IA de noms de l'édition complète est un modèle embarqué qui tourne localement.</li>
-          <li>La table de correspondance est chiffrée par votre mot de passe (Argon2id, AES-256-GCM). Il n'est pas récupérable : personne, Skazy Formation comprise, ne peut ouvrir la table sans lui.</li>
-          <li>Contrôle de fuite avant livraison : si une valeur validée subsiste dans le fichier produit, il n'est pas créé.</li>
-          <li>Vous pouvez choisir le mode irréversible : aucune table n'est enregistrée.</li>
+          <li>Vos documents ne quittent jamais votre ordinateur : l'application ne se connecte pas à Internet. L'IA de noms et le détecteur de visages de l'édition complète sont des modèles embarqués qui tournent localement.</li>
+          <li>La clé de restauration est chiffrée par votre mot de passe (Argon2id, AES-256-GCM) et rangée à part, dans <code>Documents\Anonymiseur\Clés</code>. Le mot de passe n'est pas récupérable : personne, Skazy Formation comprise, ne peut ouvrir la clé sans lui. Vous pouvez le confier au trousseau de votre système.</li>
+          <li>Vous choisissez combien de temps garder la clé ; passé ce délai, l'outil propose de la détruire.</li>
+          <li>Vérification finale : si une valeur masquée subsiste dans un fichier produit, il n'est pas créé.</li>
+          <li>Une fiche d'évaluation (Markdown ou PDF) garde la trace de ce qui a été fait, sans aucune valeur.</li>
         </ul>
         <p style="margin-top:12px"><a href="https://github.com/gharel/anonymiseur/blob/main/CONFIDENTIALITE.md">Lire le détail de la confidentialité</a></p>
       </div>
       <div class="card">
         <h3><svg class="i lg" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Ce que l'outil ne garantit pas</h3>
         <ul class="clean">
-          <li>Ce n'est pas une anonymisation au sens du RGPD. C'est une pseudonymisation réversible : avec la table et le mot de passe, tout se retrouve, et un document peut rester identifiable par recoupement.</li>
-          <li>Aucune détection n'est complète. Relisez toujours l'écran de validation : un nom rare ou une faute de frappe peuvent passer.</li>
+          <li>« Masquer pour l'IA » est une pseudonymisation : avec la clé et le mot de passe, tout se retrouve. Les fichiers produits restent des données personnelles.</li>
+          <li>Le bilan est une estimation selon l'approche simplifiée des lignes directrices 02/2026 du CEPD. La décision d'anonymat et sa justification restent celles du responsable de traitement.</li>
+          <li>Aucune détection n'est complète. Relisez toujours l'étape Vérifier : un nom rare ou une faute de frappe peuvent passer.</li>
           <li>La lecture des scans peut manquer du texte, surtout manuscrit : vérifiez à l'œil.</li>
           <li>Les balises protègent les données remplacées, pas le reste du contenu que vous envoyez à l'IA.</li>
           <li>L'application n'a pas encore été testée sur macOS, ni avec Microsoft Office lui-même.</li>
@@ -195,10 +199,10 @@
     </div>
     <figure class="shot" style="margin-top:32px">
       <picture>
-        <source srcset="captures/anonymiser_4_termine_sombre_1280x800.png" media="(prefers-color-scheme: dark)">
-        <img src="captures/anonymiser_4_termine_1280x800.png" width="1280" height="800" loading="lazy" alt="Écran de fin d'anonymisation : pour chaque fichier, le nombre de remplacements, le résultat du contrôle de fuite et le risque de ré-identification.">
+        <source srcset="captures/dossier_2_bilan_sombre_1280x800.png" media="(prefers-color-scheme: dark)">
+        <img src="captures/dossier_2_bilan_1280x800.png" width="1280" height="800" loading="lazy" alt="Étape Bilan : le verdict, les trois critères isolement, recoupement et déduction, puis chaque point à corriger avec sa correction et le bouton Appliquer.">
       </picture>
-      <figcaption>Pour chaque fichier : contrôle de fuite et rapport de risque.</figcaption>
+      <figcaption>Bilan avant envoi : les trois critères, et ce qu'il reste à corriger.</figcaption>
     </figure>
   </div>
 </section>
@@ -206,7 +210,7 @@
 <section class="alt" id="telechargement" aria-labelledby="t-dl">
   <div class="wrap">
     <h2 id="t-dl">Téléchargements</h2>
-    <p class="intro"><strong>Complète</strong> : règles, dictionnaires et IA de noms (modèles embarqués) ; <strong>Lite</strong> : règles et dictionnaires seulement, plus petite, sans IA de noms. Les liens pointent toujours vers la dernière version publiée.</p>
+    <p class="intro"><strong>Complète</strong> : règles, dictionnaires, IA de noms et détection des visages (modèles embarqués) ; <strong>Lite</strong> : règles et dictionnaires seulement, plus petite, sans IA de noms ni détection des visages. Les liens pointent toujours vers la dernière version publiée.</p>
 
     <div class="dl">
       <div class="card" data-os="windows">

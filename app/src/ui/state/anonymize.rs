@@ -703,6 +703,20 @@ impl AnonymizeState {
         Ok(name)
     }
 
+    /// Ajoute le texte masqué par le presse-papiers express comme document du
+    /// dossier, sous le nom `name` (gardé en mémoire seulement).
+    pub fn add_named_text(&mut self, name: &str, text: &str) -> Result<String, PasteError> {
+        if text.trim().is_empty() {
+            return Err(PasteError::Empty);
+        }
+        self.pasted.push(PastedText {
+            name: name.to_owned(),
+            text: text.to_owned(),
+        });
+        self.error = None;
+        Ok(name.to_owned())
+    }
+
     /// Documents du dossier : fichiers et textes collés.
     pub fn documents(&self) -> usize {
         self.files.len() + self.pasted.len()

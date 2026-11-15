@@ -4,7 +4,9 @@
 //! Sans egui : la liste, le filtre et la sélection se testent seuls.
 
 use super::anonymize::fold;
+use super::express;
 use super::workspace::{FolderFacts, Screen, Step, blocker};
+use crate::ui::hotkeys;
 use crate::ui::shortcuts::{self, Shortcut};
 use crate::ui::theme::ThemeChoice;
 use anon_core::{Goal, Recipient};
@@ -31,6 +33,10 @@ pub enum Action {
     NewSession,
     /// Bilan : appliquer toutes les corrections proposées.
     FixAll,
+    /// Presse-papiers express : masquer ou restaurer le texte copié.
+    Clipboard(express::Action),
+    /// Activer (`true`) ou désactiver les raccourcis globaux du presse-papiers.
+    GlobalHotkeys(bool),
 }
 
 /// Une ligne de la palette.
@@ -85,6 +91,10 @@ pub struct Context {
     pub can_redo: bool,
     /// Ce qui empêche « Tout corriger » ; `None` : des corrections sont proposées.
     pub fix_all: Option<&'static str>,
+    /// Raccourcis globaux du presse-papiers activés (préférence).
+    pub global_hotkeys: bool,
+    /// Une clé est ouverte : le presse-papiers peut être restauré.
+    pub key_open: bool,
 }
 
 const NOTHING_TO_UNDO: &str = "Aucune décision à annuler.";
@@ -93,6 +103,8 @@ const FIND_ONLY_IN_VERIFY: &str = "La recherche porte sur le tableau de l'étape
 const ALREADY_HOME: &str = "Vous êtes déjà à l'accueil.";
 /// Raison : le bilan ne propose aucune correction.
 pub const NOTHING_TO_FIX: &str = "Le bilan ne propose aucune correction.";
+/// Raison : aucune clé ouverte pour restaurer le presse-papiers.
+pub const NO_OPEN_KEY: &str = "Aucune clé ouverte : masquez d'abord un texte copié.";
 
 /// Toutes les actions, dans l'ordre d'affichage, avec leur état.
 pub fn entries(c: &Context) -> Vec<Entry> {
@@ -269,6 +281,31 @@ pub fn entries(c: &Context) -> Vec<Entry> {
         )
         .blocked(busy),
     );
+    for a in express::Action::ALL {
+        let mut e = Entry::new(
+            Action::Clipboard(a),
+            a.label(),
+            "presse-papiers express texte copié coller global",
+        );
+        if c.global_hotkeys {
+            e.shortcut = Some(hotkeys::shortcut(a).label());
+        }
+        let why = match a {
+            express::Action::Mask => busy,
+            express::Action::Restore => (!c.key_open).then_some(NO_OPEN_KEY),
+        };
+        v.push(e.blocked(why));
+    }
+    let toggle = if c.global_hotkeys {
+        "Désactiver les raccourcis globaux du presse-papiers"
+    } else {
+        "Activer les raccourcis globaux du presse-papiers"
+    };
+    v.push(Entry::new(
+        Action::GlobalHotkeys(!c.global_hotkeys),
+        toggle,
+        "raccourcis globaux presse-papiers clavier réglage préférence ctrl alt",
+    ));
     v
 }
 
@@ -380,6 +417,8 @@ mod tests {
             can_undo: true,
             can_redo: false,
             fix_all: Some(NOTHING_TO_FIX),
+            global_hotkeys: true,
+            key_open: false,
         }
     }
 
@@ -441,6 +480,9 @@ mod tests {
             Action::Shortcuts,
             Action::NewSession,
             Action::FixAll,
+            Action::Clipboard(express::Action::Mask),
+            Action::Clipboard(express::Action::Restore),
+            Action::GlobalHotkeys(false),
         ] {
             assert!(find(a).is_some(), "{a:?} absente");
         }
@@ -453,6 +495,45 @@ mod tests {
             Some(shortcuts::STEPS[2].label())
         );
         assert!(list.iter().all(|e| !e.label.contains("anonyme")));
+        assert_eq!(
+            find(Action::Clipboard(express::Action::Mask)).and_then(|e| e.shortcut.clone()),
+            Some(hotkeys::MASK.label())
+        );
+    }
+
+    #[test]
+    fn clipboard_actions_and_global_hotkeys_setting() {
+        let mut c = ctx();
+        let list = entries(&c);
+        let get = |l: &[Entry], a: Action| l.iter().find(|e| e.action == a).cloned();
+        assert_eq!(
+            labels(&list, "presse papiers masquer")[0],
+            "Masquer le presse-papiers"
+        );
+        assert_eq!(
+            get(&list, Action::Clipboard(express::Action::Restore)).and_then(|e| e.blocker),
+            Some(NO_OPEN_KEY)
+        );
+        assert!(
+            get(&list, Action::GlobalHotkeys(false))
+                .is_some_and(|e| e.label.starts_with("Désactiver") && e.enabled())
+        );
+        // Désactivés : l'action reste, sans raccourci affiché ; on peut les réactiver.
+        c.global_hotkeys = false;
+        c.key_open = true;
+        let list = entries(&c);
+        let mask = get(&list, Action::Clipboard(express::Action::Mask));
+        assert!(mask.is_some_and(|e| e.shortcut.is_none() && e.enabled()));
+        assert!(
+            get(&list, Action::Clipboard(express::Action::Restore)).is_some_and(|e| e.enabled())
+        );
+        assert!(
+            get(&list, Action::GlobalHotkeys(true)).is_some_and(|e| e.label.starts_with("Activer"))
+        );
+        assert_eq!(
+            labels(&list, "raccourcis globaux")[0],
+            "Activer les raccourcis globaux du presse-papiers"
+        );
     }
 
     #[test]

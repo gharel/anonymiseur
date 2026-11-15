@@ -49,6 +49,7 @@ Le fichier est versionné dans `assets/faces/` avec ses empreintes (`SHA256SUMS`
 | Composant | Licence | Source |
 |---|---|---|
 | egui, eframe | MIT ou Apache-2.0 | https://github.com/emilk/egui |
+| global-hotkey (raccourcis globaux du presse-papiers express) | MIT ou Apache-2.0 | https://github.com/tauri-apps/global-hotkey |
 | Polices par défaut d'egui (repli pour les glyphes absents de Georama) | licences de polices libres admises par `deny.toml` (OFL-1.1, Ubuntu-font-1.0) | https://github.com/emilk/egui |
 | Lucide 0.460.0 (icônes) | ISC, texte dans `assets/charte/icons/LICENSE` | https://lucide.dev |
 | Georama (police de la charte, graisses 400 à 800), © 2020 The Georama Project Authors | SIL Open Font License 1.1, texte dans `licences/OFL-1.1-Georama.txt` | https://github.com/productiontype/Georama |

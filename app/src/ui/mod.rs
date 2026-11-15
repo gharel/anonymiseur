@@ -8,10 +8,14 @@
 //! - `app` : fenêtre, en-tête, barres du dossier, pied ;
 //! - `runner` : fil de travail (traitements longs, avancement, annulation) ;
 //! - `service` : opérations sur les fichiers, sans egui ;
-//! - `prefs` : préférences retenues d'une session à l'autre.
+//! - `prefs` : préférences retenues d'une session à l'autre ;
+//! - `clipboard`, `hotkeys` : presse-papiers et raccourcis globaux du système
+//!   (presse-papiers express), derrière des traits simulés dans les tests.
 
 pub mod app;
+pub mod clipboard;
 pub mod gallery;
+pub mod hotkeys;
 pub mod platform;
 pub mod prefs;
 pub mod runner;

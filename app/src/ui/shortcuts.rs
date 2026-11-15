@@ -172,6 +172,14 @@ pub fn help_rows() -> Vec<(String, &'static str)> {
             "Maj+← →".to_owned(),
             "Étendre la sélection d'un mot, pour la masquer partout",
         ),
+        (
+            super::hotkeys::MASK.label(),
+            "Masquer le texte copié, depuis n'importe quelle application",
+        ),
+        (
+            super::hotkeys::RESTORE.label(),
+            "Restaurer le texte copié, depuis n'importe quelle application",
+        ),
         (HELP.label(), "Afficher ces raccourcis"),
     ]
 }
@@ -257,7 +265,7 @@ mod tests {
     #[test]
     fn help_lists_every_shortcut() {
         let rows = help_rows();
-        assert_eq!(rows.len(), 14);
+        assert_eq!(rows.len(), 16);
         assert!(rows.iter().all(|(k, a)| !k.is_empty() && !a.is_empty()));
         assert!(
             rows.iter().all(|(k, _)| !k.contains('?')),
@@ -268,6 +276,13 @@ mod tests {
                 rows.iter().any(|(k, _)| k.contains(&s.label())),
                 "{} absent du panneau",
                 s.label()
+            );
+        }
+        for g in super::super::hotkeys::ALL {
+            assert!(
+                rows.iter().any(|(k, _)| *k == g.label()),
+                "{} absent du panneau",
+                g.label()
             );
         }
     }

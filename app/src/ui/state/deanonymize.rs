@@ -218,6 +218,25 @@ impl DeanonymizeState {
         self.destroy_confirm = false;
     }
 
+    /// Remplace la session de la clé ouverte par une session qui la prolonge
+    /// (presse-papiers express : valeurs du texte copié ajoutées). Le nom, le
+    /// fichier et la réponse collée restent ; la réponse est à restaurer de
+    /// nouveau par l'appelant. Faux si aucune clé n'est ouverte.
+    pub fn replace_session(&mut self, session: Session) -> bool {
+        match &mut self.map {
+            MapStatus::Unlocked {
+                entries,
+                session: s,
+                ..
+            } => {
+                *entries = session.entities.len();
+                *s = session;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Prépare l'ouverture : renvoie le chemin et le mot de passe, efface ce dernier de l'écran.
     pub fn begin_unlock(&mut self) -> Result<(PathBuf, String), UnlockError> {
         let r = match &self.map {

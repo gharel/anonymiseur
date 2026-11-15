@@ -14,7 +14,7 @@ const WIDTH: f32 = 400.0;
 const GAP: f32 = 8.0;
 
 /// Couleur de barre, d'icône et pictogramme d'un type de notification.
-fn style(kind: ToastKind) -> (egui::Color32, egui::Color32, Icon) {
+pub fn style(kind: ToastKind) -> (egui::Color32, egui::Color32, Icon) {
     let p = palette();
     match kind {
         ToastKind::Success => (p.success, p.accent, Icon::CircleCheck),

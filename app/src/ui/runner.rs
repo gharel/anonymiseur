@@ -1,6 +1,7 @@
 //! Fil de travail : les traitements longs (chargement du moteur, analyse,
 //! évaluation et corrections du bilan, anonymisation, ouverture et scellement
-//! de la clé, restauration) tournent hors du fil de l'interface. Résultats
+//! de la clé, restauration, analyse du texte copié) tournent hors du fil de
+//! l'interface. Résultats
 //! par canal, avancement et annulation par un état partagé.
 
 use crate::moteur::IaStatus;
@@ -179,6 +180,8 @@ pub enum Msg {
     /// Table existante reprise à l'étape Protéger (mot de passe gardé pour resceller).
     ExistingOpened(Result<Session, VaultError>),
     Restored(Vec<RestoreOutcome>),
+    /// Presse-papiers express : texte copié analysé, décisions reprises.
+    ExpressPrepared(Box<crate::ui::state::express::Prepared>),
 }
 
 impl std::fmt::Debug for Msg {
@@ -192,6 +195,7 @@ impl std::fmt::Debug for Msg {
             Msg::MapOpened { .. } => "MapOpened",
             Msg::ExistingOpened(_) => "ExistingOpened",
             Msg::Restored(_) => "Restored",
+            Msg::ExpressPrepared(_) => "ExpressPrepared",
         };
         f.write_str(name)
     }

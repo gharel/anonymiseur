@@ -8,11 +8,13 @@
 //! - `bilan` : bilan avant envoi : évaluation des trois critères en phrases,
 //!   corrections, contexte du destinataire, champs de la fiche ;
 //! - `deanonymize` : clé de restauration et réponse de l'IA ;
+//! - `express` : presse-papiers express (masquer, restaurer le texte copié) ;
 //! - `palette` : palette de commandes.
 
 pub mod anonymize;
 pub mod bilan;
 pub mod deanonymize;
+pub mod express;
 pub mod files;
 pub mod generalize;
 pub mod history;

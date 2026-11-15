@@ -1,10 +1,11 @@
 //! Rendu des écrans : accueil, puis les quatre étapes du dossier de travail
-//! (Vérifier, Bilan, Envoyer, Réponse) et la palette de commandes. L'état vit
-//! dans `ui::state` ; les effets de bord sont renvoyés à `AnonApp` sous forme
-//! d'`Effect`.
+//! (Vérifier, Bilan, Envoyer, Réponse), la palette de commandes et les
+//! fenêtres du presse-papiers express. L'état vit dans `ui::state` ; les effets
+//! de bord sont renvoyés à `AnonApp` sous forme d'`Effect`.
 
 pub mod bilan;
 pub mod document;
+pub mod express;
 pub mod home;
 pub mod images;
 pub mod palette;

@@ -8,19 +8,28 @@
 //! Mise à jour : `UPDATE_SNAPSHOTS=force cargo test -p anonymiseur --test snapshots`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use anon_core::{EntityKind, Goal, PixelRect};
+use anon_core::{EntityKind, Goal, PixelRect, Session};
 use anon_engine::{Engine, NoProgress};
 use anonymiseur::moteur::IaStatus;
+use anonymiseur::ui::clipboard::MemoryClipboard;
 use anonymiseur::ui::gallery::{self, GalleryState};
+use anonymiseur::ui::hotkeys::{self, ScriptedHotkeys};
 use anonymiseur::ui::platform::{NullPlatform, file_entry};
+use anonymiseur::ui::screens::express as express_screen;
 use anonymiseur::ui::service::{
     Outcome, anonymize_batch, assess_folder, file_name, fix_all_folder, read_documents,
 };
-use anonymiseur::ui::state::anonymize::Busy;
+use anonymiseur::ui::state::anonymize::{AnonymizeState, Busy};
 use anonymiseur::ui::state::deanonymize::MapStatus;
+use anonymiseur::ui::state::express::{
+    self, Action, ExpressReview, KnownDecisions, MaskRequest, Notice,
+};
 use anonymiseur::ui::state::review::{Occurrence, VerifyMode};
+use anonymiseur::ui::state::toasts::ToastKind;
 use anonymiseur::ui::state::workspace::{Screen, Step};
 use anonymiseur::ui::theme::ThemeChoice;
+use anonymiseur::ui::widgets::field::{Mark, mark_style};
+use anonymiseur::ui::widgets::toast;
 use anonymiseur::ui::{AnonApp, theme};
 use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::{Harness, SnapshotResults};
@@ -2608,4 +2617,462 @@ fn controles_alignes_bilan_envoi_reponse() {
     );
     assert_eq!(row[0].1.height(), CONTROL_SM);
     assert_aligned("Réponse, exports", &row);
+}
+
+// --- Presse-papiers express -------------------------------------------------
+
+/// Texte copié des instantanés : des valeurs sûres et « Léo » (liste
+/// « toujours masquer », valeur courte), à décider.
+const COPIE: &str = "Bonjour,\n\
+    Jean Dupont confirme le rendez-vous avec Léo, joignable au 06 12 34 56 78.\n\
+    Écrire à claire.martin@example.com pour la suite.\n\
+    Léo passera au bureau de Nautilus Pacifique SARL jeudi.";
+
+/// Vérification du texte [`COPIE`], avec une session neuve.
+fn express_review() -> ExpressReview {
+    let (engine, _) = engine();
+    let mut st = AnonymizeState::default();
+    st.always = vec![("Léo".into(), EntityKind::Personne)];
+    let prepared = express::prepare(
+        &engine,
+        MaskRequest {
+            text: COPIE.into(),
+            base: Session::new(),
+            options: st.analyze_options(),
+            known: KnownDecisions::default(),
+        },
+    );
+    ExpressReview::new(prepared)
+}
+
+/// Fenêtre du presse-papiers rendue seule, à sa taille (plus la marge de 8 px
+/// du banc d'essai), au thème choisi.
+fn express_window<S: 'static>(
+    size: [f32; 2],
+    choice: ThemeChoice,
+    state: S,
+    mut add: impl FnMut(&mut egui::Ui, &mut S) + 'static,
+) -> Harness<'static, (bool, S)> {
+    let mut h = Harness::builder()
+        .with_size([size[0] + 16.0, size[1] + 16.0])
+        .with_pixels_per_point(1.0)
+        .build_ui_state(
+            move |ui, (ready, st): &mut (bool, S)| {
+                if !*ready {
+                    theme::install(ui.ctx(), choice);
+                    *ready = true;
+                    ui.ctx().request_repaint();
+                    return;
+                }
+                theme::sync(ui);
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(size[0], size[1]), egui::Sense::hover());
+                ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| add(ui, st));
+            },
+            (false, state),
+        );
+    h.run();
+    h
+}
+
+fn notice_window(
+    choice: ThemeChoice,
+    kind: ToastKind,
+    text: &str,
+) -> Harness<'static, (bool, Notice)> {
+    let notice = Notice {
+        kind,
+        text: text.into(),
+        since: 0.0,
+    };
+    express_window(express_screen::NOTICE_SIZE, choice, notice, |ui, n| {
+        express_screen::notification(ui, n);
+    })
+}
+
+fn review_window(choice: ThemeChoice) -> Harness<'static, (bool, ExpressReview)> {
+    express_window(
+        express_screen::REVIEW_SIZE,
+        choice,
+        express_review(),
+        |ui, r| {
+            let _ = express_screen::review(ui, r);
+        },
+    )
+}
+
+#[test]
+fn presse_papiers_notification_et_verification() {
+    let _rendu = rendu();
+    let mut results = SnapshotResults::new();
+    for (choice, suffix) in [(ThemeChoice::Light, ""), (ThemeChoice::Dark, "_sombre")] {
+        let mut h = notice_window(choice, ToastKind::Success, &express::masked_notice(12));
+        shot(&mut h, format!("presse_papiers_notification{suffix}"));
+        results.extend_harness(&mut h);
+        let mut h = notice_window(
+            choice,
+            ToastKind::Warning,
+            &express::restored_notice(9, &["[PERSONNE_9]".to_owned()]),
+        );
+        shot(
+            &mut h,
+            format!("presse_papiers_notification_inconnue{suffix}"),
+        );
+        results.extend_harness(&mut h);
+        let mut h = review_window(choice);
+        shot(&mut h, format!("presse_papiers_verification{suffix}"));
+        results.extend_harness(&mut h);
+    }
+    results.unwrap();
+}
+
+#[test]
+fn presse_papiers_hauteur_des_controles_et_contraste() {
+    let _rendu = rendu();
+    use anonymiseur::ui::theme::{AA_LARGE, AA_TEXT, CONTROL_SM, contrast, palette, set_dark};
+    let h = review_window(ThemeChoice::Light);
+    for b in [
+        "Masquer",
+        "Garder",
+        "Suivante",
+        "Précédente",
+        "Annuler",
+        express_screen::REPLACE,
+    ] {
+        assert_eq!(h.get_by_label(b).rect().height(), CONTROL_SM, "{b}");
+    }
+    let row: Vec<(String, egui::Rect)> = ["Annuler", express_screen::REPLACE]
+        .iter()
+        .map(|l| ((*l).to_owned(), h.get_by_label(l).rect()))
+        .collect();
+    assert_aligned("Vérification du presse-papiers", &row);
+    // Texte et surlignages lisibles en clair et en sombre.
+    for dark in [false, true] {
+        set_dark(dark);
+        let p = palette();
+        for (name, fg, bg) in [
+            ("texte de la notification", p.text, p.surface),
+            ("en-tête de la notification", p.text_secondary, p.surface),
+            ("texte copié", p.text, p.surface),
+            ("résumé de la vérification", p.text_secondary, p.page),
+            ("barre d'actions", p.text_secondary, p.surface),
+        ] {
+            assert!(contrast(fg, bg) >= AA_TEXT, "{name} (sombre : {dark})");
+        }
+        for mark in [Mark::Masked, Mark::Pending, Mark::Current] {
+            let (fill, ink, line) = mark_style(mark);
+            assert!(contrast(ink, fill) >= AA_TEXT, "{mark:?} (sombre : {dark})");
+            assert!(line.width > 0.0);
+        }
+        for kind in [
+            ToastKind::Success,
+            ToastKind::Info,
+            ToastKind::Warning,
+            ToastKind::Error,
+        ] {
+            let (_, ink, _) = toast::style(kind);
+            assert!(
+                contrast(ink, p.surface) >= AA_LARGE,
+                "{kind:?} (sombre : {dark})"
+            );
+        }
+    }
+    set_dark(false);
+}
+
+/// Application dont le presse-papiers et les raccourcis sont simulés.
+fn express_app(
+    width: f32,
+    height: f32,
+    setup: impl FnOnce(&mut AnonApp) + 'static,
+) -> (Harness<'static, AnonApp>, MemoryClipboard, ScriptedHotkeys) {
+    let clip = MemoryClipboard::default();
+    let keys = ScriptedHotkeys::default();
+    let (c, k) = (clip.clone(), keys.clone());
+    let h = app(width, height, move |app| {
+        setup(app);
+        app.set_express_system(Box::new(c), Box::new(k));
+    });
+    (h, clip, keys)
+}
+
+/// Aucun toast ni notification ne contient de texte copié.
+fn assert_no_content(h: &Harness<'_, AnonApp>, words: &[&str]) {
+    let app = h.state();
+    let notice = app.express.notice.as_ref().map(|n| n.text.clone());
+    for t in app
+        .toasts
+        .texts()
+        .into_iter()
+        .map(str::to_owned)
+        .chain(notice)
+    {
+        for w in words {
+            assert!(!t.contains(w), "« {w} » dans « {t} »");
+        }
+    }
+}
+
+#[test]
+fn presse_papiers_express_au_clavier() {
+    let _rendu = rendu();
+    let (mut h, clip, keys) = express_app(1280.0, 800.0, |app| {
+        app.anonymize.always = vec![("Léo".into(), EntityKind::Personne)];
+    });
+    h.run();
+    assert!(keys.is_enabled(), "raccourcis enregistrés au démarrage");
+    let text = "Jean Dupont confirme le rendez-vous avec Léo.\nÉcrire à claire.martin@example.com.";
+    let words = ["Dupont", "claire", "example.com", "Léo", "rendez-vous"];
+    clip.set_text(text);
+    keys.press(Action::Mask);
+    h.run();
+    // Une valeur à décider : vérification ouverte, presse-papiers inchangé.
+    assert!(h.state().express.review.is_some());
+    assert_eq!(clip.text().as_deref(), Some(text));
+    assert!(clip.writes().is_empty());
+    h.get_by_label(express_screen::REPLACE);
+    // Ctrl+Alt+M de nouveau : la même vérification revient au premier plan.
+    keys.press(Action::Mask);
+    h.run();
+    assert!(h.state().express.with_review(|r| r.current.is_some()) == Some(true));
+    // J, K parcourent la file ; G garde chaque valeur à décider.
+    let first = h.state().express.with_review(|r| r.current).flatten();
+    h.key_press(egui::Key::J);
+    h.run();
+    h.key_press(egui::Key::K);
+    h.run();
+    let back = h.state().express.with_review(|r| r.current).flatten();
+    let len = h
+        .state()
+        .express
+        .with_review(|r| r.queue().len())
+        .unwrap_or(0);
+    if len == 1 {
+        assert_eq!(back, first);
+    }
+    for _ in 0..len {
+        h.key_press(egui::Key::G);
+        h.run();
+    }
+    assert_eq!(
+        h.state()
+            .express
+            .with_review(|r| r.prepared.pending_count()),
+        Some(0)
+    );
+    // Entrée : le presse-papiers est remplacé par le texte masqué.
+    h.key_press(egui::Key::Enter);
+    h.run();
+    assert!(h.state().express.review.is_none());
+    let masked = clip.text().unwrap();
+    assert!(masked.contains("Léo"), "gardée visible");
+    assert!(!masked.contains("Jean Dupont") && !masked.contains("claire.martin@example.com"));
+    assert_eq!(clip.writes().last().map(|w| w.1), Some(false));
+    let notice = h.state().express.notice.clone().unwrap();
+    assert!(
+        notice.text.ends_with("masquées, presse-papiers prêt"),
+        "{}",
+        notice.text
+    );
+    assert_no_content(&h, &words);
+    // Sans dossier : clé « Presse-papiers » ouverte et document du dossier.
+    {
+        let app = h.state();
+        assert_eq!(app.deanonymize.key_name(), Some(express::KEY_NAME));
+        assert!(
+            app.anonymize
+                .document_names()
+                .contains(&express::DOCUMENT_NAME.to_owned())
+        );
+        assert_eq!(app.workspace.screen, Screen::Folder);
+        assert!(app.anonymize.analysis.is_some(), "document analysé");
+    }
+    // Restaurer : la réponse de l'IA copiée, avec une balise inventée.
+    let answer = format!("{masked}\n[PERSONNE_99] est inventée.");
+    clip.set_text(&answer);
+    keys.press(Action::Restore);
+    h.run();
+    let restored = clip.text().unwrap();
+    assert!(restored.starts_with(text), "texte d'origine rendu");
+    assert!(
+        restored.ends_with("[PERSONNE_99] est inventée."),
+        "balise inconnue laissée"
+    );
+    assert_eq!(
+        clip.writes().last().map(|w| w.1),
+        Some(true),
+        "vraies valeurs : sensibles"
+    );
+    let notice = h.state().express.notice.clone().unwrap();
+    assert_eq!(notice.kind, ToastKind::Warning);
+    assert!(
+        notice.text.ends_with("· 1 inconnue : [PERSONNE_99]"),
+        "{}",
+        notice.text
+    );
+    assert_no_content(&h, &words);
+    // Échap : vérification annulée, presse-papiers inchangé.
+    h.state_mut().workspace.enter(Step::Response);
+    clip.set_text("Léo rappellera.");
+    keys.press(Action::Mask);
+    h.run();
+    assert!(h.state().express.review.is_some());
+    let writes = clip.writes().len();
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(h.state().express.review.is_none());
+    assert_eq!(clip.writes().len(), writes);
+    assert_eq!(clip.text().as_deref(), Some("Léo rappellera."));
+    assert_eq!(
+        h.state().express.notice.as_ref().map(|n| n.text.as_str()),
+        Some(express::CANCELLED)
+    );
+}
+
+#[test]
+fn presse_papiers_avec_la_cle_du_dossier() {
+    let _rendu = rendu();
+    let (mut h, clip, keys) = express_app(1280.0, 800.0, |app| {
+        anonymize_these(app, out_dir("express-dossier"), &["notes.txt"]);
+        app.workspace.enter(Step::Response);
+    });
+    h.run();
+    let key = h.state().deanonymize.session().cloned().unwrap();
+    let dupont = key
+        .entities
+        .iter()
+        .find(|e| e.value == "Jean Dupont" || e.variants.iter().any(|v| v == "Jean Dupont"))
+        .map(|e| e.tag.to_string())
+        .unwrap();
+    clip.set_text("Merci à Jean Dupont pour son retour.");
+    keys.press(Action::Mask);
+    h.run();
+    assert!(h.state().express.review.is_none(), "rien à décider");
+    assert_eq!(
+        clip.text().as_deref(),
+        Some(format!("Merci à {dupont} pour son retour.").as_str()),
+        "même balise que dans les fichiers du dossier"
+    );
+    assert_eq!(
+        h.state().express.notice.as_ref().map(|n| n.text.clone()),
+        Some(express::masked_notice(1))
+    );
+    // La clé reste celle du dossier (aucune valeur nouvelle), sous son nom.
+    let after = h.state().deanonymize.session().cloned().unwrap();
+    assert_eq!(after.entities, key.entities);
+    assert_eq!(h.state().deanonymize.key_name(), Some(KEY_NAME));
+    // Restauration avec la clé du dossier.
+    clip.set_text(&format!("{dupont} a validé."));
+    keys.press(Action::Restore);
+    h.run();
+    assert!(clip.text().unwrap().ends_with(" a validé."));
+    assert!(!clip.text().unwrap().contains(&dupont));
+    assert_eq!(
+        h.state().express.notice.as_ref().map(|n| n.text.clone()),
+        Some(express::restored_notice(1, &[]))
+    );
+}
+
+#[test]
+fn presse_papiers_vide_raccourci_pris_et_preference() {
+    let _rendu = rendu();
+    // Restaurer est déjà pris par une autre application.
+    let (mut h, clip, keys) = express_app(1280.0, 800.0, |_| {});
+    keys.take(Action::Restore);
+    h.state_mut()
+        .set_express_system(Box::new(clip.clone()), Box::new(keys.clone()));
+    h.run();
+    let taken = format!(
+        "Raccourci {} déjà utilisé par une autre application",
+        hotkeys::RESTORE.label()
+    );
+    let count = |h: &Harness<'_, AnonApp>| {
+        h.state()
+            .toasts
+            .texts()
+            .iter()
+            .filter(|t| t.starts_with(&taken))
+            .count()
+    };
+    assert_eq!(count(&h), 1, "signalé");
+    // Une seconde fois (enregistrement refait) : pas de second toast.
+    h.state_mut().toasts = Default::default();
+    h.state_mut()
+        .set_express_system(Box::new(clip.clone()), Box::new(keys.clone()));
+    h.run();
+    assert_eq!(count(&h), 0, "signalé une seule fois");
+    // Presse-papiers vide ou sans texte.
+    clip.set_empty();
+    keys.press(Action::Mask);
+    h.run();
+    assert_eq!(
+        h.state().express.notice.as_ref().map(|n| n.text.as_str()),
+        Some(express::EMPTY)
+    );
+    assert!(clip.writes().is_empty());
+    // Restaurer sans clé : impossible, dit pourquoi ; l'action reste dans la palette.
+    clip.set_text("[PERSONNE_1] a validé.");
+    h.state_mut().express_run(Action::Restore);
+    assert!(
+        h.state()
+            .express
+            .notice
+            .as_ref()
+            .is_some_and(|n| n.text.starts_with("Aucune clé ouverte"))
+    );
+    assert!(clip.writes().is_empty());
+    let entries = h.state().palette_entries();
+    let restore = entries
+        .iter()
+        .find(|e| e.label == "Restaurer le presse-papiers")
+        .unwrap();
+    assert!(restore.blocker.is_some());
+    // Préférence désactivée depuis la palette : retenue, raccourcis retirés.
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::K);
+    h.run();
+    h.event(egui::Event::Text("desactiver raccourcis globaux".into()));
+    h.run();
+    h.key_press(egui::Key::Enter);
+    h.run();
+    assert!(!h.state().prefs.clipboard_hotkeys);
+    assert!(!keys.is_enabled());
+    clip.set_text("Écrire à claire.martin@example.com.");
+    keys.press(Action::Mask);
+    h.run();
+    assert!(
+        clip.writes().is_empty(),
+        "raccourci retiré : rien ne se passe"
+    );
+    // L'action reste dans la palette, sans raccourci affiché.
+    let entries = h.state().palette_entries();
+    let mask = entries
+        .iter()
+        .find(|e| e.label == "Masquer le presse-papiers")
+        .unwrap();
+    assert!(mask.shortcut.is_none() && mask.enabled());
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::K);
+    h.run();
+    h.event(egui::Event::Text("masquer le presse-papiers".into()));
+    h.run();
+    h.key_press(egui::Key::Enter);
+    h.run();
+    let masked = clip.text().unwrap();
+    assert!(
+        masked.contains("[EMAIL_") && !masked.contains("example.com"),
+        "masqué"
+    );
+    // Système qui refuse l'écriture : notification d'erreur, presse-papiers inchangé.
+    clip.refuse_writes(true);
+    clip.set_text("Écrire à paul.durand@example.com.");
+    h.state_mut().express_run(Action::Mask);
+    h.run();
+    assert_eq!(
+        h.state().express.notice.as_ref().map(|n| n.text.as_str()),
+        Some(express::WRITE_FAILED)
+    );
+    assert_eq!(
+        clip.text().as_deref(),
+        Some("Écrire à paul.durand@example.com.")
+    );
+    assert_no_content(&h, &["claire", "paul", "durand", "example.com"]);
 }

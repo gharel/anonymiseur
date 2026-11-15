@@ -1,5 +1,5 @@
 //! Préférences retenues d'une session à l'autre : thème, destinataire choisi,
-//! taille de la fenêtre.
+//! taille de la fenêtre, raccourcis globaux du presse-papiers.
 //!
 //! Petit fichier JSON dans le dossier de configuration du système
 //! (`%APPDATA%\Anonymiseur\preferences.json` sous Windows). Il ne contient
@@ -24,7 +24,7 @@ const FILE_NAME: &str = "preferences.json";
 pub const WINDOW_MIN: [f32; 2] = [900.0, 650.0];
 const WINDOW_MAX: f32 = 8192.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Preferences {
     pub theme: ThemeChoice,
@@ -32,6 +32,20 @@ pub struct Preferences {
     pub recipient: Recipient,
     /// Taille intérieure de la fenêtre, en points.
     pub window: Option<[f32; 2]>,
+    /// Raccourcis globaux du presse-papiers (Ctrl+Alt+M, Ctrl+Alt+R) : activés
+    /// par défaut, désactivables dans la palette de commandes.
+    pub clipboard_hotkeys: bool,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            theme: ThemeChoice::default(),
+            recipient: Recipient::default(),
+            window: None,
+            clipboard_hotkeys: true,
+        }
+    }
 }
 
 impl Preferences {
@@ -96,6 +110,7 @@ mod tests {
             theme: ThemeChoice::Dark,
             recipient: Recipient::Publication,
             window: Some([1400.0, 900.0]),
+            clipboard_hotkeys: false,
         };
         assert!(p.save(&path));
         assert_eq!(Preferences::load(&path), p);
@@ -118,6 +133,7 @@ mod tests {
         let p = Preferences::load(&path);
         assert_eq!(p.theme, ThemeChoice::Light);
         assert_eq!(p.recipient, Recipient::PublicAi);
+        assert!(p.clipboard_hotkeys, "absent : activés par défaut");
         if let Some(d) = path.parent().and_then(Path::parent) {
             let _ = std::fs::remove_dir_all(d);
         }
@@ -149,7 +165,7 @@ mod tests {
             ..Default::default()
         };
         let json = serde_json::to_string(&p).unwrap_or_default();
-        let keys: Vec<&str> = ["theme", "recipient", "window"].to_vec();
+        let keys: Vec<&str> = ["theme", "recipient", "window", "clipboard_hotkeys"].to_vec();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
         let found: Vec<String> = value
             .as_object()

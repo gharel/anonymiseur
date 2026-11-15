@@ -4,6 +4,10 @@
 //! dépôt, palette de commandes et panneau des raccourcis. Relie l'état au
 //! moteur : les traitements longs passent par le fil de travail.
 
+mod express;
+
+use super::clipboard::{Clipboard, MemoryClipboard, SystemClipboard};
+use super::hotkeys::{GlobalHotkeys, Hotkeys, NoHotkeys};
 use super::platform::{Platform, SaveRequest, file_entry};
 use super::prefs::{self, Preferences};
 use super::runner::{Msg, Runner, Shared};
@@ -17,6 +21,7 @@ use super::state::anonymize::{AddReport, AnalyzeJob, AnonymizeState, Busy, Prote
 use super::state::bilan;
 use super::state::deanonymize::{DeanonymizeState, MapStatus, is_map};
 use super::state::drop_hint;
+use super::state::express::ExpressState;
 use super::state::files::FileEntry;
 use super::state::palette::{self as pal, PaletteState};
 use super::state::toasts::{ToastKind, Toasts, count_label};
@@ -195,6 +200,28 @@ pub struct AnonApp {
     /// laquelle il n'est pas disponible.
     keychain: Result<Arc<dyn SecretStore + Send + Sync>, String>,
     platform: Box<dyn Platform>,
+    /// Presse-papiers express : analyse en cours, vérification, notification.
+    pub express: ExpressState,
+    /// Presse-papiers du système (en mémoire en test).
+    clipboard: Box<dyn Clipboard>,
+    /// Raccourcis globaux du presse-papiers (aucun en test).
+    hotkeys: Box<dyn Hotkeys>,
+    /// Analyse du texte copié, hors du fil de l'interface.
+    express_runner: Runner,
+    /// Horloge des notifications du presse-papiers : celle d'egui s'arrête
+    /// quand la fenêtre est cachée.
+    started: std::time::Instant,
+    /// Horloge imposée (secondes) : tests.
+    pub fixed_clock: Option<f64>,
+    /// Fenêtres du presse-papiers montrées à la dernière image.
+    express_shown: bool,
+    /// Images restantes pour donner le focus à la vérification.
+    express_focus: u32,
+    /// Taille de l'écran de la fenêtre, en points (dernière connue).
+    monitor: Option<egui::Vec2>,
+    /// Fenêtre du presse-papiers ouverte récemment : à montrer dès sa création
+    /// (horloge de `clock`).
+    express_reveal_until: f64,
 }
 
 impl std::fmt::Debug for AnonApp {
@@ -226,6 +253,13 @@ impl AnonApp {
         let mut app = Self::assemble(runner, platform, None, None, loaded, path);
         app.live = Runner::new(Some(ctx.clone()));
         app.keychain = keychain;
+        app.express_runner = Runner::new(Some(ctx.clone()));
+        // Raccourcis enregistrés ici, sur le fil principal, la boucle
+        // d'événements de winit lancée.
+        app.set_express_system(
+            Box::new(SystemClipboard::default()),
+            Box::new(GlobalHotkeys::new(ctx.clone())),
+        );
         app
     }
 
@@ -292,6 +326,17 @@ impl AnonApp {
             // Tests et instantanés : jamais le trousseau de l'utilisateur.
             keychain: Ok(Arc::new(MemoryStore::new())),
             platform,
+            express: ExpressState::default(),
+            // Ni le presse-papiers ni les raccourcis de l'utilisateur.
+            clipboard: Box::new(MemoryClipboard::default()),
+            hotkeys: Box::new(NoHotkeys),
+            express_runner: Runner::synchronous(),
+            started: std::time::Instant::now(),
+            fixed_clock: None,
+            express_shown: false,
+            express_focus: 0,
+            monitor: None,
+            express_reveal_until: 0.0,
         }
     }
 
@@ -353,6 +398,8 @@ impl AnonApp {
             can_undo: self.anonymize.can_undo(),
             can_redo: self.anonymize.can_redo(),
             fix_all: self.fix_all_blocker(),
+            global_hotkeys: self.prefs.clipboard_hotkeys,
+            key_open: self.deanonymize.is_unlocked(),
         }
     }
 
@@ -750,6 +797,7 @@ impl AnonApp {
                     }
                 }
                 Msg::Restored(results) => self.deanonymize.restore_files_done(results),
+                Msg::ExpressPrepared(p) => self.express_prepared(*p),
             }
         }
     }
@@ -2160,6 +2208,8 @@ impl AnonApp {
                 fx.push(Effect::Go(Step::Bilan));
                 fx.push(Effect::FixAll);
             }
+            A::Clipboard(a) => self.express_run(a),
+            A::GlobalHotkeys(on) => self.set_global_hotkeys(on),
         }
     }
 
@@ -2258,7 +2308,13 @@ impl AnonApp {
             ui.ctx().memory_mut(|m| m.request_focus(id));
         }
         let mut effects = Vec::new();
-        let commands = shortcuts::read(ui.ctx());
+        // Vérification du presse-papiers intégrée à cette fenêtre (système sans
+        // fenêtres multiples, tests) : le clavier est à elle.
+        let commands = if self.express.review.is_some() && ui.ctx().embed_viewports() {
+            Vec::new()
+        } else {
+            shortcuts::read(ui.ctx())
+        };
         self.run_commands(commands, &mut effects);
         if self.runner.is_busy() || self.live.is_busy() {
             // L'avancement est lu dans l'état partagé : on redessine régulièrement.
@@ -2315,6 +2371,7 @@ impl AnonApp {
         };
         toast::show(ui, &mut self.toasts, self.now, bottom);
         self.drop_overlay(ui);
+        self.express_windows(ui.ctx());
         self.track_prefs(ui.ctx());
     }
 }
@@ -2370,6 +2427,12 @@ fn examples_place(dir: &std::path::Path) -> String {
 }
 
 impl eframe::App for AnonApp {
+    /// Avant chaque image, et même fenêtre réduite ou cachée : raccourcis
+    /// globaux et presse-papiers express.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.express_tick(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
     }

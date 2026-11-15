@@ -24,6 +24,10 @@ anon-office = { version = "0.1.0", path = "../crates/anon-office" }
 anon-pdf = { version = "0.1.0", path = "../crates/anon-pdf" }
 anon-replace = { version = "0.1.0", path = "../crates/anon-replace" }
 anon-vault = { version = "0.1.0", path = "../crates/anon-vault" }
+# Presse-papiers express : lecture et écriture du presse-papiers hors de la
+# fenêtre. Déjà présent par egui-winit (même version) : aucune bibliothèque de
+# plus. MIT ou Apache-2.0, aucun réseau.
+arboard = { version = "3.7", default-features = false }
 # Heure locale du nom de la clé de restauration (dossier-JJ-MM-AAAA-HHhMM.anonmap).
 # MIT ou Apache-2.0, aucun réseau ; sans les fonctionnalités par défaut.
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
@@ -33,6 +37,9 @@ dirs = "7.0.0"
 eframe = { version = "0.37", features = ["glow"] }
 egui = "0.37"
 egui_extras = { version = "0.37", features = ["image", "svg"] }
+# Raccourcis globaux du presse-papiers (Ctrl+Alt+M, Ctrl+Alt+R) : RegisterHotKey
+# sous Windows, Carbon sous macOS. tauri-apps, MIT ou Apache-2.0, aucun réseau.
+global-hotkey = "0.10"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp"] }
 rfd = "0.18"
 serde = { version = "1.0.229", features = ["derive"] }

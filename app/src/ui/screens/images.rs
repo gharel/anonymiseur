@@ -108,17 +108,47 @@ fn manual_colors() -> (Color32, Color32) {
     (with_alpha(c, 120.0 / 255.0), edge)
 }
 
-/// Carte « Images » de l'étape Vérifier. Ne s'affiche que s'il y a des images.
+/// Carte « Images » de la vue tableau de l'étape Vérifier. Ne s'affiche que
+/// s'il y a des images.
 pub fn images_card(ui: &mut Ui, st: &mut AnonymizeState) {
-    let images = st.images();
-    if images.is_empty() {
+    if st.images().is_empty() {
         return;
     }
     let p = palette();
-    let idx = st.image_index.min(images.len().saturating_sub(1));
     Card::new().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(3);
         card_title(ui, Icon::Image, "Images : zones masquées");
+        images_body(ui, st, None);
+    });
+}
+
+/// Images d'un document, dans la vérification dans le document : la page
+/// rendue, ses zones masquées et le tracé de zones.
+pub fn document_images(ui: &mut Ui, st: &mut AnonymizeState, file: &str) {
+    let p = palette();
+    ui.spacing_mut().item_spacing.y = p.space(3);
+    images_body(ui, st, Some(file));
+}
+
+/// Explication, avertissement de lecture, choix de l'image, aperçu et zones
+/// ajoutées, pour toutes les images ou celles du fichier `only`.
+fn images_body(ui: &mut Ui, st: &mut AnonymizeState, only: Option<&str>) {
+    let p = palette();
+    let all = st.images();
+    let images: Vec<(usize, &ImageInfo)> = all
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| only.is_none_or(|f| x.file == f))
+        .collect();
+    let Some(&(first, _)) = images.first() else {
+        return;
+    };
+    let idx = if images.iter().any(|(i, _)| *i == st.image_index) {
+        st.image_index
+    } else {
+        first
+    };
+    {
         muted(
             ui,
             "Les zones sombres seront masquées avec la sélection actuelle. Tracez un rectangle à \
@@ -126,8 +156,8 @@ la souris pour masquer aussi une zone que la lecture a manquée : signature, tam
         );
         let low: Vec<String> = images
             .iter()
-            .filter(|i| i.low_confidence)
-            .map(image_label)
+            .filter(|(_, i)| i.low_confidence)
+            .map(|(_, i)| image_label(i))
             .collect();
         if !low.is_empty() {
             let text = format!(
@@ -141,16 +171,16 @@ regardez ces images et tracez les zones manquantes.",
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(p.space(2), p.space(2));
                 let brand = p.brand;
-                for (i, info) in images.iter().enumerate() {
+                for (i, info) in &images {
                     let n = st.masks.of_image(&info.file, &info.name).len();
                     let count = (n > 0).then_some(n);
-                    if filter_chip(ui, &image_label(info), count, i == idx, brand).clicked() {
-                        st.image_index = i;
+                    if filter_chip(ui, &image_label(info), count, *i == idx, brand).clicked() {
+                        st.image_index = *i;
                     }
                 }
             });
         }
-        let Some(info) = images.get(idx) else {
+        let Some(info) = all.get(idx) else {
             return;
         };
         ui.horizontal_wrapped(|ui| {
@@ -170,7 +200,7 @@ regardez ces images et tracez les zones manquantes.",
         });
         canvas(ui, st, idx, info);
         manual_list(ui, st, info);
-    });
+    }
 }
 
 fn canvas(ui: &mut Ui, st: &mut AnonymizeState, idx: usize, info: &ImageInfo) {

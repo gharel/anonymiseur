@@ -231,6 +231,11 @@ pub struct Palette {
     pub ia: Tinted,
     pub gestion: Tinted,
     pub data: Tinted,
+    /// Surlignage d'une valeur masquée dans le texte (couleur neutre) :
+    /// fond, texte, soulignement.
+    pub masked: Tinted,
+    /// Surlignage d'une valeur « à décider » (jaune de la catégorie data).
+    pub pending: Tinted,
     /// Rayons en px.
     pub radius_sm: f32,
     pub radius_md: f32,
@@ -356,6 +361,7 @@ impl Palette {
         let gray_300 = t.c("gray-300");
         let gray_400 = t.c("gray-400");
         let gray_500 = t.c("gray-500");
+        let gray_600 = t.c("gray-600");
         let gray_700 = t.c("gray-700");
         let text_primary = t.c("text-primary");
         let text_secondary = t.c("text-secondary");
@@ -430,6 +436,37 @@ impl Palette {
                 ink,
                 edge: base,
             })
+        };
+
+        // Surlignages du texte à vérifier : « masqué » neutre, « à décider » jaune.
+        let (masked, pending) = if is_dark {
+            let surface = mix(dark_3, white, DARK_SURFACE);
+            let heading = mix(white, dark_3, 0.04);
+            (
+                Tinted {
+                    fill: mix(surface, white, 0.16),
+                    ink: heading,
+                    edge: gray_500,
+                },
+                Tinted {
+                    fill: data.fill,
+                    ink: data.ink,
+                    edge: data.edge,
+                },
+            )
+        } else {
+            (
+                Tinted {
+                    fill: gray_200,
+                    ink: dark,
+                    edge: gray_600,
+                },
+                Tinted {
+                    fill: data.fill,
+                    ink: dark,
+                    edge: data.ink,
+                },
+            )
         };
 
         let colors = if is_dark {
@@ -568,6 +605,8 @@ impl Palette {
             ia,
             gestion,
             data,
+            masked,
+            pending,
             radius_sm,
             radius_md,
             radius_lg,
@@ -745,6 +784,8 @@ impl Palette {
             ia: t,
             gestion: t,
             data: t,
+            masked: t,
+            pending: t,
             radius_sm: 4.0,
             radius_md: 8.0,
             radius_lg: 12.0,
@@ -990,6 +1031,9 @@ pub fn text_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
             p.data.ink,
             p.attention_row,
         ),
+        ("surlignage « masqué »", p.masked.ink, p.masked.fill),
+        ("surlignage « à décider »", p.pending.ink, p.pending.fill),
+        ("texte « à décider » de la file", p.data.ink, p.pending.fill),
     ];
     for (name, t) in [
         ("badge marque", p.brand),
@@ -1030,6 +1074,27 @@ pub fn ui_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
         ("focus sur fond de marque", p.border_focus, p.primary_subtle),
         ("étape courante sur page", p.primary_dark, p.page),
         ("jauge de progression sur piste", p.meter, p.track),
+        // Le soulignement distingue la valeur du texte qui l'entoure.
+        (
+            "soulignement « masqué » sur surface",
+            p.masked.edge,
+            p.surface,
+        ),
+        (
+            "soulignement « à décider » sur surface",
+            p.pending.edge,
+            p.surface,
+        ),
+        (
+            "contour de la valeur courante",
+            p.border_focus,
+            p.pending.fill,
+        ),
+        (
+            "contour de la valeur courante (masquée)",
+            p.border_focus,
+            p.masked.fill,
+        ),
     ]
 }
 

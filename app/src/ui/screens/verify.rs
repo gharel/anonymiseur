@@ -1,7 +1,8 @@
-//! Étape « Vérifier » : le tableau des valeurs trouvées (tableau de la V1, que
-//! le lot 7b remplacera par la vue dans le document et la file « À décider »),
-//! les images avec leurs zones masquées, la liste « toujours masquer ».
-//! Chaque décision passe par l'état, qui la rend annulable (Ctrl+Z).
+//! Étape « Vérifier » : analyse en cours, dossier vide, et « Vue tableau » :
+//! le tableau de la V1 (tri, filtres, traitements en masse), les images avec
+//! leurs zones masquées, la liste « toujours masquer ». La vue principale, dans
+//! le document, est dans `review`. Chaque décision passe par l'état, qui la
+//! rend annulable (Ctrl+Z).
 
 use super::images::images_card;
 use super::{busy_card, card_title, control_row, empty_state};
@@ -11,6 +12,7 @@ use crate::ui::service::Rejected;
 use crate::ui::shortcuts::{self, with_shortcut};
 use crate::ui::state::anonymize::{AnonymizeState, Busy, SortKey, needs_confirmation};
 use crate::ui::state::generalize::rule_label;
+use crate::ui::state::review::VerifyMode;
 use crate::ui::state::toasts::count_label;
 use crate::ui::theme::{CONTROL_MD, CONTROL_SM, Weight, font, palette};
 use crate::ui::widgets::badge::{FAMILIES, family_label, family_tint};
@@ -78,6 +80,24 @@ pub fn show(
     if rejected_banner(ui, &st.rejected) {
         st.dismiss_rejected();
     }
+    control_row(ui, CONTROL_SM, |ui| {
+        ui.spacing_mut().item_spacing.x = palette().space(3);
+        if ui
+            .add(
+                PillButton::secondary("Vue document")
+                    .icon(Icon::FileText)
+                    .small(),
+            )
+            .on_hover_text("Revenir au texte surligné et à la file « À décider »")
+            .clicked()
+        {
+            st.review.mode = VerifyMode::Document;
+        }
+        muted(
+            ui,
+            "Toutes les valeurs du dossier : tri, filtres, traitements en masse.",
+        );
+    });
     table_card(ui, st, session, view_h);
     images_card(ui, st);
     always_card(ui, st, fx);
@@ -188,7 +208,7 @@ fn treatment_menu(response: &egui::Response, tag: &str, general: &str) -> Option
 }
 
 /// Menu de choix du type d'une ligne.
-fn kind_menu(response: &egui::Response, current: EntityKind) -> Option<EntityKind> {
+pub(super) fn kind_menu(response: &egui::Response, current: EntityKind) -> Option<EntityKind> {
     let mut chosen = None;
     egui::Popup::menu(response).show(|ui| {
         ui.set_min_width(220.0);
@@ -560,7 +580,7 @@ fn table_card(ui: &mut Ui, st: &mut AnonymizeState, session: &Session, view_h: f
 fn review_toolbar(ui: &mut Ui, st: &mut AnonymizeState, session: &Session) {
     let p = palette();
     let next = (st.pending_confirmations() > 0).then(|| {
-        PillButton::secondary("Suivante à confirmer")
+        PillButton::secondary("Suivante à décider")
             .icon(Icon::ArrowDown)
             .small()
     });

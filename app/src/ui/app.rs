@@ -47,11 +47,16 @@ const ACTION_BAR_H: f32 = 64.0;
 const CONTENT_PAD_Y: f32 = 24.0;
 /// Largeur du logo dans l'en-tête.
 const LOGO_W: f32 = 110.0;
+/// Hauteur d'une ligne du panneau des raccourcis (touche et écart).
+const SHORTCUT_ROW_H: f32 = 40.0;
+/// Hauteur du panneau des raccourcis hors liste : marges et titre.
+const SHORTCUTS_CHROME_H: f32 = 150.0;
 /// Images attendues au plus pour recevoir le texte du presse-papiers.
 const PASTE_WAIT_FRAMES: u32 = 30;
 /// Intervalle entre deux images d'attente du presse-papiers, en millisecondes.
 const PASTE_POLL_MS: u64 = 30;
-/// Identifiant du champ de recherche du tableau de vérification.
+/// Identifiant du champ de recherche de l'étape Vérifier (dans le document,
+/// ou dans le tableau : un seul est affiché à la fois).
 pub const SEARCH_FIELD: &str = "recherche-detections";
 
 /// Demandes émises par les écrans, exécutées par `AnonApp`.
@@ -1569,32 +1574,45 @@ impl AnonApp {
             .show(ui.ctx(), |ui| {
                 ui.set_width(560.0);
                 ui.spacing_mut().item_spacing.y = p.space(3);
-                ui.horizontal(|ui| {
-                    Icon::Keyboard.show(ui, p.accent, 20.0);
-                    ui.label(
-                        RichText::new("Raccourcis clavier")
-                            .font(font(Weight::Semibold, p.text_md))
-                            .color(p.heading),
-                    );
-                });
-                egui::Grid::new("liste-raccourcis")
-                    .num_columns(2)
-                    .spacing(vec2(p.space(4), p.space(3)))
+                // « Fermer » en haut, à côté du titre : toujours visible.
+                let close = ui
+                    .horizontal(|ui| {
+                        Icon::Keyboard.show(ui, p.accent, 20.0);
+                        ui.label(
+                            RichText::new("Raccourcis clavier")
+                                .font(font(Weight::Semibold, p.text_md))
+                                .color(p.heading),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add(PillButton::secondary("Fermer").small()).clicked()
+                        })
+                        .inner
+                    })
+                    .inner;
+                // Petite fenêtre : la liste défile, le titre et « Fermer » restent.
+                let rows = shortcuts::help_rows();
+                let list_h = (ui.ctx().content_rect().height() - SHORTCUTS_CHROME_H).max(160.0);
+                let content_h = rows.len() as f32 * SHORTCUT_ROW_H;
+                ScrollArea::vertical()
+                    .id_salt("defilement-raccourcis")
+                    .max_height(list_h)
+                    .min_scrolled_height(list_h.min(content_h))
                     .show(ui, |ui| {
-                        for (keys, action) in shortcuts::help_rows() {
-                            super::widgets::keycap(ui, &keys);
-                            ui.label(
-                                RichText::new(action)
-                                    .font(font(Weight::Regular, p.text_sm))
-                                    .color(p.text),
-                            );
-                            ui.end_row();
-                        }
+                        egui::Grid::new("liste-raccourcis")
+                            .num_columns(2)
+                            .spacing(vec2(p.space(4), p.space(2)))
+                            .show(ui, |ui| {
+                                for (keys, action) in rows {
+                                    super::widgets::keycap(ui, &keys);
+                                    ui.label(
+                                        RichText::new(action)
+                                            .font(font(Weight::Regular, p.text_sm))
+                                            .color(p.text),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
                     });
-                let mut close = false;
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    close = ui.add(PillButton::secondary("Fermer").small()).clicked();
-                });
                 close
             });
         if modal.inner || modal.should_close() {
@@ -1726,9 +1744,18 @@ impl AnonApp {
             self.folder_bar(ui, &mut effects);
             self.action_bar(ui, &mut effects);
         }
+        // Vérifier dans le document : trois colonnes sur toute la fenêtre,
+        // chacune avec son propre défilement.
+        let in_document = folder
+            && self.workspace.step == Step::Verify
+            && screens::review::active(&self.anonymize);
         CentralPanel::default()
             .frame(Frame::new().fill(p.page))
             .show(ui, |ui| {
+                if in_document {
+                    screens::review::show(ui, &mut self.anonymize, &self.session);
+                    return;
+                }
                 let view_h = ui.available_height() - 2.0 * CONTENT_PAD_Y;
                 ScrollArea::vertical()
                     .id_salt(("contenu", folder, self.workspace.step.index()))

@@ -4,6 +4,7 @@
 //! - `workspace` : accueil ou dossier de travail, étapes et navigation ;
 //! - `anonymize` : documents, décisions de vérification, envoi ;
 //! - `history` : annuler, rétablir les décisions ;
+//! - `review` : vérification dans le document, file « À décider » ;
 //! - `bilan` : bilan provisoire avant envoi (remplacé au lot 8) ;
 //! - `deanonymize` : clé de restauration et réponse de l'IA ;
 //! - `palette` : palette de commandes.
@@ -16,6 +17,7 @@ pub mod generalize;
 pub mod history;
 pub mod images;
 pub mod palette;
+pub mod review;
 pub mod toasts;
 pub mod workspace;
 

@@ -9,13 +9,14 @@ use super::files::{FileEntry, default_output_dir, is_tool_output};
 use super::generalize::{generalize, is_generalizable};
 use super::history::{Action, History};
 use super::images::{FileMask, ManualMasks};
+use super::review::Review;
 use crate::ui::service::{BatchReport, Protection, Rejected, unsupported_reason};
 use anon_core::{
     DetectOptions, EntityKind, Family, Goal, PixelRect, Profile, Session, Tag, Treatment,
 };
 use anon_engine::{Analysis, AnalyzeOptions, Candidate, InputFile, SELECT_MIN_CONFIDENCE};
 use anon_vault::{PasswordStrength, password_strength};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 /// Profil de détection : la V2 cherche toujours les indices (dates, âges,
@@ -79,6 +80,30 @@ pub fn fold(s: &str) -> String {
             other => other,
         })
         .collect()
+}
+
+/// Valeurs dont seule la sélection diffère entre deux listes de décisions ;
+/// `None` si autre chose a changé (valeur ajoutée, retirée, type, casse…).
+fn selection_changes(before: &[Candidate], after: &[Candidate]) -> Option<Vec<usize>> {
+    if before.len() != after.len() {
+        return None;
+    }
+    let mut ids = Vec::new();
+    for (b, a) in before.iter().zip(after) {
+        if b.selected == a.selected {
+            if b != a {
+                return None;
+            }
+            continue;
+        }
+        let mut same = b.clone();
+        same.selected = a.selected;
+        if same != *a {
+            return None;
+        }
+        ids.push(a.id);
+    }
+    Some(ids)
 }
 
 /// Une ligne est « à confirmer » : valeur ambiguë ou confiance faible.
@@ -352,6 +377,10 @@ pub struct Decisions {
     candidates: Vec<Candidate>,
     never: Vec<String>,
     masks: ManualMasks,
+    /// Valeurs tranchées par l'utilisateur (sorties de la file « À décider »).
+    decided: BTreeSet<usize>,
+    /// Liste « toujours masquer » (« Toujours masquer » sur une sélection).
+    always: Vec<(String, EntityKind)>,
 }
 
 impl std::fmt::Debug for Decisions {
@@ -360,6 +389,8 @@ impl std::fmt::Debug for Decisions {
             .field("candidates", &self.candidates.len())
             .field("never", &self.never.len())
             .field("masks", &self.masks.len())
+            .field("decided", &self.decided.len())
+            .field("always", &self.always.len())
             .finish()
     }
 }
@@ -411,6 +442,10 @@ pub struct AnonymizeState {
     pub jump: bool,
     /// Annuler, rétablir les décisions de vérification.
     pub history: History<Decisions>,
+    /// Valeurs tranchées par l'utilisateur : elles quittent la file « À décider ».
+    pub decided: BTreeSet<usize>,
+    /// Vérification dans le document : document affiché, file, sélection.
+    pub review: Review,
 }
 
 /// Colonnes triables du tableau de vérification.
@@ -459,6 +494,8 @@ impl Default for AnonymizeState {
             focus_row: None,
             jump: false,
             history: History::default(),
+            decided: BTreeSet::new(),
+            review: Review::default(),
         }
     }
 }
@@ -655,6 +692,8 @@ impl AnonymizeState {
             .filter(|i| ok.contains(&i.name))
             .collect();
         self.history.clear();
+        self.decided.clear();
+        self.review.reset();
         if analysis.cancelled || self.inputs.is_empty() {
             self.analysis = None;
             return false;
@@ -671,7 +710,22 @@ impl AnonymizeState {
         true
     }
 
+    /// Recalcule les aperçus (balises, zones des images) ; la vue du document
+    /// sera recalculée entièrement.
     pub fn refresh_preview(&mut self, session: &Session) {
+        self.review.invalidate();
+        self.update_previews(session);
+    }
+
+    /// Comme [`AnonymizeState::refresh_preview`], quand seule la sélection des
+    /// valeurs `ids` a changé : la vue du document ne recalcule que les blocs
+    /// où elles apparaissent.
+    pub(super) fn refresh_preview_values(&mut self, session: &Session, ids: &[usize]) {
+        self.review.invalidate_values(ids);
+        self.update_previews(session);
+    }
+
+    fn update_previews(&mut self, session: &Session) {
         self.tag_preview = self
             .analysis
             .as_ref()
@@ -737,7 +791,7 @@ impl AnonymizeState {
             .count()
     }
 
-    fn candidates(&self) -> &[Candidate] {
+    pub(super) fn candidates(&self) -> &[Candidate] {
         self.analysis
             .as_ref()
             .map(|a| a.candidates.as_slice())
@@ -788,7 +842,7 @@ impl AnonymizeState {
         self.focus_row = None;
     }
 
-    /// Résumé du tableau : « 42 valeurs masquées sur 57 · 3 à confirmer ».
+    /// Résumé de la vérification : « 42 valeurs masquées sur 57 · 3 à décider ».
     pub fn review_summary(&self) -> String {
         let total = self.candidates().len();
         let checked = self.selected_count();
@@ -799,9 +853,9 @@ impl AnonymizeState {
         } else {
             format!("{checked} valeurs masquées sur {total}")
         };
-        let pending = self.pending_confirmations();
+        let pending = self.undecided_count();
         if pending > 0 {
-            s.push_str(&format!(" · {pending} à confirmer"));
+            s.push_str(&format!(" · {pending} à décider"));
         }
         s
     }
@@ -904,23 +958,34 @@ impl AnonymizeState {
             candidates: a.candidates.clone(),
             never: self.never.clone(),
             masks: self.masks.clone(),
+            decided: self.decided.clone(),
+            always: self.always.clone(),
         })
     }
 
     fn restore_decisions(&mut self, d: Decisions, session: &Session) {
+        let only_selection = self
+            .analysis
+            .as_ref()
+            .and_then(|a| selection_changes(&a.candidates, &d.candidates));
         if let Some(a) = self.analysis.as_mut() {
             a.candidates = d.candidates;
         }
         self.never = d.never;
         self.masks = d.masks;
+        self.decided = d.decided;
+        self.always = d.always;
         self.report = None;
         self.focus_row = None;
-        self.refresh_preview(session);
+        match only_selection {
+            Some(ids) => self.refresh_preview_values(session, &ids),
+            None => self.refresh_preview(session),
+        }
     }
 
     /// Retient l'état avant une décision. Une décision rend caduc ce qui a
     /// déjà été enregistré à l'étape Envoyer.
-    fn checkpoint(&mut self, action: Action) {
+    pub(super) fn checkpoint(&mut self, action: Action) {
         if let Some(d) = self.decisions() {
             self.history.record(action, d);
             self.report = None;
@@ -982,9 +1047,11 @@ impl AnonymizeState {
         } else {
             Action::Uncheck
         });
-        self.with_analysis(session, |a| {
+        self.decided.insert(id);
+        if let Some(a) = self.analysis.as_mut() {
             a.set_selected(id, selected);
-        });
+        }
+        self.refresh_preview_values(session, &[id]);
     }
 
     pub fn set_kind(&mut self, id: usize, kind: EntityKind, session: &Session) {
@@ -1077,11 +1144,13 @@ impl AnonymizeState {
         } else {
             Action::UncheckAll
         });
-        self.with_analysis(session, |a| {
-            for id in vis {
-                a.set_selected(id, selected);
+        self.decided.extend(vis.iter().copied());
+        if let Some(a) = self.analysis.as_mut() {
+            for id in &vis {
+                a.set_selected(*id, selected);
             }
-        });
+        }
+        self.refresh_preview_values(session, &vis);
     }
 
     pub fn selected_count(&self) -> usize {
@@ -1781,7 +1850,7 @@ mod tests {
         assert_eq!(seen.first(), seen.last(), "on revient au début");
         assert!(
             s.review_summary()
-                .ends_with(&format!("{pending} à confirmer"))
+                .ends_with(&format!("{pending} à décider"))
         );
     }
 

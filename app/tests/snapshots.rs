@@ -16,6 +16,7 @@ use anonymiseur::ui::platform::{NullPlatform, file_entry};
 use anonymiseur::ui::service::{Outcome, anonymize_batch, file_name, read_documents};
 use anonymiseur::ui::state::anonymize::Busy;
 use anonymiseur::ui::state::deanonymize::MapStatus;
+use anonymiseur::ui::state::review::{Occurrence, VerifyMode};
 use anonymiseur::ui::state::workspace::{Screen, Step};
 use anonymiseur::ui::theme::ThemeChoice;
 use anonymiseur::ui::{AnonApp, theme};
@@ -269,6 +270,24 @@ fn verify() {
 }
 
 #[test]
+fn verify_table() {
+    snap("dossier_1d_vue_tableau", |app| {
+        analyze(app);
+        app.anonymize.review.mode = VerifyMode::Table;
+    });
+}
+
+#[test]
+fn verify_selection() {
+    snap("dossier_1e_selection", |app| {
+        analyze_these(app, &["notes.txt"]);
+        app.anonymize.review.queue_open = true;
+        app.anonymize.sync_review(&app.session);
+        app.anonymize.find_next("antenne", None);
+    });
+}
+
+#[test]
 fn verify_less_precise() {
     snap("dossier_1b_moins_precis", |app| {
         analyze_these(app, &["notes.txt"]);
@@ -283,6 +302,9 @@ fn verify_less_precise() {
             }
         }
         st.always = vec![("Martinique".into(), EntityKind::Lieu)];
+        // Les formes moins précises se lisent dans la liste « Masquées », dépliée.
+        st.review.masked_open = true;
+        st.review.queue_open = true;
     });
 }
 
@@ -509,7 +531,12 @@ fn parcours_complet_au_clavier() {
     let checked = h.state().anonymize.selected_count();
     assert!(checked > 10);
 
-    // Vérifier : une décision au clavier, annulée puis rétablie.
+    // Vérifier : le tableau de la V1 est derrière « Vue tableau » (lot 7b) ;
+    // une décision au clavier, annulée puis rétablie.
+    tab_to(&mut h, "Vue tableau", 60);
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!(h.state().anonymize.review.mode, VerifyMode::Table);
     h.key_press_modifiers(Modifiers::COMMAND, Key::F);
     h.run();
     tab_to(&mut h, "Tout décocher", 8);
@@ -966,8 +993,12 @@ fn controles_alignes_sur_chaque_ecran() {
     assert_eq!(head[0].1.height(), CONTROL_MD);
     assert_aligned("En-tête", &head);
 
-    // Vérifier : ajout manuel, liste « toujours », barres du dossier et d'action.
-    let mut h = app(1280.0, 2400.0, |app| analyze_these(app, &["notes.txt"]));
+    // Vérifier, vue tableau : ajout manuel, liste « toujours », barres du
+    // dossier et d'action.
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, &["notes.txt"]);
+        app.anonymize.review.mode = VerifyMode::Table;
+    });
     h.run();
     let row = rects(&h, &["Terme à ajouter", "Type du terme ajouté", "Ajouter"]);
     assert_eq!(row[0].1.height(), CONTROL_MD);
@@ -1001,6 +1032,25 @@ fn controles_alignes_sur_chaque_ecran() {
         assert_centered("En-tête, étapes", step, r, "Thème", theme_btn);
     }
 
+    // Vérifier dans le document : boutons de la file, sélection.
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
+    h.run();
+    for b in ["Masquer", "Garder", "Suivante", "Précédente"] {
+        assert_eq!(h.get_by_label(b).rect().height(), CONTROL_SM, "{b}");
+    }
+    h.state_mut().anonymize.find_next("antenne", None);
+    h.run();
+    let sel = rects(
+        &h,
+        &[
+            "Masquer partout",
+            "Toujours masquer",
+            "Annuler la sélection",
+        ],
+    );
+    assert_eq!(sel[0].1.height(), CONTROL_SM);
+    assert_aligned("Vérifier, sélection", &sel);
+
     // Envoyer : barre d'action.
     let mut h = app(1280.0, 1600.0, |app| {
         analyze_these(app, &["notes.txt"]);
@@ -1033,7 +1083,28 @@ fn controles_alignes_sur_chaque_ecran() {
 
 #[test]
 fn premiere_decision_visible_sans_defiler() {
-    let mut h = app(1280.0, 800.0, analyze);
+    // Dans le document : la valeur courante de la file et ses boutons M et G,
+    // au-dessus de la barre d'action, en 1280 × 800 comme en 900 × 650.
+    for (w, hh) in [(1280.0, 800.0), (900.0, 650.0)] {
+        let mut h = app(w, hh, analyze);
+        h.run();
+        let action = h.get_by_label("Continuer").rect();
+        for b in ["Masquer", "Garder"] {
+            let r = h.get_by_label(b).rect();
+            assert!(
+                r.max.y < action.min.y - 8.0,
+                "{w} × {hh} : « {b} » à y = {}, barre d'action à y = {}",
+                r.max.y,
+                action.min.y
+            );
+        }
+        assert!(h.state().anonymize.review.current.is_some());
+    }
+    // Vue tableau : la première ligne.
+    let mut h = app(1280.0, 800.0, |app| {
+        analyze(app);
+        app.anonymize.review.mode = VerifyMode::Table;
+    });
     h.run();
     let st = &h.state().anonymize;
     let first = st.visible()[0];
@@ -1186,7 +1257,10 @@ fn raccourcis_clavier() {
 
 #[test]
 fn tableau_tri_recherche_et_clavier() {
-    let mut h = app(1280.0, 2400.0, |app| analyze_these(app, &["notes.txt"]));
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, &["notes.txt"]);
+        app.anonymize.review.mode = VerifyMode::Table;
+    });
     h.run();
     // Tri au clic sur l'en-tête.
     h.get_by_label("Trier par Valeur").click();
@@ -1325,6 +1399,20 @@ fn every_screen() -> Vec<(&'static str, Setup)> {
             Box::new(|app: &mut AnonApp| analyze_these(app, &["notes.txt", "carte-visite.png"])),
         ),
         (
+            "vérifier, images",
+            Box::new(|app: &mut AnonApp| {
+                analyze_these(app, &["notes.txt", "carte-visite.png"]);
+                app.anonymize.select_document(1);
+            }),
+        ),
+        (
+            "vérifier, vue tableau",
+            Box::new(|app: &mut AnonApp| {
+                analyze_these(app, &["notes.txt", "carte-visite.png"]);
+                app.anonymize.review.mode = VerifyMode::Table;
+            }),
+        ),
+        (
             "bilan",
             Box::new(|app: &mut AnonApp| {
                 analyze_these(app, &["notes.txt"]);
@@ -1461,4 +1549,343 @@ fn vocabulaire_v2_sur_chaque_ecran() {
             }
         }
     }
+}
+
+// --- Vérifier dans le document (lot 7b) ----------------------------------------
+
+use anonymiseur::ui::screens::document::{ValueInfo, announce, has_focus};
+use anonymiseur::ui::state::anonymize::needs_confirmation;
+
+/// Annonce, pour les lecteurs d'écran, de l'occurrence `o` du document affiché.
+fn span_label(h: &Harness<'_, AnonApp>, o: Occurrence) -> String {
+    let st = &h.state().anonymize;
+    let span = st.span_at(o).unwrap().1;
+    let c = st.candidate(span.candidate).unwrap();
+    let info = ValueInfo {
+        value: c.value.clone(),
+        kind: c.kind,
+        occurrences: c.occurrences,
+        pending: st.is_undecided(c.id),
+        replacement: None,
+    };
+    announce(&span, &info)
+}
+
+/// Le nœud focalisé porte ce libellé.
+fn focused_label(h: &Harness<'_, AnonApp>, label: &str) -> bool {
+    h.get_all_by_label(label)
+        .any(|n| n.accesskit_node().is_focused())
+}
+
+fn is_masked(h: &Harness<'_, AnonApp>, id: usize) -> bool {
+    h.state()
+        .anonymize
+        .candidate(id)
+        .is_some_and(|c| c.selected)
+}
+
+#[test]
+fn decisions_par_document_d_exemple() {
+    // Plan V2, section 8 : au plus une dizaine de décisions par document
+    // d'exemple (95 valeurs listées en V1). Mesure sur le dossier d'exemples
+    // complet, tel que « Essayer avec des exemples » l'analyse ; le compteur de
+    // la colonne Documents est la longueur de la file de chaque document.
+    let names: Vec<&str> = anonymiseur::ui::service::EXAMPLES
+        .iter()
+        .filter(|e| e.document)
+        .map(|e| e.name)
+        .collect();
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &names));
+    h.run();
+    let docs = h.state().anonymize.review_documents();
+    assert_eq!(docs.len(), names.len());
+    let mut lines = Vec::new();
+    let mut total = 0;
+    for (i, name) in docs {
+        h.state_mut().anonymize.select_document(i);
+        h.run();
+        let st = &h.state().anonymize;
+        assert_eq!(st.review_document_name().as_deref(), Some(name.as_str()));
+        let queue = st.queue();
+        assert!(
+            queue
+                .iter()
+                .all(|id| st.candidate(*id).is_some_and(needs_confirmation)),
+            "{name} : seules les valeurs ambiguës ou incertaines sont à décider"
+        );
+        assert_eq!(queue.len(), st.remaining_in(&name), "{name}");
+        let sure = st.sure_values().len();
+        total += queue.len();
+        lines.push(format!(
+            "{name} : {} à décider, {sure} masquées d'office",
+            queue.len()
+        ));
+    }
+    println!(
+        "Décisions par document d'exemple :\n{}\nTotal : {total}",
+        lines.join("\n")
+    );
+}
+
+#[test]
+fn verifier_au_clavier_dans_le_document() {
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
+    h.run();
+    let doc = h.state().anonymize.review_document_name().unwrap();
+    let queue = h.state().anonymize.queue();
+    assert!(queue.len() >= 2, "{} valeurs à décider", queue.len());
+    assert_eq!(h.state().anonymize.review.current, Some(queue[0]));
+
+    // Tab atteint le texte : l'occurrence courante a le focus, annoncée.
+    for _ in 0..80 {
+        if has_focus(&h.ctx, &doc) {
+            break;
+        }
+        h.key_press(Key::Tab);
+        h.run();
+    }
+    assert!(has_focus(&h.ctx, &doc), "Tab n'atteint pas le texte");
+    let c0 = h.state().anonymize.review.cursor.unwrap();
+    assert!(focused_label(&h, &span_label(&h, c0)));
+    assert!(span_label(&h, c0).ends_with(" fois"));
+
+    // → : occurrence suivante, le focus suit ; ← revient.
+    h.key_press(Key::ArrowRight);
+    h.run();
+    let c1 = h.state().anonymize.review.cursor.unwrap();
+    assert_ne!(c0, c1);
+    assert!(
+        focused_label(&h, &span_label(&h, c1)),
+        "focus sur la suivante"
+    );
+    h.key_press(Key::ArrowLeft);
+    h.run();
+    assert_eq!(h.state().anonymize.review.cursor, Some(c0));
+
+    // J : valeur à décider suivante, le texte y va ; M la masque partout.
+    h.key_press(Key::J);
+    h.run();
+    let second = queue[1];
+    assert_eq!(h.state().anonymize.review.current, Some(second));
+    assert_eq!(h.state().anonymize.cursor_candidate(), Some(second));
+    assert!(has_focus(&h.ctx, &doc), "le focus reste dans le texte");
+    h.key_press(Key::M);
+    h.run();
+    assert!(is_masked(&h, second));
+    assert!(!h.state().anonymize.is_undecided(second));
+    let view = h.state().anonymize.document_view().unwrap();
+    assert!(view.occurrences(second).all(|(_, s)| s.masked));
+    // G sur la valeur sous le curseur : gardée partout.
+    let under = h.state().anonymize.cursor_candidate().unwrap();
+    let was = is_masked(&h, under);
+    h.key_press(Key::G);
+    h.run();
+    assert!(!is_masked(&h, under));
+    assert!(!h.state().anonymize.is_undecided(under));
+    // Ctrl+Z, puis K.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(is_masked(&h, under), was, "annulé");
+    // Espace bascule la valeur sous le curseur.
+    let under = h.state().anonymize.cursor_candidate().unwrap();
+    let before = is_masked(&h, under);
+    h.key_press(Key::Space);
+    h.run();
+    assert_ne!(is_masked(&h, under), before);
+    h.key_press(Key::K);
+    h.run();
+    assert!(h.state().anonymize.review.current.is_some());
+    // Maj+→ : sélection au clavier, à partir de la valeur sous le curseur.
+    h.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    h.run();
+    assert!(h.state().anonymize.selected_text().is_some());
+    h.get_by_label("Masquer partout");
+}
+
+#[test]
+fn clic_sur_un_surlignage_et_infobulle() {
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
+    h.run();
+    // Première occurrence d'une valeur sûre, masquée d'office.
+    let (o, id) = {
+        let st = &h.state().anonymize;
+        let view = st.document_view().unwrap();
+        view.blocks
+            .iter()
+            .enumerate()
+            .flat_map(|(bi, b)| b.spans.iter().map(move |s| (bi, *s)))
+            .find(|(_, s)| s.masked && !st.is_undecided(s.candidate))
+            .map(|(bi, s)| {
+                (
+                    Occurrence {
+                        block: bi,
+                        start: s.start,
+                    },
+                    s.candidate,
+                )
+            })
+            .unwrap()
+    };
+    let label = span_label(&h, o);
+    assert!(label.contains(", masqué, "), "{label}");
+    let tag = h.state().anonymize.tag_preview[&id].to_string();
+    // Survol : la balise, le type, le nombre d'occurrences.
+    h.get_all_by_label(&label).next().unwrap().hover();
+    h.run_steps(10);
+    let tip = h.get_by_label_contains("Clic : garder partout");
+    let node = tip.accesskit_node();
+    let text = [node.label(), node.value()]
+        .into_iter()
+        .flatten()
+        .map(|t| t.to_string())
+        .find(|t| t.contains("Clic : garder partout"))
+        .unwrap_or_default();
+    assert!(text.starts_with(&tag), "{text}");
+    assert!(text.contains(" fois"), "{text}");
+    // Clic : gardée dans tout le dossier.
+    h.get_all_by_label(&label).next().unwrap().click();
+    h.run();
+    assert!(!is_masked(&h, id));
+    let view = h.state().anonymize.document_view().unwrap();
+    assert!(view.occurrences(id).all(|(_, s)| !s.masked));
+    let kept = label.replace(", masqué, ", ", gardé visible, ");
+    assert!(h.get_all_by_label(&kept).count() >= 1);
+    // Annuler (Ctrl+Z) : masquée de nouveau.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert!(is_masked(&h, id));
+    assert_eq!(h.state().toasts.texts(), ["Annulé : valeur gardée."]);
+}
+
+#[test]
+fn selection_masquee_partout_puis_annulee() {
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
+    h.run();
+    // Recherche dans le document (/) : le passage trouvé est sélectionné.
+    h.key_press(Key::Slash);
+    h.run();
+    assert_eq!(
+        h.ctx.memory(|m| m.focused()),
+        Some(field_id(anonymiseur::ui::app::SEARCH_FIELD))
+    );
+    h.event(egui::Event::Text("ANTENNE".into()));
+    h.run();
+    assert_eq!(
+        h.state().anonymize.selected_text().as_deref(),
+        Some("antenne")
+    );
+    h.get_by_label("« antenne »");
+    h.get_by_label("Masquer partout").click();
+    h.run();
+    let st = &h.state().anonymize;
+    let c = st
+        .analysis
+        .as_ref()
+        .unwrap()
+        .candidates
+        .iter()
+        .find(|c| c.value == "antenne")
+        .cloned()
+        .unwrap();
+    assert!(c.selected && c.occurrences == 1);
+    assert!(!st.is_undecided(c.id));
+    assert!(st.review.selection.is_none());
+    assert!(st.always.is_empty());
+    h.get_by_label("Annuler").click();
+    h.run();
+    assert!(h.state().anonymize.candidate(c.id).is_none(), "annulé");
+
+    // À la souris : glisser sur un mot le sélectionne ; « Toujours masquer ».
+    // Une occurrence affichée (le texte a défilé jusqu'à « antenne »).
+    let all: Vec<Occurrence> = {
+        let view = h.state().anonymize.document_view().unwrap();
+        view.blocks
+            .iter()
+            .enumerate()
+            .flat_map(|(bi, b)| {
+                b.spans.iter().map(move |s| Occurrence {
+                    block: bi,
+                    start: s.start,
+                })
+            })
+            .collect()
+    };
+    let shown = h.state().anonymize.review.visible_hint;
+    let o = all
+        .into_iter()
+        .filter(|o| o.block > shown)
+        .find(|o| h.query_all_by_label(&span_label(&h, *o)).next().is_some())
+        .unwrap();
+    let r = h
+        .get_all_by_label(&span_label(&h, o))
+        .next()
+        .unwrap()
+        .rect();
+    let (a, b) = (
+        r.left_center() + egui::vec2(1.0, 0.0),
+        r.right_center() - egui::vec2(1.0, 0.0),
+    );
+    h.hover_at(a);
+    h.run();
+    h.drag_at(a);
+    h.run();
+    h.hover_at(b);
+    h.run();
+    h.drop_at(b);
+    h.run();
+    let text = h.state().anonymize.selected_text();
+    assert!(text.as_deref().is_some_and(|t| !t.is_empty()), "{text:?}");
+    h.get_by_label("Toujours masquer").click();
+    h.run();
+    assert_eq!(h.state().anonymize.always.len(), 1);
+    h.get_by_label("Annuler").click();
+    h.run();
+    assert!(h.state().anonymize.always.is_empty());
+}
+
+#[test]
+fn bascule_vers_la_vue_tableau_et_retour() {
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &["notes.txt"]));
+    h.run();
+    assert!(h.query_by_label("Trier par Valeur").is_none());
+    h.get_by_label("Vue tableau").click();
+    h.run();
+    assert_eq!(h.state().anonymize.review.mode, VerifyMode::Table);
+    h.get_by_label("Trier par Valeur");
+    // Une décision prise dans le tableau sort la valeur de la file.
+    let id = h.state().anonymize.queue()[0];
+    let value = h.state().anonymize.candidate(id).unwrap().value.clone();
+    h.state_mut().anonymize.search = value.clone();
+    h.run();
+    h.get_by_label(&format!("Sélectionner {value}")).click();
+    h.run();
+    assert!(!h.state().anonymize.is_undecided(id));
+    h.get_by_label("Vue document").click();
+    h.run();
+    assert_eq!(h.state().anonymize.review.mode, VerifyMode::Document);
+    h.get_by_label("Rechercher dans le document");
+}
+
+#[test]
+fn documents_et_file_en_fenetre_etroite() {
+    // 900 × 650 : deux colonnes, la file en panneau repliable ; 800 : une
+    // colonne, le document se choisit en haut.
+    let mut h = app(900.0, 650.0, analyze);
+    h.run();
+    let doc = h.get_by_label_contains("contrat-prestation.docx, ").rect();
+    let paper = h.get_by_label("Rechercher dans le document").rect();
+    assert!(doc.max.x < paper.min.x, "documents à gauche du texte");
+    h.get_by_label("Déplier le panneau « À décider »").click();
+    h.run();
+    assert!(h.state().anonymize.review.queue_open);
+    h.get_by_label("Replier le panneau « À décider »");
+    let mut h = app(800.0, 650.0, analyze);
+    h.run();
+    h.get_by_label_contains("Document : ");
+    assert!(
+        h.query_by_label_contains("contrat-prestation.docx, ")
+            .is_none()
+    );
+    h.get_by_label("Déplier le panneau « À décider »");
+    h.get_by_label("Rechercher dans le document");
 }

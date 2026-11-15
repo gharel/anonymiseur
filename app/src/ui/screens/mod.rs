@@ -4,10 +4,12 @@
 //! d'`Effect`.
 
 pub mod bilan;
+pub mod document;
 pub mod home;
 pub mod images;
 pub mod palette;
 pub mod response;
+pub mod review;
 pub mod send;
 pub mod verify;
 

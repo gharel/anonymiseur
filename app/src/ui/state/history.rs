@@ -20,6 +20,14 @@ pub enum Action {
     RemoveValue,
     AddZone,
     RemoveZone,
+    /// Valeur masquée dans tout le dossier (M, clic sur un surlignage).
+    Mask,
+    /// Valeur gardée visible dans tout le dossier (G, clic sur un surlignage).
+    Keep,
+    /// Texte sélectionné, masqué partout.
+    MaskEverywhere,
+    /// Texte sélectionné, ajouté à la liste « toujours masquer ».
+    AlwaysMask,
 }
 
 impl Action {
@@ -36,6 +44,10 @@ impl Action {
             Action::RemoveValue => "valeur retirée",
             Action::AddZone => "zone ajoutée",
             Action::RemoveZone => "zone retirée",
+            Action::Mask => "valeur masquée",
+            Action::Keep => "valeur gardée",
+            Action::MaskEverywhere => "texte masqué partout",
+            Action::AlwaysMask => "texte toujours masqué",
         }
     }
 }
@@ -191,6 +203,10 @@ mod tests {
             Action::RemoveValue,
             Action::AddZone,
             Action::RemoveZone,
+            Action::Mask,
+            Action::Keep,
+            Action::MaskEverywhere,
+            Action::AlwaysMask,
         ] {
             assert!(!a.label().is_empty());
         }

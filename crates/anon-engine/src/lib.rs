@@ -12,6 +12,7 @@
 
 mod analysis;
 mod csv;
+mod document;
 mod engine;
 mod error;
 mod media;
@@ -21,6 +22,7 @@ pub use analysis::{
     Analysis, AnalyzeOptions, AnalyzedImage, CONTEXT_CHARS, Candidate, FileAnalysis,
     SELECT_MIN_CONFIDENCE, is_ambiguous,
 };
+pub use document::{DocBlock, DocumentView, Span};
 pub use engine::{
     AnonymizeOptions, Anonymized, Engine, EngineBuilder, FileReport, HandlerLookup, InputFile,
     NoProgress, Progress, Restored,

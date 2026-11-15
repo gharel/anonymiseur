@@ -158,10 +158,19 @@ pub fn help_rows() -> Vec<(String, &'static str)> {
             PASTE_RESPONSE.label(),
             "Coller la réponse de l'IA et la restaurer",
         ),
-        (FIND.label(), "Rechercher dans le tableau de vérification"),
         (
-            "↑ ↓, Espace".to_owned(),
-            "Parcourir le tableau, cocher ou décocher la valeur",
+            format!("{}, /", FIND.label()),
+            "Rechercher dans le document ou le tableau",
+        ),
+        ("J, K".to_owned(), "Valeur à décider suivante, précédente"),
+        ("M, G".to_owned(), "Masquer, garder la valeur à décider"),
+        (
+            "← → ↑ ↓, Espace".to_owned(),
+            "Parcourir les valeurs du texte ou du tableau, les masquer ou les garder",
+        ),
+        (
+            "Maj+← →".to_owned(),
+            "Étendre la sélection d'un mot, pour la masquer partout",
         ),
         (HELP.label(), "Afficher ces raccourcis"),
     ]
@@ -248,7 +257,7 @@ mod tests {
     #[test]
     fn help_lists_every_shortcut() {
         let rows = help_rows();
-        assert_eq!(rows.len(), 11);
+        assert_eq!(rows.len(), 14);
         assert!(rows.iter().all(|(k, a)| !k.is_empty() && !a.is_empty()));
         assert!(
             rows.iter().all(|(k, _)| !k.contains('?')),

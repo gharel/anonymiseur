@@ -9,6 +9,18 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - **Catégories particulières de données** (RGPD, art. 9 et 10) : santé, opinion politique ou philosophique, religion, appartenance syndicale, orientation sexuelle, origine ethnique, données génétiques et biométriques, condamnations ou infractions, dans une nouvelle famille « Sensibles », cherchée dans les deux profils. Nouveau type « Événement personnel » (licenciement, divorce, procédure), un indice du profil Renforcé. Pas encore de détection automatique : ces types se choisissent à la main.
 - **Clé de restauration, format 2** : le fichier `.anonmap` retient l'objectif, le destinataire, la date de création et la date jusqu'à laquelle garder la clé. Les tables de la version 0.1 se relisent sans changement.
 - **Lecture des tableaux** : contrat `Handler::tables` (une entrée par feuille), à implémenter pour Excel, Calc et CSV.
+- **Interface V2, dossier de travail** : les trois onglets (Anonymiser, Désanonymiser, Texte libre) laissent place à un accueil et à un dossier de travail en quatre étapes, Vérifier, Bilan, Envoyer, Réponse, avec l'indicateur d'étapes dans l'en-tête. L'accueil reçoit les fichiers déposés ou un texte collé (Ctrl+V), qui devient un document du dossier, et propose deux objectifs : « Masquer pour l'IA » (clé de restauration) ou « Anonymiser définitivement » (aucune clé). Une clé `.anonmap` ouverte depuis l'accueil mène à l'étape Réponse. La barre du dossier montre l'objectif, le destinataire (retenu d'une session à l'autre) et le bouton Annuler ; la barre d'action ne porte qu'un message et l'action principale.
+- **Réponse sans mot de passe** : la clé créée à l'étape Envoyer reste ouverte en mémoire ; la réponse de l'IA, collée (Ctrl+Maj+V), s'affiche à côté de sa version restaurée, et les balises inconnues sont signalées.
+- **Palette de commandes** (Ctrl+K) : toutes les actions, trouvées sans tenir compte des accents ni des majuscules, choisies aux flèches, lancées par Entrée ; chaque action affiche son raccourci, ou la raison pour laquelle elle est impossible.
+- **Annuler, rétablir** (Ctrl+Z, Ctrl+Maj+Z) chaque décision de vérification : cocher, décocher, type, majuscules, forme moins précise, ajout ou retrait d'une valeur, zone tracée sur une image.
+- **Raccourcis** : Ctrl+Entrée pour l'étape suivante, Ctrl+1 à Ctrl+4 pour aller à une étape, Ctrl+Maj+V pour coller la réponse de l'IA et la restaurer ; panneau F1 mis à jour.
+- **Copier le texte et la consigne** : à l'étape Envoyer, le texte masqué des documents, précédé de la consigne pour l'IA, en un clic.
+- **Bilan provisoire** avant l'envoi : valeurs masquées, valeurs à confirmer, indices encore visibles et estimation du risque de la version 1, en attendant l'évaluation des trois critères.
+
+### Modifié
+- **Détection toujours en profil Renforcé** : le choix du niveau de protection disparaît ; les indices (dates, âges, fonctions, lieux, montants) sont toujours cherchés.
+- **Vocabulaire** : « clé de restauration » (table de correspondance), « vérification finale » (contrôle de fuite), « indices » (catégorie Contexte), « rendre moins précis » (généralisation), « 3 fois » (occurrences), « respecter les majuscules » (casse).
+- **Un seul message à la fois** : plus de bandeaux empilés à l'étape Vérifier ; un ajout de fichiers donne une seule notification. Le bandeau d'accueil et la liste « Toujours anonymiser » de l'écran de dépôt disparaissent ; la liste « Toujours masquer » reste à l'étape Vérifier.
 
 ### Corrigé
 - **Conseil du rapport de risque** : en profil Renforcé, un risque élevé invite à cocher dans la liste les informations indirectes restées visibles, ou à les retirer du document. Le rapport recommandait jusqu'ici le profil Renforcé, déjà actif.

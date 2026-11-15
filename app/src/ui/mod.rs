@@ -2,9 +2,10 @@
 //!
 //! - `theme` : jetons de la charte appliqués à egui ;
 //! - `widgets` : composants (boutons, badges, cartes, champs…) ;
-//! - `state` : état et transitions de chaque onglet, sans egui ;
-//! - `screens` : rendu de chaque onglet ;
-//! - `app` : fenêtre, en-tête, onglets, pied ;
+//! - `state` : état et transitions (dossier de travail, étapes, décisions,
+//!   palette de commandes, historique d'annulation), sans egui ;
+//! - `screens` : rendu de l'accueil, de chaque étape et de la palette ;
+//! - `app` : fenêtre, en-tête, barres du dossier, pied ;
 //! - `runner` : fil de travail (traitements longs, avancement, annulation) ;
 //! - `service` : opérations sur les fichiers, sans egui ;
 //! - `prefs` : préférences retenues d'une session à l'autre.

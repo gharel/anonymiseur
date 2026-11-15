@@ -108,7 +108,7 @@ pub fn family_label(family: Family) -> &'static str {
         Family::Contacts => "Contacts",
         Family::Identifiants => "Identifiants",
         Family::Finances => "Finances",
-        Family::Contexte => "Contexte",
+        Family::Contexte => "Indices",
         Family::Sensibles => "Sensibles",
     }
 }

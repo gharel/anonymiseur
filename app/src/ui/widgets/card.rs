@@ -67,7 +67,10 @@ impl Card {
             });
         let inner = frame.show(ui, |ui| {
             ui.set_width(ui.available_width());
-            add(ui)
+            // Contenu aligné à gauche, même dans des colonnes (dont la mise en
+            // page justifiée étirerait les espaces des paragraphes).
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), add)
+                .inner
         });
         if let Some(color) = self.accent {
             let rect = inner.response.rect;

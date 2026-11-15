@@ -1,12 +1,13 @@
 //! Opérations sur les fichiers, appelées depuis le fil de travail : lecture,
-//! anonymisation par lot, écriture sans écrasement, scellement de la table,
-//! restauration. Sans egui : testable de bout en bout sur `exemples/`.
+//! masquage par lot, écriture sans écrasement, scellement de la clé de
+//! restauration, restauration. Sans egui : testable de bout en bout sur `exemples/`.
 //!
 //! Aucun contenu utilisateur n'est journalisé : les messages ne citent que des
 //! noms de fichiers choisis par l'utilisateur et des balises.
 
+use crate::ui::state::anonymize::AnalyzeJob;
 use crate::ui::state::images::FileMask;
-use anon_core::{EntityKind, Session, Warning};
+use anon_core::{EntityKind, Goal, Session, Warning};
 use anon_engine::{
     Analysis, AnonymizeOptions, Anonymized, Engine, EngineError, InputFile, Progress,
     RestoreReport, RiskReport,
@@ -18,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 /// Nombre maximal de suffixes essayés pour trouver un nom libre.
 const MAX_NAME_ATTEMPTS: u32 = 9999;
-/// Nom de base de la table de correspondance écrite à côté des fichiers.
+/// Nom de base de la clé de restauration écrite à côté des fichiers.
 pub const MAP_BASENAME: &str = "table_anonymiseur.anonmap";
 
 /// Fichier d'exemple embarqué dans l'exécutable.
@@ -185,6 +186,24 @@ pub fn unsupported_reason(path: &Path) -> String {
     )
 }
 
+/// Lit les documents d'une analyse : fichiers du disque, puis textes collés
+/// (déjà en mémoire).
+pub fn read_documents(job: &AnalyzeJob) -> (Vec<InputFile>, Vec<Rejected>) {
+    let (mut inputs, rejected) = read_inputs(&job.paths);
+    inputs.extend(job.texts.iter().cloned());
+    (inputs, rejected)
+}
+
+/// Message d'erreur d'ouverture d'une clé, dans le vocabulaire de l'interface.
+pub fn vault_message(e: &anon_vault::VaultError) -> String {
+    match e {
+        anon_vault::VaultError::NotAVault => {
+            "Ce fichier n'est pas une clé de restauration Anonymiseur.".to_owned()
+        }
+        other => other.to_string(),
+    }
+}
+
 /// Lit les fichiers ; un fichier illisible est refusé sans bloquer les autres.
 pub fn read_inputs(paths: &[PathBuf]) -> (Vec<InputFile>, Vec<Rejected>) {
     let mut ok = Vec::new();
@@ -234,12 +253,12 @@ pub fn write_new(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBu
     ))
 }
 
-/// Protection de la table de correspondance.
+/// Protection de la clé de restauration.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Protection {
-    /// Nouvelle table chiffrée par ce mot de passe.
+    /// Nouvelle clé chiffrée par ce mot de passe.
     Password(String),
-    /// Aucune table : restauration impossible.
+    /// Aucune clé : restauration impossible (objectif « Anonymiser définitivement »).
     Irreversible,
 }
 
@@ -261,7 +280,7 @@ pub enum Outcome {
         warnings: Vec<Warning>,
         risk: RiskReport,
     },
-    /// Contrôle de fuite : fichier non livré. Balises concernées et emplacements.
+    /// Vérification finale : fichier non livré. Balises concernées et emplacements.
     Leak {
         tags: Vec<String>,
         parts: Vec<String>,
@@ -282,7 +301,7 @@ pub struct FileOutcome {
 pub struct BatchReport {
     pub files: Vec<FileOutcome>,
     pub out_dir: PathBuf,
-    /// Table écrite (absente en mode irréversible ou si rien n'a été livré).
+    /// Clé écrite (absente sans clé ou si rien n'a été livré).
     pub map_path: Option<PathBuf>,
     /// Erreur bloquante : rien n'a été écrit.
     pub fatal: Option<String>,
@@ -298,10 +317,13 @@ impl BatchReport {
     }
 }
 
-/// Anonymise un lot : sélection enregistrée dans la session, chaque fichier
-/// traité en mémoire (contrôle de fuite bloquant), puis la table est scellée et
-/// écrite **avant** les fichiers : un fichier anonymisé n'existe jamais sans sa
-/// table. En cas d'annulation, ce qui est déjà traité est livré avec sa table.
+/// Masque un lot : sélection enregistrée dans la session, chaque fichier
+/// traité en mémoire (vérification finale bloquante), puis la clé est scellée et
+/// écrite **avant** les fichiers : un fichier masqué n'existe jamais sans sa
+/// clé. En cas d'annulation, ce qui est déjà traité est livré avec sa clé.
+///
+/// L'objectif de la session suit la protection : sans clé, « Anonymiser
+/// définitivement » (`Session::goal`, `Session::irreversible`).
 ///
 /// `masks` : zones tracées à la main, transmises au fichier qu'elles concernent.
 #[allow(clippy::too_many_arguments)]
@@ -346,6 +368,11 @@ pub fn anonymize_batch_tracked(
     failed: &dyn Fn(usize),
 ) -> BatchReport {
     session.irreversible = matches!(protection, Protection::Irreversible);
+    session.goal = if session.irreversible {
+        Goal::Anonymize
+    } else {
+        Goal::Mask
+    };
     engine.apply_selection(analysis, session);
     for n in never {
         session.add_never(n);
@@ -416,13 +443,13 @@ pub fn anonymize_batch_tracked(
         return report;
     }
 
-    // Table d'abord.
+    // Clé d'abord.
     if let Protection::Password(pw) = protection {
         let sealed = match anon_vault::seal(session, pw) {
             Ok(b) => b,
             Err(e) => {
                 report.fatal = Some(format!(
-                    "Table non chiffrée ({e}) : aucun fichier n'a été écrit."
+                    "Clé de restauration non chiffrée ({e}) : aucun fichier n'a été écrit."
                 ));
                 mark_unwritten(&mut report, &ready);
                 return report;
@@ -432,7 +459,7 @@ pub fn anonymize_batch_tracked(
             Ok(p) => report.map_path = Some(p),
             Err(_) => {
                 report.fatal = Some(
-                    "Impossible d'écrire la table de correspondance dans ce dossier : aucun \
+                    "Impossible d'écrire la clé de restauration dans ce dossier : aucun \
                      fichier n'a été écrit. Choisissez un autre dossier de sortie."
                         .to_owned(),
                 );
@@ -471,7 +498,7 @@ fn options_for(masks: &[FileMask], file: &str) -> AnonymizeOptions {
 fn mark_unwritten(report: &mut BatchReport, ready: &[(usize, Anonymized)]) {
     for (slot, _) in ready {
         if let Some(f) = report.files.get_mut(*slot) {
-            f.outcome = Outcome::Failed("Non écrit : la table n'a pas pu être créée.".to_owned());
+            f.outcome = Outcome::Failed("Non écrit : la clé n'a pas pu être créée.".to_owned());
         }
     }
 }
@@ -523,7 +550,41 @@ pub fn unused_tags(report: &RestoreReport) -> Vec<String> {
     report.unused.iter().map(|t| t.to_string()).collect()
 }
 
-/// Nombre de types distincts (pour le résumé d'une table).
+/// Texte masqué des documents livrés, précédé de la consigne pour l'IA :
+/// prêt à coller dans une conversation. Les documents sont numérotés, sans
+/// leur nom (il peut désigner une personne). Chaque texte passe la
+/// vérification finale (`Engine::export_text`) ; un document sans texte ou
+/// bloqué est omis. Renvoie le texte et le nombre de documents inclus.
+pub fn text_for_ai(
+    engine: &Engine,
+    inputs: &[InputFile],
+    report: &BatchReport,
+    session: &Session,
+) -> (String, usize) {
+    let mut out = anon_engine::ai_instruction().trim_end().to_owned();
+    let mut included = 0;
+    for f in &report.files {
+        if !matches!(f.outcome, Outcome::Written { .. }) {
+            continue;
+        }
+        let Some(input) = inputs.iter().find(|i| i.name == f.name) else {
+            continue;
+        };
+        let Ok(text) = engine.export_text(input, session) else {
+            continue;
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        included += 1;
+        out.push_str(&format!("\n\n--- Document {included} ---\n\n"));
+        out.push_str(text.trim_end());
+    }
+    out.push('\n');
+    (out, included)
+}
+
+/// Nombre de types distincts (pour le résumé d'une clé).
 pub fn kinds_in(session: &Session) -> usize {
     let mut kinds: Vec<EntityKind> = session.entities.iter().map(|e| e.tag.kind).collect();
     kinds.sort();
@@ -541,6 +602,113 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         let _ = std::fs::create_dir_all(&d);
         d
+    }
+
+    const LETTRE: &str = "Madame Hélène Kaloï a écrit à helene.kaloi@example.com.";
+
+    /// Analyse d'une lettre, toutes valeurs cochées.
+    fn lettre(engine: &Engine) -> (Vec<InputFile>, Analysis) {
+        let inputs = vec![InputFile::new("lettre.txt", LETTRE.as_bytes().to_vec())];
+        let analysis = engine.analyze(
+            &inputs,
+            &anon_engine::AnalyzeOptions::default(),
+            &Session::new(),
+            &anon_engine::NoProgress,
+        );
+        (inputs, analysis)
+    }
+
+    #[test]
+    fn the_session_goal_follows_the_protection() {
+        let engine = Engine::standard();
+        let (inputs, analysis) = lettre(&engine);
+        for (protection, goal, map) in [
+            (Protection::Irreversible, Goal::Anonymize, false),
+            (
+                Protection::Password("Cheval-Agrafe-Batterie-47".into()),
+                Goal::Mask,
+                true,
+            ),
+        ] {
+            let d = temp_dir(if map {
+                "objectif-cle"
+            } else {
+                "objectif-sans-cle"
+            });
+            let mut session = Session::new();
+            session.goal = Goal::Anonymize;
+            let report = anonymize_batch(
+                &engine,
+                &inputs,
+                &analysis,
+                &[],
+                &[],
+                &mut session,
+                &protection,
+                &d,
+                &anon_engine::NoProgress,
+            );
+            assert_eq!(report.delivered(), 1);
+            assert_eq!(session.goal, goal);
+            assert_eq!(session.irreversible, goal == Goal::Anonymize);
+            assert_eq!(report.map_path.is_some(), map, "aucune clé sans retour");
+            if let (Some(path), Protection::Password(pw)) = (&report.map_path, &protection) {
+                let bytes = std::fs::read(path).unwrap_or_default();
+                let reopened = anon_vault::open(&bytes, pw);
+                assert_eq!(reopened.map(|s| s.goal), Ok(Goal::Mask));
+            }
+            let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
+    #[test]
+    fn text_for_ai_starts_with_the_instruction_and_hides_values() {
+        let engine = Engine::standard();
+        let (inputs, analysis) = lettre(&engine);
+        let d = temp_dir("texte-pour-ia");
+        let mut session = Session::new();
+        let report = anonymize_batch(
+            &engine,
+            &inputs,
+            &analysis,
+            &[],
+            &[],
+            &mut session,
+            &Protection::Irreversible,
+            &d,
+            &anon_engine::NoProgress,
+        );
+        let (text, n) = text_for_ai(&engine, &inputs, &report, &session);
+        assert_eq!(n, 1);
+        assert!(text.starts_with(anon_engine::ai_instruction().trim_end()));
+        assert!(text.contains("--- Document 1 ---"));
+        assert!(text.contains("[EMAIL_1]"), "{text}");
+        assert!(!text.contains("kaloi@example.com"));
+        assert!(!text.contains("lettre.txt"), "pas de nom de fichier");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn documents_include_pasted_texts() {
+        let d = temp_dir("documents");
+        let file = d.join("a.txt");
+        let _ = std::fs::write(&file, "Bonjour");
+        let job = AnalyzeJob {
+            paths: vec![file, d.join("absent.txt")],
+            texts: vec![InputFile::new("texte-colle-1.txt", b"Salut".to_vec())],
+        };
+        let (inputs, rejected) = read_documents(&job);
+        let names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["a.txt", "texte-colle-1.txt"]);
+        assert_eq!(rejected.len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn vault_messages_use_the_key_vocabulary() {
+        let m = vault_message(&anon_vault::VaultError::NotAVault);
+        assert!(m.contains("clé de restauration"), "{m}");
+        assert!(vault_message(&anon_vault::VaultError::WrongPassword).starts_with("Mot de passe"));
     }
 
     #[test]

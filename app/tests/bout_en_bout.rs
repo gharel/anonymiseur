@@ -1,5 +1,5 @@
 //! Parcours de l'interface de bout en bout sur les vrais exemples, sans egui :
-//! état des onglets + opérations du fil de travail + moteur livré.
+//! état du dossier de travail + opérations du fil de travail + moteur livré.
 //!
 //! analyser `exemples/` → sélection par défaut → anonymiser dans un dossier
 //! temporaire → fichiers écrits et `.anonmap` → réouverture avec le mot de passe
@@ -14,9 +14,9 @@ use anon_core::{
 use anon_engine::{Engine, NoProgress, Progress};
 use anonymiseur::ui::platform::file_entry;
 use anonymiseur::ui::service::{
-    MAP_BASENAME, Outcome, Protection, anonymize_batch, read_inputs, restore_batch,
+    MAP_BASENAME, Outcome, Protection, anonymize_batch, read_documents, read_inputs, restore_batch,
 };
-use anonymiseur::ui::state::anonymize::{AnonymizeState, ProtectMode, Step};
+use anonymiseur::ui::state::anonymize::{AnonymizeState, ProtectMode};
 use anonymiseur::ui::state::deanonymize::DeanonymizeState;
 use anonymiseur::ui::state::files::OUTPUT_DIR_NAME;
 use std::path::{Path, PathBuf};
@@ -76,20 +76,20 @@ fn copy_examples(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Analyse par l'état de l'onglet, comme le fait `AnonApp`.
+/// Analyse par l'état du dossier, comme le fait `AnonApp`.
 fn analyzed(paths: Vec<PathBuf>, session: &Session, progress: &dyn Progress) -> AnonymizeState {
     let mut st = AnonymizeState::default();
     let supported = engine().supported_extensions();
     st.add_files(paths.into_iter().map(file_entry), &supported);
-    let to_read = st.begin_analysis().unwrap();
-    let (inputs, rejected) = read_inputs(&to_read);
+    let job = st.begin_analysis().unwrap();
+    let (inputs, rejected) = read_documents(&job);
     let analysis = engine().analyze(&inputs, &st.analyze_options(), session, progress);
     st.analysis_done(inputs, rejected, analysis, session);
     st
 }
 
 fn anonymize(st: &mut AnonymizeState, session: &mut Session, progress: &dyn Progress) {
-    st.confirm_review().unwrap();
+    assert_eq!(st.review_blocker(), None);
     let job = st.begin_anonymize().unwrap();
     if let Some(s) = job.session.clone() {
         *session = s;
@@ -115,7 +115,7 @@ fn parcours_complet_sur_les_exemples() {
     assert!(paths.len() >= 8, "exemples gérés : {}", paths.len());
     let mut session = Session::new();
     let mut st = analyzed(paths.clone(), &session, &NoProgress);
-    assert_eq!(st.step, Step::Review);
+    assert!(st.analysis.is_some());
     assert!(st.rejected.is_empty(), "{:?}", st.rejected);
     assert!(st.selected_count() > 10);
     assert!(!st.tag_preview.is_empty());
@@ -127,7 +127,7 @@ fn parcours_complet_sur_les_exemples() {
     st.protect.password = PASSWORD.into();
     st.protect.confirm = PASSWORD.into();
     anonymize(&mut st, &mut session, &NoProgress);
-    assert_eq!(st.step, Step::Done);
+    assert!(st.report.is_some());
     assert!(st.protect.password.is_empty(), "mot de passe effacé");
     let report = st.report.clone().unwrap();
     assert!(report.fatal.is_none());
@@ -229,7 +229,6 @@ fn parcours_complet_sur_les_exemples() {
     assert!(!notes.contains("[PERSONNE_"), "balise non restaurée");
 
     // Texte collé.
-    d.mode = anonymiseur::ui::state::deanonymize::InputMode::Paste;
     d.pasted = std::fs::read_to_string(exemples().join("reponse-ia-exemple.md")).unwrap();
     d.restore_text(|t, s| engine().restore_text(t, s)).unwrap();
     let (text, rep) = d.text_result.clone().unwrap();
@@ -368,7 +367,7 @@ fn fichiers_refuses_sans_bloquer_les_autres() {
     std::fs::write(&broken, b"PK pas vraiment un docx").unwrap();
     let session = Session::new();
     let st = analyzed(vec![good, old, google, broken], &session, &NoProgress);
-    assert_eq!(st.step, Step::Review);
+    assert!(st.analysis.is_some());
     assert_eq!(st.files.len(), 1);
     let reasons: Vec<(&str, &str)> = st
         .rejected
@@ -436,7 +435,7 @@ fn reprise_d_une_table_existante_garde_les_balises() {
     // Nouvelle session vide, table reprise à l'étape Protéger.
     let mut session = Session::new();
     let mut st = analyzed(vec![file], &session, &NoProgress);
-    st.confirm_review().unwrap();
+    assert_eq!(st.review_blocker(), None);
     st.protect.mode = ProtectMode::ExistingTable;
     st.protect.existing_path = Some(map.clone());
     st.protect.password = PASSWORD.into();
@@ -495,15 +494,14 @@ fn annulation() {
         })
         .collect();
 
-    // Analyse annulée dès le départ : retour à « Déposer », rien de chargé.
+    // Analyse annulée dès le départ : rien de chargé.
     let cancel_now = CancelAfter {
         after: 0,
         seen: AtomicUsize::new(0),
     };
     let session = Session::new();
     let st = analyzed(paths.clone(), &session, &cancel_now);
-    assert_eq!(st.step, Step::Drop);
-    assert!(st.analysis.is_none());
+    assert!(st.analysis.is_none(), "rien à vérifier");
 
     // Anonymisation annulée après le premier fichier : il est livré avec sa table.
     let mut session = Session::new();
@@ -643,10 +641,11 @@ fn terme_toujours_retrouve_et_remplace() {
             .unwrap()
             .candidates
             .iter()
-            .find(|c| c.value == "Martinique")
+            .find(|c| c.value == "antenne")
             .map(|c| (c.selected, c.occurrences))
     };
-    // Piège à faux positif : au plus proposé décoché.
+    // Mot courant, que la détection ne propose pas (même en profil Renforcé,
+    // qui trouve désormais « Martinique », l'ancien terme témoin).
     assert!(
         matches!(found(&st), None | Some((false, _))),
         "{:?}",
@@ -654,10 +653,10 @@ fn terme_toujours_retrouve_et_remplace() {
     );
 
     // Ajout à l'écran de vérification : l'analyse est relancée.
-    st.always_term = "Martinique".into();
+    st.always_term = "antenne".into();
     st.always_kind = anon_core::EntityKind::Autre;
-    let paths = st.add_always().unwrap().expect("analyse relancée");
-    let (inputs, rejected) = read_inputs(&paths);
+    let job = st.add_always().unwrap().expect("analyse relancée");
+    let (inputs, rejected) = read_documents(&job);
     let analysis = engine().analyze(&inputs, &st.analyze_options(), &session, &NoProgress);
     st.analysis_done(inputs, rejected, analysis, &session);
     assert_eq!(found(&st), Some((true, 1)));
@@ -670,7 +669,7 @@ fn terme_toujours_retrouve_et_remplace() {
         panic!("{:?}", report.files[0].outcome);
     };
     let out = std::fs::read_to_string(path).unwrap();
-    assert!(!out.contains("Martinique"), "{out}");
+    assert!(!out.contains("antenne"), "{out}");
     assert!(out.contains("[AUTRE_1]"));
     let _ = std::fs::remove_dir_all(&work);
 }
@@ -681,13 +680,11 @@ fn ligne_generalisee_non_restauree() {
     let file = work.join("notes.txt");
     std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
     let mut session = Session::new();
-    let mut st = AnonymizeState {
-        profile: anon_core::Profile::Renforce,
-        ..Default::default()
-    };
+    // L'analyse est toujours en profil Renforcé : l'âge est un indice cherché.
+    let mut st = AnonymizeState::default();
     st.add_files([file_entry(file)], &engine().supported_extensions());
-    let to_read = st.begin_analysis().unwrap();
-    let (inputs, rejected) = read_inputs(&to_read);
+    let job = st.begin_analysis().unwrap();
+    let (inputs, rejected) = read_documents(&job);
     let analysis = engine().analyze(&inputs, &st.analyze_options(), &session, &NoProgress);
     st.analysis_done(inputs, rejected, analysis, &session);
     let age = st
@@ -731,8 +728,21 @@ fn zone_manuelle_masquee_sur_la_carte_de_visite() {
     let file = work.join("carte-visite.png");
     std::fs::copy(exemples().join("carte-visite.png"), &file).unwrap();
     let mut session = Session::new();
-    // Profil Standard : la fonction (« responsable commerciale ») n'est pas détectée.
+    // La V2 analyse toujours en profil Renforcé : la fonction (« responsable
+    // commerciale ») est trouvée. On la garde visible, comme le ferait
+    // l'utilisateur, pour la masquer ensuite à la main sur l'image.
     let mut st = analyzed(vec![file], &session, &NoProgress);
+    let fonction: Vec<usize> = st
+        .visible()
+        .into_iter()
+        .filter(|id| {
+            st.candidate(*id)
+                .is_some_and(|c| c.value.to_lowercase().contains("commerciale"))
+        })
+        .collect();
+    for id in fonction {
+        st.set_selected(id, false, &session);
+    }
     let images = st.images();
     assert_eq!(images.len(), 1, "{images:?}");
     let info = images[0].clone();
@@ -763,7 +773,7 @@ fn zone_manuelle_masquee_sur_la_carte_de_visite() {
     );
     // Zone tracée à la main, un peu plus large que le mot.
     let pad = 6;
-    st.masks.add(
+    st.add_mask(
         &info.file,
         &info.name,
         PixelRect {

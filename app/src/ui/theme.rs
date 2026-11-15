@@ -953,6 +953,17 @@ pub fn text_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
             p.primary_subtle,
         ),
         ("vert sur ligne à confirmer", p.accent, p.attention_row),
+        ("étape survolée", p.accent, p.muted),
+        (
+            "titre sur fond de marque (objectif choisi)",
+            p.heading,
+            p.primary_subtle,
+        ),
+        (
+            "raison sur fond de marque (palette)",
+            p.text_secondary,
+            p.primary_subtle,
+        ),
         ("blanc sur bouton primaire", p.on_primary, p.primary_dark),
         (
             "blanc sur bouton primaire survolé",
@@ -973,9 +984,9 @@ pub fn text_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
         ("titre sur bandeau info", p.heading, p.dev.fill),
         ("texte sur bandeau succès", p.text, p.primary_subtle),
         ("texte sur bandeau avertissement", p.text, p.data.fill),
-        ("valeur généralisée sur surface", p.data.ink, p.surface),
+        ("valeur moins précise sur surface", p.data.ink, p.surface),
         (
-            "valeur généralisée sur ligne à confirmer",
+            "valeur moins précise sur ligne à confirmer",
             p.data.ink,
             p.attention_row,
         ),
@@ -1011,6 +1022,12 @@ pub fn ui_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
         ("icône d'information sur bandeau", p.dev.ink, p.dev.fill),
         ("icône de succès sur bandeau", p.accent, p.primary_subtle),
         ("case cochée sur surface", p.primary_dark, p.surface),
+        (
+            "bouton radio choisi sur fond de marque",
+            p.accent,
+            p.primary_subtle,
+        ),
+        ("focus sur fond de marque", p.border_focus, p.primary_subtle),
         ("étape courante sur page", p.primary_dark, p.page),
         ("jauge de progression sur piste", p.meter, p.track),
     ]

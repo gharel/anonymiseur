@@ -271,7 +271,7 @@ fn canvas(ui: &mut Ui, st: &mut AnonymizeState, idx: usize, info: &ImageInfo) {
             );
             if response.drag_stopped() {
                 if let Some(r) = fit.drag_to_rect((start.x, start.y), (cur.x, cur.y)) {
-                    st.masks.add(&info.file, &info.name, r);
+                    st.add_mask(&info.file, &info.name, r);
                 }
                 ui.data_mut(|d| d.remove::<Pos2>(start_id));
             }
@@ -308,7 +308,7 @@ fn manual_list(ui: &mut Ui, st: &mut AnonymizeState, info: &ImageInfo) {
         }
     });
     if let Some(i) = remove {
-        st.masks.remove(&info.file, &info.name, i);
+        st.remove_mask(&info.file, &info.name, i);
     }
     if ui
         .add(
@@ -318,6 +318,6 @@ fn manual_list(ui: &mut Ui, st: &mut AnonymizeState, info: &ImageInfo) {
         )
         .clicked()
     {
-        st.masks.clear_image(&info.file, &info.name);
+        st.clear_image_masks(&info.file, &info.name);
     }
 }

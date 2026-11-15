@@ -5,6 +5,7 @@ pub mod banner;
 pub mod button;
 pub mod card;
 pub mod checkbox;
+pub mod choice;
 pub mod dropzone;
 pub mod field;
 pub mod icon;
@@ -19,15 +20,58 @@ pub use banner::{Banner, BannerKind};
 pub use button::{ButtonSize, ButtonVariant, PillButton};
 pub use card::Card;
 pub use checkbox::{CheckState, Checkbox};
+pub use choice::ChoiceCard;
 pub use dropzone::DropZone;
 pub use field::TextField;
 pub use icon::Icon;
-pub use nav::{Stepper, TabBar};
+pub use nav::{StepBar, StepItem};
 pub use progress::{ProgressBar, StrengthMeter};
 pub use select::Select;
 pub use table::{Column, DataTable, RowTone};
 
-use crate::ui::theme::{Weight, font, palette};
+use crate::ui::theme::{Weight, font, palette, radius, with_alpha};
+
+/// Marges d'une touche dessinée dans un bouton ou une ligne de la palette.
+const KEYCAP_PAD: egui::Vec2 = egui::vec2(6.0, 3.0);
+
+fn keycap_galley(ui: &Ui, text: &str, color: Color32) -> std::sync::Arc<egui::Galley> {
+    let p = palette();
+    ui.painter()
+        .layout_no_wrap(text.to_owned(), font(Weight::Semibold, p.text_xs), color)
+}
+
+/// Taille d'une touche (« Ctrl+K ») dessinée par [`paint_keycap`].
+pub fn keycap_size(ui: &Ui, text: &str) -> egui::Vec2 {
+    keycap_galley(ui, text, Color32::PLACEHOLDER).size() + 2.0 * KEYCAP_PAD
+}
+
+/// Dessine une touche dans `rect` : sur un bouton primaire (`on_primary`),
+/// fond vert plus foncé et texte blanc ; ailleurs, fond gris et texte courant.
+/// Désactivée, la touche prend l'opacité 0,5 du bouton.
+pub fn paint_keycap(ui: &Ui, rect: egui::Rect, text: &str, on_primary: bool, enabled: bool) {
+    let p = palette();
+    let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
+    let (fill, edge, ink) = if on_primary {
+        (
+            p.primary_darker,
+            with_alpha(p.on_primary, 0.35),
+            p.on_primary,
+        )
+    } else {
+        (p.muted, p.line_strong, p.text)
+    };
+    let (fill, edge, ink) = (dim(fill), dim(edge), dim(ink));
+    let painter = ui.painter();
+    painter.rect(
+        rect,
+        radius(p.radius_sm),
+        fill,
+        egui::Stroke::new(1.0, edge),
+        egui::StrokeKind::Inside,
+    );
+    let g = keycap_galley(ui, text, ink);
+    painter.galley(rect.center() - g.size() / 2.0, g, ink);
+}
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Color32, FontId, RichText, Ui};
 

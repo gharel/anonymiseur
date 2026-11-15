@@ -5,9 +5,9 @@ use super::state::files::FileEntry;
 use std::path::{Path, PathBuf};
 
 pub trait Platform {
-    /// Dialogue de choix de documents à anonymiser.
+    /// Dialogue de choix de documents à masquer.
     fn pick_documents(&mut self) -> Vec<FileEntry>;
-    /// Dialogue de choix d'une table `.anonmap`.
+    /// Dialogue de choix d'une clé de restauration `.anonmap`.
     fn pick_map(&mut self) -> Option<PathBuf>;
     /// Dialogue de choix de fichiers à restaurer.
     fn pick_responses(&mut self) -> Vec<FileEntry>;
@@ -38,7 +38,7 @@ pub struct NativePlatform;
 impl Platform for NativePlatform {
     fn pick_documents(&mut self) -> Vec<FileEntry> {
         rfd::FileDialog::new()
-            .set_title("Choisir les documents à anonymiser")
+            .set_title("Choisir les documents à masquer")
             .pick_files()
             .unwrap_or_default()
             .into_iter()
@@ -48,8 +48,8 @@ impl Platform for NativePlatform {
 
     fn pick_map(&mut self) -> Option<PathBuf> {
         rfd::FileDialog::new()
-            .set_title("Choisir la table de correspondance")
-            .add_filter("Table de correspondance", &["anonmap"])
+            .set_title("Choisir la clé de restauration")
+            .add_filter("Clé de restauration", &["anonmap"])
             .pick_file()
     }
 
@@ -83,7 +83,7 @@ impl Platform for NativePlatform {
 
     fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf> {
         let mut d = rfd::FileDialog::new()
-            .set_title("Enregistrer le texte anonymisé")
+            .set_title("Enregistrer le texte masqué")
             .add_filter("Markdown", &["md"])
             .set_file_name(name);
         if let Some(s) = start {

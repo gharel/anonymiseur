@@ -26,13 +26,26 @@ fn len(d: &Detection) -> usize {
     d.end.saturating_sub(d.start)
 }
 
+/// Sur un même intervalle, l'en-tête de colonne l'emporte sur le modèle d'IA :
+/// une cellule seule sous « Nom » est un nom, même si le modèle y voit une
+/// société (« Dupuis »), et une cellule sous « Diagnostic » une donnée de santé.
+fn column_over_ner(a: &Detection, b: &Detection) -> Ordering {
+    match (a.source, b.source) {
+        (Source::Column, Source::Ner) => Ordering::Less,
+        (Source::Ner, Source::Column) => Ordering::Greater,
+        _ => Ordering::Equal,
+    }
+}
+
 /// `Less` si `a` est préférée à `b` : confiance 1.0 d'abord, puis intervalle le
-/// plus long, puis confiance, puis source ; la position et le type départagent
-/// pour que le résultat ne dépende pas de l'ordre d'entrée.
+/// plus long, puis colonne plutôt qu'IA, puis confiance, puis source ; la
+/// position et le type départagent pour que le résultat ne dépende pas de
+/// l'ordre d'entrée.
 fn preference(a: &Detection, b: &Detection) -> Ordering {
     is_keyed(b)
         .cmp(&is_keyed(a))
         .then_with(|| len(b).cmp(&len(a)))
+        .then_with(|| column_over_ner(a, b))
         .then_with(|| b.confidence.total_cmp(&a.confidence))
         .then_with(|| source_rank(a.source).cmp(&source_rank(b.source)))
         .then_with(|| a.start.cmp(&b.start))
@@ -197,6 +210,21 @@ mod tests {
             det(EntityKind::Iban, 0, 27, Source::Rule, 1.0),
         ];
         assert_eq!(spans(&merge(v)), vec![(0, 27, EntityKind::Iban)]);
+    }
+
+    #[test]
+    fn column_beats_ner_on_the_same_cell() {
+        // « Dupuis » sous l'en-tête « Nom » : le modèle y voit une société.
+        let out = merge(vec![
+            det(EntityKind::Societe, 0, 6, Source::Ner, 0.99),
+            det(EntityKind::Nom, 0, 6, Source::Column, 0.9),
+        ]);
+        assert_eq!(spans(&out), vec![(0, 6, EntityKind::Nom)]);
+        let out = merge(vec![
+            det(EntityKind::Sante, 0, 8, Source::Column, 0.9),
+            det(EntityKind::Personne, 0, 8, Source::Ner, 0.97),
+        ]);
+        assert_eq!(spans(&out), vec![(0, 8, EntityKind::Sante)]);
     }
 
     #[test]

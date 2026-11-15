@@ -11,7 +11,7 @@ workspace = true
 
 [dependencies]
 aes-gcm = "0.11.1"
-anon-core = { version = "0.1.0", path = "../anon-core" }
+anon-core = { version = "2.0.0", path = "../anon-core" }
 argon2 = "0.6.0"
 ciborium = "0.2.2"
 getrandom = "0.4.3"

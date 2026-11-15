@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+## [2.0.0] - 2026-11-16
+
+Deuxième version : vérification dans le document, bilan des trois critères du CEPD avant envoi, deux objectifs (« Masquer pour l'IA », « Anonymiser définitivement ») et presse-papiers express.
+
 ### Ajouté
 - **Contrats de la V2** (`anon-core`, module `assess`) : objectif (« Masquer pour l'IA », « Anonymiser définitivement »), destinataire, approche simplifiée ou contextuelle, entrées et résultat de l'évaluation des trois critères du CEPD (isolement, recoupement, déduction), corrections proposées. Aucun calcul encore.
 - **Catégories particulières de données** (RGPD, art. 9 et 10) : santé, opinion politique ou philosophique, religion, appartenance syndicale, orientation sexuelle, origine ethnique, données génétiques et biométriques, condamnations ou infractions, dans une nouvelle famille « Sensibles », cherchée dans les deux profils. Nouveau type « Événement personnel » (licenciement, divorce, procédure), un indice du profil Renforcé. Détection automatique : voir « Détection des données sensibles ».
@@ -79,6 +83,12 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 ### Retiré
 - **Rapport de risque de la V1** (Faible, Modéré, Élevé) et **bilan provisoire** : remplacés par l'évaluation des trois critères. Le moteur ne calcule plus le rapport à chaque fichier produit.
 - **Clé `table_anonymiseur.anonmap`** écrite à côté des fichiers : la clé a désormais son propre dossier et un nom daté.
+
+### Limites connues
+- Non vérifié : tout le fonctionnement sur macOS (raccourcis globaux, Trousseau, fenêtres de notification), le Gestionnaire d'identification de Windows en usage réel, un appui physique sur les raccourcis globaux depuis une autre application, les lecteurs d'écran (NVDA, VoiceOver), l'ouverture des fichiers produits dans Microsoft Office.
+- Ctrl+Alt+M peut être déjà utilisé par une autre application : l'application le signale, et « Masquer le presse-papiers » reste dans la palette (Ctrl+K).
+- Le seuil de détection des visages n'a été réglé que sur des images fictives.
+- Le bilan suit l'approche simplifiée des lignes directrices 02/2026 : les tailles de groupe sont des estimations tirées des chiffres de population, sans tenir compte de ce que le destinataire sait déjà.
 
 ## [0.1.1] - 2026-11-14
 

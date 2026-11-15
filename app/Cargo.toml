@@ -16,14 +16,14 @@ default = ["ia"]
 ia = ["dep:anon-ner", "anon-ner/ia", "anon-ner/embed"]
 
 [dependencies]
-anon-core = { version = "0.1.0", path = "../crates/anon-core" }
-anon-engine = { version = "0.1.0", path = "../crates/anon-engine" }
-anon-ner = { version = "0.1.0", path = "../crates/anon-ner", default-features = false, optional = true }
+anon-core = { version = "2.0.0", path = "../crates/anon-core" }
+anon-engine = { version = "2.0.0", path = "../crates/anon-engine" }
+anon-ner = { version = "2.0.0", path = "../crates/anon-ner", default-features = false, optional = true }
 # Réponse restaurée enregistrée en .docx (document Word neuf, minimal).
-anon-office = { version = "0.1.0", path = "../crates/anon-office" }
-anon-pdf = { version = "0.1.0", path = "../crates/anon-pdf" }
-anon-replace = { version = "0.1.0", path = "../crates/anon-replace" }
-anon-vault = { version = "0.1.0", path = "../crates/anon-vault" }
+anon-office = { version = "2.0.0", path = "../crates/anon-office" }
+anon-pdf = { version = "2.0.0", path = "../crates/anon-pdf" }
+anon-replace = { version = "2.0.0", path = "../crates/anon-replace" }
+anon-vault = { version = "2.0.0", path = "../crates/anon-vault" }
 # Presse-papiers express : lecture et écriture du presse-papiers hors de la
 # fenêtre. Déjà présent par egui-winit (même version) : aucune bibliothèque de
 # plus. MIT ou Apache-2.0, aucun réseau.

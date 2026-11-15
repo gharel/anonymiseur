@@ -11,7 +11,7 @@ workspace = true
 
 [dependencies]
 ab_glyph = "0.2.32"
-anon-core = { version = "0.1.0", path = "../anon-core" }
+anon-core = { version = "2.0.0", path = "../anon-core" }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp"] }
 mupdf = { version = "0.8", default-features = false, features = ["base14-fonts", "img", "tesseract"] }
 mupdf-sys = { version = "0.8", default-features = false }

@@ -10,13 +10,13 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-anon-assess = { version = "0.1.1", path = "../anon-assess" }
-anon-core = { version = "0.1.0", path = "../anon-core" }
-anon-detect = { version = "0.1.0", path = "../anon-detect" }
-anon-dict = { version = "0.1.0", path = "../anon-dict" }
-anon-office = { version = "0.1.0", path = "../anon-office" }
-anon-replace = { version = "0.1.0", path = "../anon-replace" }
-anon-vault = { version = "0.1.1", path = "../anon-vault" }
+anon-assess = { version = "2.0.0", path = "../anon-assess" }
+anon-core = { version = "2.0.0", path = "../anon-core" }
+anon-detect = { version = "2.0.0", path = "../anon-detect" }
+anon-dict = { version = "2.0.0", path = "../anon-dict" }
+anon-office = { version = "2.0.0", path = "../anon-office" }
+anon-replace = { version = "2.0.0", path = "../anon-replace" }
+anon-vault = { version = "2.0.0", path = "../anon-vault" }
 # Contrôle de fuite : repérage des identifiants structurels (numéros de ligne,
 # références de cellule) dans les parties XML d'un paquet Office ou OpenDocument.
 # Mêmes versions qu'anon-office, déjà dans Cargo.lock ; MIT, aucun réseau.

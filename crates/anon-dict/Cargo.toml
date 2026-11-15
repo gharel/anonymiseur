@@ -10,7 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-anon-core = { version = "0.1.0", path = "../anon-core" }
+anon-core = { version = "2.0.0", path = "../anon-core" }
 fst = "0.4.7"
 unicode-normalization = "0.1.26"
 

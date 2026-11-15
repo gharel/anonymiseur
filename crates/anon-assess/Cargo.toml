@@ -10,8 +10,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-anon-core = { version = "0.1.1", path = "../anon-core" }
-anon-dict = { version = "0.1.1", path = "../anon-dict" }
+anon-core = { version = "2.0.0", path = "../anon-core" }
+anon-dict = { version = "2.0.0", path = "../anon-dict" }
 
 [dev-dependencies]
 proptest = "1.12.0"

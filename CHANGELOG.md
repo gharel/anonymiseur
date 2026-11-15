@@ -8,6 +8,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - **Contrats de la V2** (`anon-core`, module `assess`) : objectif (« Masquer pour l'IA », « Anonymiser définitivement »), destinataire, approche simplifiée ou contextuelle, entrées et résultat de l'évaluation des trois critères du CEPD (isolement, recoupement, déduction), corrections proposées. Aucun calcul encore.
 - **Catégories particulières de données** (RGPD, art. 9 et 10) : santé, opinion politique ou philosophique, religion, appartenance syndicale, orientation sexuelle, origine ethnique, données génétiques et biométriques, condamnations ou infractions, dans une nouvelle famille « Sensibles », cherchée dans les deux profils. Nouveau type « Événement personnel » (licenciement, divorce, procédure), un indice du profil Renforcé. Pas encore de détection automatique : ces types se choisissent à la main.
 - **Clé de restauration, format 2** : le fichier `.anonmap` retient l'objectif, le destinataire, la date de création et la date jusqu'à laquelle garder la clé. Les tables de la version 0.1 se relisent sans changement.
+- **Phrase de passe générée** (`anon-vault`) : cinq mots français courants et un nombre à deux chiffres, tirés au hasard dans une liste de 4 096 mots (environ 66 bits), classée « Fort ».
+- **Trousseau du système** (`anon-vault`) : mémorisation du mot de passe d'une clé dans le Gestionnaire d'identification (Windows) ou le Trousseau (macOS), sous un identifiant dérivé du fichier, sans aucun contenu utilisateur. Indisponible ailleurs, avec une erreur claire.
+- **Dates de conservation** (`anon-vault`) : date du jour, ajout de mois (fin de mois et années bissextiles gérées) et test d'échéance, sans nouvelle dépendance. Durée proposée par défaut : 12 mois.
 - **Lecture des tableaux** : contrat `Handler::tables` (une entrée par feuille), à implémenter pour Excel, Calc et CSV.
 
 ### Corrigé

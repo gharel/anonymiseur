@@ -51,6 +51,8 @@ pub struct PillButton<'a> {
     preview_hover: bool,
     /// Raccourci dessiné en touche après le texte (« Ctrl+Entrée »).
     kbd: Option<&'a str>,
+    /// Bouton rond réduit à son icône : le texte devient l'infobulle.
+    icon_only: bool,
 }
 
 impl<'a> PillButton<'a> {
@@ -65,6 +67,7 @@ impl<'a> PillButton<'a> {
             accessible: None,
             preview_hover: false,
             kbd: None,
+            icon_only: false,
         }
     }
 
@@ -132,6 +135,14 @@ impl<'a> PillButton<'a> {
         self
     }
 
+    /// Réduit le bouton à son icône, dans un rond de la hauteur du bouton
+    /// (fenêtre étroite) : le nom accessible ([`Self::accessible_label`], sinon
+    /// le texte) devient aussi l'infobulle. Sans icône, le bouton reste entier.
+    pub fn icon_only(mut self, on: bool) -> Self {
+        self.icon_only = on;
+        self
+    }
+
     /// Couleurs fond, contour, texte selon l'état.
     fn colors(&self, hovered: bool) -> (Color32, Color32, Color32) {
         let p = palette();
@@ -195,10 +206,15 @@ impl Widget for PillButton<'_> {
         } else {
             0.0
         };
-        let kbd_size = self.kbd.map(|k| keycap_size(ui, k));
+        let icon_only = self.icon_only && self.icon.is_some();
+        let kbd_size = self.kbd.filter(|_| !icon_only).map(|k| keycap_size(ui, k));
         let kbd_w = kbd_size.map_or(0.0, |k| GAP + k.x);
-        let content_w = icon_w + galley.size().x + kbd_w;
-        let mut width = content_w + 2.0 * (pad_x + BORDER);
+        let (content_w, mut width) = if icon_only {
+            (icon_size, height)
+        } else {
+            let content_w = icon_w + galley.size().x + kbd_w;
+            (content_w, content_w + 2.0 * (pad_x + BORDER))
+        };
         if self.full_width {
             width = width.max(ui.available_width());
         }
@@ -238,9 +254,12 @@ impl Widget for PillButton<'_> {
                 );
                 icon.paint(ui, icon_rect, ink);
             }
-            let text_pos = egui::pos2(start_x + icon_w, rect.center().y - galley.size().y / 2.0);
             let text_w = galley.size().x;
-            painter.galley(text_pos, galley, ink);
+            if !icon_only {
+                let text_pos =
+                    egui::pos2(start_x + icon_w, rect.center().y - galley.size().y / 2.0);
+                painter.galley(text_pos, galley, ink);
+            }
             if let (Some(k), Some(size)) = (self.kbd, kbd_size) {
                 let x = start_x + icon_w + text_w + GAP;
                 let r =
@@ -263,6 +282,11 @@ impl Widget for PillButton<'_> {
                 );
             }
         }
+        let response = if icon_only {
+            response.on_hover_text(label)
+        } else {
+            response
+        };
         if enabled {
             response.on_hover_cursor(egui::CursorIcon::PointingHand)
         } else {
@@ -278,7 +302,10 @@ impl PillButton<'_> {
 
     /// Largeur naturelle du bouton (sans `full_width`), pour centrer une rangée.
     pub fn natural_width(&self, ui: &Ui) -> f32 {
-        let (text_size, pad_x, icon_size, _) = self.metrics();
+        let (text_size, pad_x, icon_size, height) = self.metrics();
+        if self.icon_only && self.icon.is_some() {
+            return height;
+        }
         let galley = ui.painter().layout_job(spaced_job(
             self.text,
             font(Weight::Semibold, text_size),

@@ -33,6 +33,10 @@ const MIN_ROWS: usize = 12;
 const CHROME_H: f32 = 200.0;
 /// Largeur à partir de laquelle les deux colonnes sont côte à côte.
 const TWO_COLUMNS: f32 = 720.0;
+/// Côté de l'icône d'un titre de colonne.
+const HEAD_ICON: f32 = 20.0;
+/// Titre de la colonne de droite.
+const RESTORED_TITLE: &str = "Réponse restaurée";
 
 /// Message après la destruction d'une clé.
 pub const DESTROYED: &str = "Les réponses de l'IA ne peuvent plus être restaurées avec cette \
@@ -243,14 +247,81 @@ personnelles.",
     });
 }
 
-fn column_head(ui: &mut Ui, icon: Icon, title: &str, actions: impl FnOnce(&mut Ui)) {
+/// Largeur d'un titre de colonne (icône, titre, espaces) suivi d'actions
+/// larges de `actions_w`, sur une seule ligne.
+fn head_width(ui: &Ui, title: &str, actions_w: f32) -> f32 {
     let p = palette();
+    let title_w = ui
+        .painter()
+        .layout_no_wrap(
+            title.to_owned(),
+            font(Weight::Semibold, p.text_md),
+            p.heading,
+        )
+        .size()
+        .x;
+    HEAD_ICON + 2.0 * p.space(2) + title_w + actions_w
+}
+
+/// Titre de colonne : icône, titre, actions à droite (larges de `actions_w`).
+/// Si le tout ne tient pas sur la ligne, les actions passent dessous, à droite.
+fn column_head(
+    ui: &mut Ui,
+    icon: Icon,
+    title: &str,
+    actions_w: f32,
+    actions: impl FnOnce(&mut Ui),
+) {
+    let p = palette();
+    let one_line = head_width(ui, title, actions_w) <= ui.available_width();
+    let right = egui::Layout::right_to_left(egui::Align::Center);
+    let mut actions = Some(actions);
     control_row(ui, CONTROL_MD, |ui| {
         ui.spacing_mut().item_spacing.x = p.space(2);
-        icon.show(ui, p.accent, 20.0);
+        icon.show(ui, p.accent, HEAD_ICON);
         subheading(ui, title);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), actions);
+        if one_line && let Some(add) = actions.take() {
+            ui.with_layout(right, add);
+        }
     });
+    if let Some(add) = actions.take() {
+        control_row(ui, CONTROL_MD, |ui| {
+            ui.with_layout(right, add);
+        });
+    }
+}
+
+/// Boutons « Copier », « .md », « .docx » de la réponse restaurée ; `compact` :
+/// « .md » et « .docx » réduits à leur icône (nom accessible et infobulle
+/// « Enregistrer en .md »).
+fn restored_buttons(compact: bool) -> [PillButton<'static>; 3] {
+    [
+        PillButton::secondary("Copier").icon(Icon::Copy).small(),
+        PillButton::ghost(".md")
+            .icon(Icon::Download)
+            .small()
+            .accessible_label("Enregistrer en .md")
+            .icon_only(compact),
+        PillButton::ghost(".docx")
+            .icon(Icon::Download)
+            .small()
+            .accessible_label("Enregistrer en .docx")
+            .icon_only(compact),
+    ]
+}
+
+/// Largeur des boutons de la réponse restaurée, espaces compris.
+fn restored_buttons_width(ui: &Ui, compact: bool) -> f32 {
+    let gap = palette().space(2);
+    let buttons = restored_buttons(compact);
+    buttons.iter().map(|b| b.natural_width(ui)).sum::<f32>()
+        + gap * buttons.len().saturating_sub(1) as f32
+}
+
+/// Vrai si « .md » et « .docx » doivent se réduire à leur icône pour que le
+/// titre « Réponse restaurée » et les trois boutons tiennent sur une ligne.
+fn restored_head_compact(ui: &Ui) -> bool {
+    head_width(ui, RESTORED_TITLE, restored_buttons_width(ui, false)) > ui.available_width()
 }
 
 fn side_by_side(ui: &mut Ui, st: &mut DeanonymizeState, view_h: f32, fx: &mut Vec<Effect>) {
@@ -259,14 +330,14 @@ fn side_by_side(ui: &mut Ui, st: &mut DeanonymizeState, view_h: f32, fx: &mut Ve
     let paste = shortcuts::PASTE_RESPONSE.label();
     let pasted = |ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>| {
         ui.spacing_mut().item_spacing.y = p.space(2);
-        column_head(ui, Icon::Sparkles, "Réponse de l'IA", |ui| {
+        let coller = PillButton::secondary("Coller")
+            .icon(Icon::ClipboardPaste)
+            .small()
+            .kbd(&paste);
+        let coller_w = coller.natural_width(ui);
+        column_head(ui, Icon::Sparkles, "Réponse de l'IA", coller_w, |ui| {
             if ui
-                .add(
-                    PillButton::secondary("Coller")
-                        .icon(Icon::ClipboardPaste)
-                        .small()
-                        .kbd(&paste),
-                )
+                .add(coller)
                 .on_hover_text("Colle la réponse de l'IA et la restaure aussitôt")
                 .clicked()
             {
@@ -289,38 +360,22 @@ fn side_by_side(ui: &mut Ui, st: &mut DeanonymizeState, view_h: f32, fx: &mut Ve
         let text = st.text_result.as_ref().map(|(t, _)| t.clone());
         let ready = text.is_some();
         let none = (!ready).then_some("Collez d'abord la réponse de l'IA.");
-        column_head(ui, Icon::CircleCheck, "Réponse restaurée", |ui| {
+        // Fenêtre étroite : « .md » et « .docx » réduits à leur icône, pour que
+        // le titre ne passe pas sous « Copier ».
+        let compact = restored_head_compact(ui);
+        let actions_w = restored_buttons_width(ui, compact);
+        let [copy, md, word] = restored_buttons(compact);
+        column_head(ui, Icon::CircleCheck, RESTORED_TITLE, actions_w, |ui| {
             ui.spacing_mut().item_spacing.x = p.space(2);
-            let word = super::guarded_button(
-                ui,
-                PillButton::ghost(".docx")
-                    .icon(Icon::Download)
-                    .small()
-                    .accessible_label("Enregistrer en .docx"),
-                none,
-            );
+            let word = super::guarded_button(ui, word, none);
             if word.clicked() {
                 fx.push(Effect::SaveRestored(RestoredFormat::Word));
             }
-            let md = super::guarded_button(
-                ui,
-                PillButton::ghost(".md")
-                    .icon(Icon::Download)
-                    .small()
-                    .accessible_label("Enregistrer en .md"),
-                none,
-            );
+            let md = super::guarded_button(ui, md, none);
             if md.clicked() {
                 fx.push(Effect::SaveRestored(RestoredFormat::Markdown));
             }
-            if copy_button(
-                ui,
-                "copier-reponse",
-                PillButton::secondary("Copier").icon(Icon::Copy).small(),
-                ready,
-            )
-            .clicked()
-            {
+            if copy_button(ui, "copier-reponse", copy, ready).clicked() {
                 match &text {
                     Some(t) => fx.push(Effect::Copy {
                         text: t.clone(),

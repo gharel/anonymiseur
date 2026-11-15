@@ -2619,6 +2619,67 @@ fn controles_alignes_bilan_envoi_reponse() {
     assert_aligned("Réponse, exports", &row);
 }
 
+#[test]
+fn titres_de_la_reponse_sans_chevauchement() {
+    let _rendu = rendu();
+    use anonymiseur::ui::theme::CONTROL_SM;
+    // Titres des deux colonnes et leurs boutons : sur une ligne, sans se
+    // chevaucher, en 1280 × 800 comme dans la fenêtre la plus étroite. En
+    // 900 × 650, « .md » et « .docx » se réduisent à leur icône (nom
+    // accessible et infobulle gardés).
+    for (w, hh) in [(1280.0, 800.0), (900.0, 650.0)] {
+        let mut h = app(w, hh, |app| {
+            anonymize_all(app, out_dir("titres-reponse"));
+            app.workspace.enter(Step::Response);
+        });
+        h.run();
+        let screen = format!("Réponse, {w} × {hh}");
+        for (title, buttons) in [
+            ("Réponse de l'IA", &["Coller"][..]),
+            (
+                "Réponse restaurée",
+                &["Copier", "Enregistrer en .md", "Enregistrer en .docx"][..],
+            ),
+        ] {
+            let t = h.get_by_label(title).rect();
+            let row = rects(&h, buttons);
+            for (name, r) in &row {
+                assert!(
+                    !t.intersects(*r),
+                    "{screen} : « {title} » chevauche « {name} »"
+                );
+                assert!(r.max.x <= w, "{screen} : « {name} » sort de la fenêtre");
+                assert_centered(&screen, name, *r, title, t);
+            }
+            assert_aligned(&screen, &row);
+            // Les boutons ne se chevauchent pas entre eux.
+            for (i, (a, ra)) in row.iter().enumerate() {
+                for (b, rb) in row.iter().skip(i + 1) {
+                    assert!(!ra.intersects(*rb), "{screen} : « {a} » sur « {b} »");
+                }
+            }
+        }
+        let md = h.get_by_label("Enregistrer en .md").rect();
+        assert_eq!(md.height(), CONTROL_SM);
+        if w < 1000.0 {
+            assert_eq!(
+                md.width(),
+                md.height(),
+                "{screen} : « .md » réduit à l'icône"
+            );
+            // Survol : l'infobulle nomme l'action.
+            h.get_by_label("Enregistrer en .md").hover();
+            h.run_steps(10);
+            assert!(
+                h.query_all_by_label("Enregistrer en .md").count() >= 2,
+                "{screen} : infobulle de « .md »"
+            );
+        } else {
+            assert!(md.width() > md.height(), "{screen} : « .md » en entier");
+        }
+    }
+}
+
 // --- Presse-papiers express -------------------------------------------------
 
 /// Texte copié des instantanés : des valeurs sûres et « Léo » (liste

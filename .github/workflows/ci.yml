@@ -164,7 +164,7 @@ jobs:
         shell: bash
         run: |
           cargo llvm-cov \
-            -p anon-core -p anon-replace -p anon-vault -p anon-detect -p anon-dict \
+            -p anon-core -p anon-replace -p anon-vault -p anon-detect -p anon-dict -p anon-assess \
             --summary-only --fail-under-lines "$COVERAGE_MIN" | tee coverage.txt
         env:
           INSTA_UPDATE: no

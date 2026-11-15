@@ -2,12 +2,12 @@
   "profils": {
     "renforce": {
       "ADRESSE": {
-        "attendus": 13,
+        "attendus": 14,
         "precision": 1.0,
         "rappel": 1.0
       },
       "AGE": {
-        "attendus": 5,
+        "attendus": 13,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -17,7 +17,7 @@
         "rappel": 1.0
       },
       "DATE": {
-        "attendus": 26,
+        "attendus": 29,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -27,13 +27,18 @@
         "rappel": 1.0
       },
       "EMAIL": {
-        "attendus": 29,
+        "attendus": 31,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "EVENEMENT": {
+        "attendus": 1,
         "precision": 1.0,
         "rappel": 1.0
       },
       "FONCTION": {
-        "attendus": 20,
-        "precision": 0.833,
+        "attendus": 24,
+        "precision": 0.857,
         "rappel": 1.0
       },
       "IBAN": {
@@ -47,17 +52,17 @@
         "rappel": 1.0
       },
       "LIEU": {
-        "attendus": 16,
+        "attendus": 31,
         "precision": 1.0,
-        "rappel": 0.938
+        "rappel": 0.968
       },
       "MATRICULE": {
-        "attendus": 1,
+        "attendus": 2,
         "precision": 1.0,
         "rappel": 1.0
       },
       "MONTANT": {
-        "attendus": 25,
+        "attendus": 26,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -67,12 +72,12 @@
         "rappel": 1.0
       },
       "NOM": {
-        "attendus": 17,
+        "attendus": 41,
         "precision": 1.0,
         "rappel": 1.0
       },
       "PERSONNE": {
-        "attendus": 44,
+        "attendus": 50,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -91,18 +96,28 @@
         "precision": 1.0,
         "rappel": 1.0
       },
+      "SANTE": {
+        "attendus": 12,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
       "SIRET": {
         "attendus": 1,
         "precision": 1.0,
         "rappel": 1.0
       },
       "SOCIETE": {
-        "attendus": 9,
+        "attendus": 11,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "SYNDICAT": {
+        "attendus": 1,
         "precision": 1.0,
         "rappel": 1.0
       },
       "TEL": {
-        "attendus": 39,
+        "attendus": 40,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -112,14 +127,14 @@
         "rappel": 1.0
       },
       "_GLOBAL": {
-        "attendus": 281,
-        "precision": 0.986,
-        "rappel": 0.996
+        "attendus": 363,
+        "precision": 0.989,
+        "rappel": 0.997
       }
     },
     "standard": {
       "ADRESSE": {
-        "attendus": 13,
+        "attendus": 14,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -134,7 +149,7 @@
         "rappel": 1.0
       },
       "EMAIL": {
-        "attendus": 29,
+        "attendus": 31,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -154,12 +169,12 @@
         "rappel": 1.0
       },
       "NOM": {
-        "attendus": 17,
+        "attendus": 41,
         "precision": 1.0,
         "rappel": 1.0
       },
       "PERSONNE": {
-        "attendus": 44,
+        "attendus": 50,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -178,18 +193,28 @@
         "precision": 1.0,
         "rappel": 1.0
       },
+      "SANTE": {
+        "attendus": 12,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
       "SIRET": {
         "attendus": 1,
         "precision": 1.0,
         "rappel": 1.0
       },
       "SOCIETE": {
-        "attendus": 9,
+        "attendus": 11,
+        "precision": 1.0,
+        "rappel": 1.0
+      },
+      "SYNDICAT": {
+        "attendus": 1,
         "precision": 1.0,
         "rappel": 1.0
       },
       "TEL": {
-        "attendus": 39,
+        "attendus": 40,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -199,7 +224,7 @@
         "rappel": 1.0
       },
       "_GLOBAL": {
-        "attendus": 188,
+        "attendus": 237,
         "precision": 1.0,
         "rappel": 1.0
       }

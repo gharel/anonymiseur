@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc cb1fe958f8cd5424ede79b613b4e9dea9f0dbbafa5c34f814e2933804458e10c # shrinks to paragraphs = [[(Personne, "Personne 3", 1), (Age, "0 ans", 2), (DateNaiss, "03/02/2001", 2), (DateNaiss, "1988", 2), (DateNaiss, "12/08/1946", 2), (Fonction, "responsable technique", 2)], [(Personne, "Personne 3", 1), (Lieu, "Farino", 0), (DateNaiss, "août 1971", 2), (Lieu, "Mont-Dore", 2)]], k_min = 2
+cc ec9a92f3f36b95ece21a2eb1af7abca4319e9c3ea5f34bdb94c375fc1ee6ce6f # shrinks to paragraphs = [[(Personne, "Personne 1", 1), (Lieu, "98800", 3), (Age, "0 ans", 0)], [(Lieu, "Farino", 0), (DateNaiss, "12/08/1946", 2), (Personne, "Personne visible 2", 0), (Lieu, "Farino", 0), (Lieu, "98800", 0), (Lieu, "54000", 3), (Personne, "Personne 1", 1), (Societe, "Nautilus Pacifique SARL", 0)]], k_min = 4

@@ -1,5 +1,10 @@
 //! Risque de réidentification résiduel : quasi-identifiants encore visibles
 //! dans le fichier produit.
+//!
+//! **Obsolète (V1).** Ce rapport compte des occurrences d'indices et ne dit pas
+//! si une personne reste reconnaissable (audit de la V2, constat n° 9).
+//! L'évaluation des trois critères ([`crate::Engine::assess`]) le remplace ; il
+//! reste calculé tant que l'interface de la V1 l'affiche, puis sera retiré.
 
 use anon_core::{EntityKind, Profile};
 use std::collections::BTreeMap;

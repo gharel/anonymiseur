@@ -2,12 +2,15 @@
 //! et la table de correspondance. C'est l'unique point d'entrée de l'interface.
 //!
 //! Parcours : [`Engine::analyze`] → l'utilisateur valide les [`Candidate`] →
-//! [`Engine::apply_selection`] → [`Engine::anonymize`] (contrôle de fuite
-//! bloquant) → plus tard [`Engine::restore`] ou [`Engine::restore_text`].
+//! [`Engine::assess`] (trois critères du CEPD) et ses corrections
+//! ([`Engine::apply_fix`], [`Engine::undo_fix`]) → [`Engine::apply_selection`]
+//! → [`Engine::anonymize`] (contrôle de fuite bloquant) → fiche d'évaluation
+//! ([`fiche::render_markdown`]) → plus tard [`Engine::restore`] ou
+//! [`Engine::restore_text`].
 //!
-//! Tout est injecté par [`EngineBuilder`] : gestionnaires, détecteurs et
-//! traitement d'images. [`Engine::standard`] branche `anon-office` et les
-//! détecteurs sans IA.
+//! Tout est injecté par [`EngineBuilder`] : gestionnaires, détecteurs,
+//! traitement d'images et détecteur de visages. [`Engine::standard`] branche
+//! `anon-office` et les détecteurs sans IA.
 #![cfg_attr(not(test), deny(clippy::indexing_slicing))]
 
 mod analysis;
@@ -15,19 +18,27 @@ mod csv;
 mod document;
 mod engine;
 mod error;
+mod evaluation;
+pub mod fiche;
 mod media;
 mod risk;
+mod structure;
 
 pub use analysis::{
-    Analysis, AnalyzeOptions, AnalyzedImage, CONTEXT_CHARS, Candidate, FileAnalysis,
+    Analysis, AnalyzeOptions, AnalyzedImage, CONTEXT_CHARS, Candidate, FileAnalysis, ImageMask,
     SELECT_MIN_CONFIDENCE, is_ambiguous,
 };
 pub use document::{DocBlock, DocumentView, Span};
 pub use engine::{
-    AnonymizeOptions, Anonymized, Engine, EngineBuilder, FileReport, HandlerLookup, InputFile,
-    NoProgress, Progress, Restored,
+    AnonymizeOptions, Anonymized, Engine, EngineBuilder, FaceFinder, FileReport, HandlerLookup,
+    InputFile, NoProgress, Progress, Restored, output_file_name,
 };
 pub use error::{EngineError, Leak};
+pub use evaluation::{
+    COLUMN_KIND_MIN_SHARE, EVALUATION_HEADERS, FACE_COVERED_MIN_SHARE, FIX_ALL_MAX_ROUNDS, FixUndo,
+    Techniques, role_for_kind,
+};
+pub use fiche::{FICHE_MAX_SUBJECTS, FicheDocument, FicheMeta, render_markdown};
 pub use media::{LOW_OCR_CONFIDENCE, MASK_MARGIN_PX, ManualMask, sha256_hex};
 pub use risk::{
     RISK_COMBINED_RENFORCE, RISK_COMBINED_STANDARD, RISK_HIGH_KINDS, RISK_HIGH_TOTAL,

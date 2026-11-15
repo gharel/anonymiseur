@@ -1,0 +1,4 @@
+# Population municipale totale. Généré par tools/prepare_population.py.
+# code<TAB>territoire<TAB>population
+FR	France	68141890
+NC	Nouvelle-Calédonie	264596

@@ -6,8 +6,8 @@
 
 use crate::xml::{Patch, apply_patches};
 use anon_core::{
-    BlockContext, BlockRole, Extraction, FormatError, Handler, Output, TextBlock, TextTransform,
-    TransformOptions,
+    BlockContext, BlockRole, Extraction, FormatError, Handler, Output, TableData, TextBlock,
+    TextTransform, TransformOptions,
 };
 
 /// Texte brut.
@@ -411,6 +411,23 @@ impl Handler for CsvHandler {
         }
         let out = apply_patches(&s, patches);
         finish(input, &out, count, enc)
+    }
+
+    /// Un tableau : première ligne non vide en en-têtes, lignes vides ignorées.
+    /// Un texte sans structure en colonnes n'a pas de tableau.
+    fn tables(&self, input: &[u8]) -> Result<Vec<TableData>, FormatError> {
+        let (s, _) = decode(input)?;
+        let Some(sep) = detect_separator(&s) else {
+            return Ok(Vec::new());
+        };
+        let mut records = parse_csv(&s, sep, usize::MAX)
+            .into_iter()
+            .filter(|r| !is_blank(r))
+            .map(|r| r.into_iter().map(|f| f.value).collect::<Vec<_>>());
+        let Some(headers) = records.next() else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![crate::tables::rectangular(headers, records.collect())])
     }
 }
 #[cfg(test)]

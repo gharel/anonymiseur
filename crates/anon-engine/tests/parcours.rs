@@ -59,7 +59,7 @@ fn parcours_complet_sur_chaque_exemple() {
                 .unwrap_or_else(|e| panic!("{} ({profile:?}) : {e}", f.name));
             assert_eq!(
                 out.name,
-                f.name.replacen('.', "_anonymise.", 1),
+                f.name.replacen('.', "_masque.", 1),
                 "nom du fichier produit"
             );
             assert!(out.report.replacements > 0, "{}", f.name);

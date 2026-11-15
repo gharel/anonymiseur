@@ -10,13 +10,26 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+anon-assess = { version = "0.1.1", path = "../anon-assess" }
 anon-core = { version = "0.1.0", path = "../anon-core" }
 anon-detect = { version = "0.1.0", path = "../anon-detect" }
 anon-dict = { version = "0.1.0", path = "../anon-dict" }
 anon-office = { version = "0.1.0", path = "../anon-office" }
 anon-replace = { version = "0.1.0", path = "../anon-replace" }
+anon-vault = { version = "0.1.1", path = "../anon-vault" }
+# Contrôle de fuite : repérage des identifiants structurels (numéros de ligne,
+# références de cellule) dans les parties XML d'un paquet Office ou OpenDocument.
+# Mêmes versions qu'anon-office, déjà dans Cargo.lock ; MIT, aucun réseau.
+quick-xml = "0.42.0"
 sha2 = "0.11.1"
 thiserror = "2.0.21"
+zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
+# Tests d'évaluation sur les images d'exemple (OCR réel).
+anon-pdf = { path = "../anon-pdf" }
+# Instantané de la fiche d'évaluation. Apache-2.0 (dépendances MIT, Apache-2.0),
+# aucun réseau, absent de l'exécutable.
+insta = "1.49.0"
+proptest = "1.12.0"
 serde_json = "1.0.154"

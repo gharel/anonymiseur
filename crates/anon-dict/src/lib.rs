@@ -1,11 +1,14 @@
 //! Dictionnaires embarqués (prénoms, noms de famille, communes, mots courants) et
-//! détecteur à base de dictionnaires.
+//! détecteur à base de dictionnaires ; données de population (`population`) et
+//! hiérarchies de généralisation (`hierarchy`) pour l'évaluation de l'anonymat.
 //!
 //! Les listes de `data/` sont compilées en FST par `build.rs` et incluses dans le
 //! binaire : aucune lecture de fichier à l'exécution, aucun réseau.
 
 mod detector;
 mod fold;
+pub mod hierarchy;
+pub mod population;
 mod tokens;
 
 pub use detector::{

@@ -3,6 +3,7 @@
 //! - [`PdfHandler`] : PDF texte et scannés, caviardage réel et balises.
 //! - [`ImageHandler`] : images isolées (OCR, masquage).
 //! - [`MupdfImageProcessor`] : OCR et masquage pour les autres crates.
+//! - [`render_fiche_pdf`] : fiche d'évaluation en PDF (A4).
 //!
 //! Seul crate autorisé à utiliser `unsafe`, confiné dans le module `ffi`.
 //! L'OCR se fait entièrement en mémoire ; seules les données de langue de
@@ -11,6 +12,7 @@
 #![cfg_attr(not(test), deny(clippy::indexing_slicing))]
 
 mod ffi;
+mod fiche;
 mod image_handler;
 mod image_proc;
 mod ocr;
@@ -18,6 +20,10 @@ mod pdf;
 
 use anon_core::Handler;
 
+pub use fiche::{
+    A4_HEIGHT_PT, A4_WIDTH_PT, FICHE_BODY_SIZE_PT, FICHE_SIDE_MARGIN_PT, FICHE_VERTICAL_MARGIN_PT,
+    render_fiche_pdf,
+};
 pub use image_handler::{ImageHandler, OCR_MASK_MARGIN_PX, OCR_MASK_MARGIN_RATIO};
 pub use image_proc::{
     JPEG_QUALITY, MAX_DECODE_ALLOC, MAX_IMAGE_PIXELS, MAX_IMAGE_SIDE, MIN_LABEL_PX,

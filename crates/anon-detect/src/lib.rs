@@ -1,8 +1,12 @@
 //! Règles de détection à clé, fusion des détections.
 //!
 //! - [`checksums`] : contrôles de clé (Luhn, IBAN, NIR, SIREN/SIRET, DNI…).
-//! - [`rules`] : [`rules::RuleDetector`], expressions régulières et contrôles de clé.
-//! - [`quasi`] : [`quasi::QuasiDetector`], dates, âges, montants, fonctions, matricules.
+//! - [`rules`] : [`rules::RuleDetector`], expressions régulières et contrôles de
+//!   clé, données sensibles (santé, opinions, religion, syndicat, orientation,
+//!   origine, génétique, biométrie, condamnations) par lexiques et règles de
+//!   contexte (`sensitive`).
+//! - [`quasi`] : [`quasi::QuasiDetector`], dates, âges, montants, fonctions,
+//!   matricules, événements personnels (`sensitive`).
 //! - [`columns`] : [`columns::ColumnDetector`], type décidé par l'en-tête de colonne.
 //! - [`lists`] : [`lists::ListDetector`], termes « toujours anonymiser ».
 //! - [`pipeline`] : lancement des détecteurs et résolution des chevauchements.
@@ -14,6 +18,7 @@ pub mod lists;
 pub mod pipeline;
 pub mod quasi;
 pub mod rules;
+mod sensitive;
 
 pub use columns::ColumnDetector;
 pub use lists::ListDetector;

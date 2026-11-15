@@ -23,14 +23,26 @@ Les licences de Tesseract, de Leptonica et d'ONNX Runtime sont celles publiées 
 
 Le modèle pii-medium s'appuie sur mMiniLMv2 (Microsoft, MIT) et le tokeniseur XLM-R (MIT). Powered by newmean.ai. Son fichier NOTICE est reproduit tel quel dans `licences/NOTICE-pii-medium.txt`. Révisions exactes et empreintes SHA-256 : `assets/ner/LISEZMOI.md`.
 
+## Modèle de détection des visages (édition complète)
+
+| Modèle | Auteurs | Licence | Source |
+|---|---|---|---|
+| YuNet, `face_detection_yunet_2026may.onnx` (mêmes poids que `face_detection_yunet_2023mar.onnx`, entrée de taille libre), 229 738 octets, SHA-256 `ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0` | Shiqi Yu, Wei Wu, Hanyang Peng (libfacedetection), OpenCV Zoo | MIT, texte dans `assets/faces/LICENSE` | https://github.com/opencv/opencv_zoo/tree/eb9f4f2d4b79b58e5513b5d25d5f0243a8357bf4/models/face_detection_yunet |
+
+Le fichier est versionné dans `assets/faces/` avec ses empreintes (`SHA256SUMS`) ; `tools/prepare_faces.py` le télécharge depuis ce commit et vérifie l'empreinte. Le décodage des sorties et la suppression des non-maxima sont réécrits en Rust d'après `modules/objdetect/src/face_detect.cpp` et `modules/dnn/src/nms.inl.hpp` d'OpenCV 4.x (Apache-2.0, https://github.com/opencv/opencv). Les images des tests sont des peintures du domaine public : `crates/anon-ner/tests/fixtures/SOURCES.md`.
+
 ## Données de détection
 
 | Donnée | Licence | Source |
 |---|---|---|
 | Fichier des prénoms, fichier des noms de famille, code officiel géographique (communes), Insee | Licence Ouverte 2.0 (Etalab) | https://www.insee.fr |
-| Lexique des formes fléchies du français v7.7, Dicollecte / Grammalecte | MPL-2.0 | https://grammalecte.net |
+| Lexique des formes fléchies du français v7.7, Dicollecte / Grammalecte (dictionnaires, liste de mots des phrases de passe) | MPL-2.0 | https://grammalecte.net |
+| Populations légales des communes, bilan démographique (âges), Base Tous salariés (métiers), Insee | Licence Ouverte 2.0 (Etalab) | https://www.insee.fr |
+| Recensement de la Nouvelle-Calédonie (populations, âges), Insee et ISEE | Licence Ouverte 2.0 (Etalab) | https://www.isee.nc |
+| Communes de Nouvelle-Calédonie et provinces, Gouvernement de la Nouvelle-Calédonie | Licence Ouverte 2.0 (Etalab) | https://data.gouv.nc |
+| Effectifs des professions de santé (RPPS), DREES | Licence Ouverte 2.0 (Etalab) | https://drees.solidarites-sante.gouv.fr |
 
-Éditions et traitements exacts : `crates/anon-dict/data/SOURCES.md`.
+Éditions et traitements exacts : `crates/anon-dict/data/SOURCES.md` et `crates/anon-vault/data/SOURCES.md`.
 
 ## Interface
 

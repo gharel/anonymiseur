@@ -881,6 +881,491 @@
       ]
     },
     {
+      "fichier": "patients.xlsx",
+      "langue": "fr",
+      "notes": "Tableau de patients fictifs (nom, âge, commune, code postal, sexe, diagnostic) : un groupe au diagnostic commun, trois lignes uniques ; mention sur une feuille à part.",
+      "entites": [
+        {
+          "type": "NOM",
+          "valeur": "Durand",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "54",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Nouméa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "98800",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Diabète de type 2",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Lefebvre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Moreau",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Fournier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Morel",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "88",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Farino",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "98881",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Insuffisance cardiaque",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Girard",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Mercier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "41",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Dumbéa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "98835",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Asthme",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Guerin",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Migraine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Boyer",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Hypertension",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Chevalier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Legrand",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Eczéma",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Gauthier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "47",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Lifou",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "98820",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Perrin",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Anémie",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Roussel",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "62",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Païta",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "98890",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Arthrose",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Lambert",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Barbier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Dupuis",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Lombalgie",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Leroy",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Faure",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "73",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Bourail",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "98870",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Rousseau",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "35",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Lemaire",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Masson",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "Hypothyroïdie",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Brunet",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        },
+        {
+          "type": "NOM",
+          "valeur": "Duval",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "cellule"
+          ]
+        }
+      ],
+      "ne_pas_detecter": []
+    },
+    {
       "fichier": "presentation-projet.pptx",
       "langue": "fr",
       "notes": "Noms d'équipe, notes du présentateur, graphique avec noms en catégories (emplacement corps), image contenant du texte (OCR).",
@@ -3110,6 +3595,291 @@
       ],
       "ne_pas_detecter": [
         "1.2.3.4"
+      ]
+    },
+    {
+      "fichier": "compte-rendu-commission.docx",
+      "langue": "fr",
+      "notes": "Compte rendu : personne reconnaissable par sa fonction et sa commune, fonction dans une société nommée, délégué syndical ; mentions générales de santé et de syndicat à ne pas détecter.",
+      "entites": [
+        {
+          "type": "PERSONNE",
+          "valeur": "Pierre Garnier",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "metadonnee",
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "9 octobre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Farino",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Hélène Kaloï",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "infirmière",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "AGE",
+          "valeur": "62 ans",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "responsable technique",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Nautilus Pacifique SARL",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MONTANT",
+          "valeur": "450 000 XPF",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Martin Lefèvre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SYNDICAT",
+          "valeur": "délégué syndical USTKE",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "martin.lefevre@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "diabète",
+        "section syndicale",
+        "Martinique"
+      ]
+    },
+    {
+      "fichier": "courrier-arret-maladie.txt",
+      "langue": "fr",
+      "notes": "Courrier : arrêt maladie et suivi médical d'un salarié (santé), arrêt de travail (événement), matricule ; règle générale et mention technique à ne pas détecter.",
+      "entites": [
+        {
+          "type": "ADRESSE",
+          "valeur": "8 allée des Tilleuls, 69003 Lyon",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Nouméa",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "2 novembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "arrêt maladie",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Olivier Nguyen",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "chargé de mission",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SOCIETE",
+          "valeur": "Atelier Bougainville SAS",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "MATRICULE",
+          "valeur": "MAT-008812",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "DATE",
+          "valeur": "21 novembre 2026",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "SANTE",
+          "valeur": "suivi pour une hernie discale",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EVENEMENT",
+          "valeur": "arrêt de travail",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "LIEU",
+          "valeur": "Koné",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Martin Lefèvre",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "EMAIL",
+          "valeur": "martin.lefevre@example.com",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "TEL",
+          "valeur": "07 11 22 33 44",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "PERSONNE",
+          "valeur": "Marie-Claire de La Fontaine",
+          "profil": "standard",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        },
+        {
+          "type": "FONCTION",
+          "valeur": "Directrice des ressources humaines",
+          "profil": "renforce",
+          "ocr": false,
+          "emplacements": [
+            "corps"
+          ]
+        }
+      ],
+      "ne_pas_detecter": [
+        "hospitalisation",
+        "diabète"
       ]
     },
     {

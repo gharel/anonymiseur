@@ -26,3 +26,8 @@ default = ["ia"]
 ia = ["dep:ort", "dep:tokenizers", "dep:whatlang", "dep:anon-dict"]
 # Modèle, tokeniseur et configuration inclus dans le binaire depuis `assets/ner/`.
 embed = ["ia"]
+
+[dev-dependencies]
+# Décodage des images de test (tests/fixtures) : déjà dans Cargo.lock (anon-pdf, app),
+# MIT ou Apache-2.0, aucun réseau, absent de l'exécutable.
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }

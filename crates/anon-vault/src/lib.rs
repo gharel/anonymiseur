@@ -16,6 +16,15 @@
 //! L'en-tête entier (46 octets) sert de données associées : toute altération
 //! fait échouer le déchiffrement. Aucun contenu utilisateur n'apparaît dans les erreurs.
 
+pub mod keychain;
+mod passphrase;
+pub mod retention;
+
+pub use passphrase::{
+    DEFAULT_PASSPHRASE_WORDS, MAX_PASSPHRASE_WORDS, MIN_PASSPHRASE_WORDS, generate_passphrase,
+    passphrase_entropy_bits, try_generate_passphrase,
+};
+
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use anon_core::session::{FORMAT_VERSION, Session};
@@ -69,6 +78,12 @@ pub enum VaultError {
     Irreversible,
     #[error("Erreur cryptographique interne.")]
     Crypto,
+    #[error("Le trousseau du système n'est pas disponible sur cette plateforme.")]
+    KeychainUnavailable,
+    #[error("Le trousseau du système a refusé l'accès (verrouillé ou non autorisé).")]
+    KeychainDenied,
+    #[error("Le trousseau du système a signalé une erreur.")]
+    KeychainFailure,
 }
 
 /// Robustesse estimée d'un mot de passe.

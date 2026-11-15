@@ -12,12 +12,15 @@ La vérité terrain lisible par les tests est dans `attendu.json` : toute valeur
 |---|---|
 | `contrat-prestation.docx` | nom coupé entre deux mises en forme, en-tête, pied de page, commentaire, révision suivie, lien `mailto:`, propriétés |
 | `fichier-clients.xlsx` | tableau Excel, téléphones et montants saisis en nombres, formule, commentaire de cellule, graphique, 2e feuille |
+| `patients.xlsx` | évaluation des trois critères : tableau de patients où un groupe partage le même diagnostic et où trois lignes sont uniques |
 | `presentation-projet.pptx` | diapositives, notes du présentateur, graphique, image contenant du texte |
 | `facture.pdf` | PDF avec texte, métadonnées |
 | `courrier-scanne.pdf`, `carte-visite.png` | images seules : aucun texte extractible, OCR nécessaire |
 | `compte-rendu.odt`, `planning.ods`, `support.odp` | formats OpenDocument |
 | `notes.txt`, `export.csv`, `brief.md` | texte brut, CSV à séparateur `;`, Markdown |
 | `report-en.docx`, `informe-es.txt` | anglais et espagnol, téléphones internationaux |
+| `compte-rendu-commission.docx` | évaluation des textes : une personne reste reconnaissable par sa fonction et sa commune (infirmière du dispensaire de Farino, 62 ans), une fonction dans une société nommée, une appartenance syndicale |
+| `courrier-arret-maladie.txt` | donnée de santé liée à une personne (arrêt maladie, suivi médical), arrêt de travail, mentions générales à ne pas détecter |
 | `reponse-ia-exemple.md` | réponse d'IA avec balises correctes, altérées et inventée |
 
 Les mêmes sociétés et les mêmes sept personnes reviennent d'un fichier à l'autre : Jean Dupont (écrit aussi

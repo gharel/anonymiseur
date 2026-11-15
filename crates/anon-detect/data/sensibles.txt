@@ -1,0 +1,1023 @@
+# Lexiques des données sensibles (RGPD, art. 9 et 10) et des événements personnels.
+# Sources et licence : data/SOURCES.md. Contenu du projet, AGPL-3.0.
+#
+# Format : un en-tête « [TYPE classe] » (TYPE = préfixe de balise), puis une forme
+# par ligne. Les formes sont pliées au chargement (minuscules, sans accents).
+# Classes :
+#   terme     nom ou locution (maladie, infraction, parti, syndicat, religion…),
+#             reconnu seulement après un indice de contexte (« atteint de »,
+#             « condamné pour », « adhérent de », possessif…) ;
+#   adjectif  qualificatif d'une personne, reconnu après un verbe d'état
+#             (« est diabétique ») ou un indice propre à la catégorie ;
+#   organe    partie du corps, reconnue après « opéré de » ;
+#   proche    membre de la famille, pour le décès d'un proche.
+# Seules les formes au singulier figurent : un pluriel (« les patients
+# diabétiques ») désigne un groupe, pas une personne.
+
+[SANTE terme]
+diabète
+diabète de type 1
+diabète de type 2
+cancer
+cancer du sein
+cancer de la prostate
+cancer du poumon
+cancer du côlon
+cancer colorectal
+cancer du pancréas
+cancer de l'ovaire
+cancer de la peau
+leucémie
+lymphome
+mélanome
+tumeur
+tumeur cérébrale
+tumeur maligne
+métastases
+sclérose en plaques
+maladie de Parkinson
+maladie d'Alzheimer
+maladie de Crohn
+maladie de Charcot
+sclérose latérale amyotrophique
+épilepsie
+asthme
+bronchopneumopathie chronique obstructive
+BPCO
+insuffisance cardiaque
+insuffisance rénale
+insuffisance respiratoire
+infarctus
+infarctus du myocarde
+crise cardiaque
+accident vasculaire cérébral
+AVC
+hypertension
+hypertension artérielle
+arythmie
+cardiopathie
+hépatite
+hépatite B
+hépatite C
+cirrhose
+VIH
+sida
+tuberculose
+covid
+covid-19
+paludisme
+dengue
+leptospirose
+chikungunya
+rhumatisme articulaire aigu
+lupus
+polyarthrite rhumatoïde
+arthrose
+fibromyalgie
+endométriose
+mucoviscidose
+myopathie
+trisomie 21
+autisme
+trouble du spectre de l'autisme
+syndrome d'Asperger
+TDAH
+trouble du déficit de l'attention
+trouble bipolaire
+troubles bipolaires
+schizophrénie
+dépression
+dépression nerveuse
+burn-out
+burnout
+épuisement professionnel
+anxiété
+trouble anxieux
+troubles anxieux
+crises d'angoisse
+attaques de panique
+trouble obsessionnel compulsif
+stress post-traumatique
+syndrome de stress post-traumatique
+anorexie
+anorexie mentale
+boulimie
+troubles alimentaires
+troubles du comportement alimentaire
+addiction
+alcoolisme
+toxicomanie
+dépendance à l'alcool
+obésité
+apnée du sommeil
+migraine
+migraines
+hernie discale
+lombalgie
+sciatique
+tendinite
+troubles musculo-squelettiques
+syndrome du canal carpien
+commotion cérébrale
+cécité
+surdité
+handicap
+handicap moteur
+handicap mental
+handicap psychique
+handicap visuel
+handicap auditif
+paralysie
+paraplégie
+tétraplégie
+hémiplégie
+allergie
+maladie
+maladie chronique
+maladie grave
+maladie rare
+maladie mentale
+maladie professionnelle
+maladie de longue durée
+affection de longue durée
+pathologie
+grossesse
+fausse couche
+interruption volontaire de grossesse
+IVG
+infertilité
+stérilité
+anémie
+drépanocytose
+hémophilie
+hypothyroïdie
+glaucome
+cataracte
+psoriasis
+eczéma
+méningite
+état de santé
+problème de santé
+problèmes de santé
+accident du travail
+chimiothérapie
+radiothérapie
+dialyse
+hémodialyse
+insuline
+insulinothérapie
+antidépresseurs
+anxiolytiques
+neuroleptiques
+méthadone
+trithérapie
+intervention chirurgicale
+greffe
+greffe de rein
+transplantation
+dossier médical
+certificat médical
+hospitalisation
+convalescence
+rééducation
+invalidité
+incapacité de travail
+inaptitude
+séquelles
+# Anglais
+diabetes
+type 1 diabetes
+type 2 diabetes
+breast cancer
+prostate cancer
+lung cancer
+leukaemia
+leukemia
+lymphoma
+melanoma
+tumour
+tumor
+brain tumour
+brain tumor
+multiple sclerosis
+parkinson's disease
+alzheimer's disease
+crohn's disease
+epilepsy
+asthma
+copd
+heart failure
+kidney failure
+renal failure
+heart attack
+stroke
+high blood pressure
+hepatitis
+hepatitis b
+hepatitis c
+cirrhosis
+hiv
+tuberculosis
+malaria
+rheumatoid arthritis
+arthritis
+fibromyalgia
+endometriosis
+cystic fibrosis
+down syndrome
+autism
+adhd
+bipolar disorder
+schizophrenia
+depression
+clinical depression
+anxiety
+anxiety disorder
+panic attacks
+ptsd
+post-traumatic stress disorder
+anorexia
+bulimia
+eating disorder
+alcoholism
+drug addiction
+obesity
+sleep apnoea
+sleep apnea
+slipped disc
+back pain
+disability
+learning disability
+paralysis
+allergy
+illness
+chronic illness
+terminal illness
+mental illness
+medical condition
+health condition
+health problems
+pregnancy
+miscarriage
+abortion
+infertility
+chemotherapy
+radiotherapy
+dialysis
+insulin
+antidepressants
+medical records
+sick note
+
+[SANTE adjectif]
+diabétique
+épileptique
+asthmatique
+séropositif
+séropositive
+dépressif
+dépressive
+bipolaire
+schizophrène
+autiste
+handicapé
+handicapée
+paraplégique
+tétraplégique
+hémiplégique
+aveugle
+malvoyant
+malvoyante
+malentendant
+malentendante
+alcoolique
+toxicomane
+anorexique
+boulimique
+enceinte
+malade
+souffrant
+souffrante
+convalescent
+convalescente
+immunodéprimé
+immunodéprimée
+insulinodépendant
+insulinodépendante
+dialysé
+dialysée
+obèse
+# Anglais
+diabetic
+epileptic
+asthmatic
+hiv-positive
+hiv positive
+bipolar
+schizophrenic
+autistic
+paraplegic
+alcoholic
+anorexic
+pregnant
+terminally ill
+chronically ill
+immunocompromised
+
+[SANTE organe]
+genou
+hanche
+cœur
+dos
+épaule
+cheville
+poignet
+colonne vertébrale
+ménisque
+prostate
+sein
+thyroïde
+vésicule biliaire
+ligaments croisés
+canal carpien
+appendicite
+cataracte
+hernie
+
+[JUDICIAIRE terme]
+vol
+vol aggravé
+vol à l'étalage
+vol avec violence
+cambriolage
+braquage
+escroquerie
+fraude
+fraude fiscale
+fraude aux prestations sociales
+abus de confiance
+abus de biens sociaux
+détournement de fonds
+recel
+blanchiment
+blanchiment d'argent
+corruption
+trafic d'influence
+prise illégale d'intérêts
+faux et usage de faux
+usage de faux
+faux en écriture
+violences
+violences volontaires
+violences conjugales
+violences aggravées
+coups et blessures
+agression
+agression sexuelle
+viol
+harcèlement
+harcèlement moral
+harcèlement sexuel
+menaces
+menaces de mort
+outrage
+rébellion
+outrage et rébellion
+diffamation
+injure
+injures
+homicide
+homicide involontaire
+meurtre
+assassinat
+tentative de meurtre
+trafic de stupéfiants
+détention de stupéfiants
+usage de stupéfiants
+conduite en état d'ivresse
+conduite en état alcoolique
+conduite sous l'emprise de l'alcool
+conduite sous l'emprise de stupéfiants
+conduite sans permis
+délit de fuite
+refus d'obtempérer
+mise en danger de la vie d'autrui
+dégradation
+dégradations
+destruction de biens
+incendie volontaire
+port d'arme prohibée
+détention d'arme
+travail dissimulé
+abandon de famille
+non-représentation d'enfant
+exhibition sexuelle
+atteinte sexuelle
+proxénétisme
+extorsion
+chantage
+séquestration
+enlèvement
+terrorisme
+apologie du terrorisme
+# Anglais
+theft
+burglary
+robbery
+fraud
+tax fraud
+embezzlement
+money laundering
+bribery
+forgery
+assault
+sexual assault
+rape
+harassment
+sexual harassment
+murder
+manslaughter
+drug trafficking
+drug possession
+drink driving
+drunk driving
+shoplifting
+arson
+domestic violence
+stalking
+perjury
+
+[OPINION terme]
+Rassemblement national
+Front national
+La France insoumise
+France insoumise
+LFI
+Les Républicains
+Parti socialiste
+PS
+Parti communiste
+Parti communiste français
+PCF
+Europe Écologie Les Verts
+EELV
+Les Écologistes
+Les Verts
+Renaissance
+La République en marche
+LREM
+En marche
+MoDem
+Mouvement démocrate
+Horizons
+Reconquête
+Debout la France
+Lutte ouvrière
+Nouveau Parti anticapitaliste
+NPA
+UDI
+Parti radical
+Les Patriotes
+Parti animaliste
+Place publique
+Calédonie ensemble
+Les Loyalistes
+Rassemblement-Les Républicains
+Union calédonienne
+FLNKS
+Palika
+Parti de libération kanak
+Union nationale pour l'indépendance
+UNI
+Éveil océanien
+Parti travailliste
+Générations NC
+Union progressiste en Mélanésie
+UPM
+# Anglais
+Labour Party
+Labour
+Conservative Party
+Tory Party
+Liberal Democrats
+Green Party
+Scottish National Party
+SNP
+Reform UK
+UKIP
+Democratic Party
+Republican Party
+GOP
+
+[OPINION adjectif]
+communiste
+socialiste
+écologiste
+anarchiste
+royaliste
+monarchiste
+gaulliste
+trotskiste
+maoïste
+marxiste
+indépendantiste
+loyaliste
+nationaliste
+souverainiste
+séparatiste
+centriste
+libertaire
+antifasciste
+identitaire
+de gauche
+de droite
+d'extrême gauche
+d'extrême droite
+d'ultragauche
+d'ultradroite
+franc-maçon
+franc-maçonne
+pacifiste
+# Anglais
+communist
+socialist
+anarchist
+marxist
+left-wing
+right-wing
+far-left
+far-right
+a democrat
+a republican
+a tory
+a freemason
+
+[SYNDICAT terme]
+CGT
+Confédération générale du travail
+CFDT
+Force ouvrière
+FO
+CGT-FO
+CFE-CGC
+CFTC
+UNSA
+SUD
+Solidaires
+Union syndicale Solidaires
+FSU
+CNT
+SNES
+SNES-FSU
+SNUipp
+SGEN-CFDT
+SNALC
+UNEF
+Confédération paysanne
+Alliance police nationale
+USTKE
+USOENC
+CSTNC
+COGETRA
+CSTC-FO
+FSAO
+UT CFE-CGC
+# Anglais
+Unite
+Unison
+GMB
+Teamsters
+AFL-CIO
+UAW
+SEIU
+TUC
+RMT
+
+[RELIGION adjectif]
+catholique
+protestant
+protestante
+musulman
+musulmane
+juif
+juive
+israélite
+chrétien
+chrétienne
+bouddhiste
+hindou
+hindoue
+hindouiste
+sikh
+orthodoxe
+évangélique
+évangéliste
+adventiste
+mormon
+mormone
+anglican
+anglicane
+pentecôtiste
+baptiste
+luthérien
+luthérienne
+calviniste
+copte
+maronite
+sunnite
+chiite
+témoin de Jéhovah
+athée
+agnostique
+croyant
+croyante
+animiste
+# Anglais
+catholic
+protestant
+muslim
+jewish
+christian
+buddhist
+hindu
+evangelical
+mormon
+anglican
+baptist
+atheist
+agnostic
+a muslim
+a christian
+a jew
+a catholic
+a buddhist
+a hindu
+a sikh
+a jehovah's witness
+
+[RELIGION terme]
+islam
+judaïsme
+catholicisme
+christianisme
+protestantisme
+bouddhisme
+hindouisme
+sikhisme
+religion musulmane
+religion juive
+religion catholique
+religion chrétienne
+foi musulmane
+foi chrétienne
+# Anglais
+judaism
+catholicism
+christianity
+buddhism
+hinduism
+sikhism
+
+[ORIENTATION adjectif]
+homosexuel
+homosexuelle
+gay
+lesbienne
+bisexuel
+bisexuelle
+transgenre
+transsexuel
+transsexuelle
+pansexuel
+pansexuelle
+asexuel
+asexuelle
+hétérosexuel
+hétérosexuelle
+queer
+intersexe
+# Anglais
+lesbian
+bisexual
+homosexual
+heterosexual
+transgender
+pansexual
+asexual
+
+[ORIENTATION terme]
+homosexualité
+bisexualité
+orientation sexuelle
+vie sexuelle
+transidentité
+identité de genre
+transition de genre
+# Anglais
+sexual orientation
+sexuality
+homosexuality
+sex life
+gender identity
+
+[ORIGINE adjectif]
+maghrébin
+maghrébine
+nord-africain
+nord-africaine
+africain
+africaine
+subsaharien
+subsaharienne
+asiatique
+arabe
+berbère
+kabyle
+kanak
+kanake
+canaque
+wallisien
+wallisienne
+futunien
+futunienne
+tahitien
+tahitienne
+polynésien
+polynésienne
+mélanésien
+mélanésienne
+ni-vanuatu
+javanais
+javanaise
+caldoche
+métis
+métisse
+antillais
+antillaise
+créole
+tzigane
+rom
+gitan
+gitane
+manouche
+amérindien
+amérindienne
+aborigène
+afro-américain
+afro-américaine
+hispanique
+# Anglais
+african
+asian
+arab
+hispanic
+latino
+latina
+caucasian
+african-american
+aboriginal
+indigenous
+maori
+pacific islander
+
+[ORIGINE terme]
+algérien
+algérienne
+marocain
+marocaine
+tunisien
+tunisienne
+sénégalais
+sénégalaise
+malien
+malienne
+ivoirien
+ivoirienne
+camerounais
+camerounaise
+congolais
+congolaise
+comorien
+comorienne
+mahorais
+mahoraise
+réunionnais
+réunionnaise
+haïtien
+haïtienne
+vietnamien
+vietnamienne
+indonésien
+indonésienne
+vanuatais
+vanuataise
+fidjien
+fidjienne
+philippin
+philippine
+chinois
+chinoise
+japonais
+japonaise
+coréen
+coréenne
+indien
+indienne
+pakistanais
+pakistanaise
+turc
+turque
+libanais
+libanaise
+syrien
+syrienne
+afghan
+afghane
+kurde
+arménien
+arménienne
+portugais
+portugaise
+italien
+italienne
+espagnole
+polonais
+polonaise
+roumain
+roumaine
+russe
+ukrainien
+ukrainienne
+européen
+européenne
+étrangère
+étranger
+juive
+# Anglais
+algerian
+moroccan
+vietnamese
+chinese
+indian
+pakistani
+turkish
+lebanese
+syrian
+mexican
+irish
+italian
+polish
+
+[GENETIQUE terme]
+test génétique
+analyse génétique
+examen génétique
+dépistage génétique
+diagnostic génétique
+diagnostic prénatal
+conseil génétique
+test ADN
+analyse ADN
+test de paternité
+empreinte génétique
+profil génétique
+profil ADN
+séquençage du génome
+séquençage génétique
+génome
+caryotype
+génotype
+prédisposition génétique
+maladie génétique
+maladie héréditaire
+anomalie génétique
+anomalie chromosomique
+mutation génétique
+mutation BRCA1
+mutation BRCA2
+gène BRCA1
+gène BRCA2
+BRCA1
+BRCA2
+# Anglais
+genetic test
+genetic testing
+dna test
+paternity test
+dna profile
+genetic profile
+genome sequencing
+genetic predisposition
+genetic disorder
+hereditary disease
+brca mutation
+genetic mutation
+
+[BIOMETRIE terme]
+empreinte digitale
+empreintes digitales
+empreinte palmaire
+empreintes palmaires
+gabarit biométrique
+gabarits biométriques
+donnée biométrique
+données biométriques
+reconnaissance faciale
+empreinte faciale
+empreinte vocale
+réseau veineux
+scan de l'iris
+image de l'iris
+reconnaissance de l'iris
+signature biométrique
+# Anglais
+fingerprint
+fingerprints
+facial recognition
+face template
+biometric template
+biometric data
+iris scan
+voiceprint
+voice print
+palm print
+
+[EVENEMENT terme]
+licenciement
+mise à pied
+démission
+rupture conventionnelle
+divorce
+séparation
+deuil
+veuvage
+expulsion
+surendettement
+faillite personnelle
+procédure disciplinaire
+sanction disciplinaire
+avertissement disciplinaire
+blâme
+mutation disciplinaire
+rétrogradation
+entretien préalable
+procédure de licenciement
+procédure de divorce
+dossier de surendettement
+chômage
+mise sous tutelle
+mise sous curatelle
+# Anglais
+dismissal
+redundancy
+bereavement
+eviction
+bankruptcy
+disciplinary procedure
+disciplinary hearing
+suspension
+layoff
+
+[EVENEMENT proche]
+père
+mère
+époux
+épouse
+mari
+femme
+conjoint
+conjointe
+compagnon
+compagne
+fils
+fille
+enfant
+frère
+sœur
+grand-père
+grand-mère
+parent
+parents
+beau-père
+belle-mère
+oncle
+tante
+neveu
+nièce
+cousin
+cousine
+bébé
+# Anglais
+father
+mother
+husband
+wife
+spouse
+partner
+son
+daughter
+child
+brother
+sister
+grandfather
+grandmother

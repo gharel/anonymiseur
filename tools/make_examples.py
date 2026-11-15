@@ -31,7 +31,7 @@ SORTIE = RACINE / "exemples"
 MENTION = "DONNÉES FICTIVES — exemple de test"
 DATE0 = datetime(2026, 3, 2, 9, 0, 0)
 DATE_ZIP = (2026, 3, 2, 9, 0, 0)
-RENFORCE = {"DATE", "AGE", "FONCTION", "MONTANT", "LIEU", "MATRICULE"}
+RENFORCE = {"DATE", "AGE", "FONCTION", "MONTANT", "LIEU", "MATRICULE", "EVENEMENT"}
 
 # ---------------------------------------------------------------------------
 # Clés de contrôle (valides)
@@ -549,6 +549,70 @@ def construire_xlsx(d: Fiche, chemin: Path) -> None:
     normaliser_zip(chemin)
 
 
+# Tableau de patients (évaluation des trois critères, V2)
+# Âge, commune, code postal, sexe : indices ; diagnostic : donnée de santé.
+# Un groupe partage le même diagnostic (déduction, exemple 12 des lignes
+# directrices du CEPD) ; trois lignes sont uniques (isolement). Les âges évitent
+# les petits nombres de la structure du classeur (numéros de ligne, largeurs) :
+# le contrôle de fuite les y trouverait.
+PATIENTS_GROUPES = [
+    # (âge, commune, code postal, sexe, diagnostics : un par ligne)
+    (54, "Nouméa", "98800", "M", ["Diabète de type 2"] * 5),
+    (41, "Dumbéa", "98835", "F", ["Asthme", "Migraine", "Hypertension", "Asthme", "Eczéma", "Anémie"]),
+    (62, "Païta", "98890", "M", ["Arthrose", "Hypertension", "Diabète de type 2", "Lombalgie", "Asthme"]),
+    (35, "Nouméa", "98800", "F", ["Migraine", "Anémie", "Hypothyroïdie", "Eczéma", "Lombalgie"]),
+]
+# Noms fictifs des patients (identifiant direct, à masquer dans tous les cas).
+PATIENTS_NOMS = [
+    "Durand", "Lefebvre", "Moreau", "Fournier", "Morel", "Girard", "Mercier", "Guerin",
+    "Boyer", "Chevalier", "Legrand", "Gauthier", "Perrin", "Roussel", "Lambert", "Barbier",
+    "Dupuis", "Leroy", "Faure", "Rousseau", "Lemaire", "Masson", "Brunet", "Duval",
+]
+PATIENTS_UNIQUES = [
+    (88, "Farino", "98881", "F", "Insuffisance cardiaque"),
+    (47, "Lifou", "98820", "M", "Asthme"),
+    (73, "Bourail", "98870", "F", "Arthrose"),
+]
+
+
+def construire_patients(d: Fiche, chemin: Path) -> None:
+    from openpyxl import Workbook
+
+    E = d.e
+    wb = Workbook()
+    wb.properties.creator = "Exemple"
+    wb.properties.title = "Patients fictifs"
+    wb.properties.created = wb.properties.modified = DATE0
+    ws = wb.active
+    ws.title = "Patients"
+    ws.append(["Nom", "Âge", "Commune", "Code postal", "Sexe", "Diagnostic"])
+    lignes = [
+        (age, commune, cp, sexe, diag)
+        for age, commune, cp, sexe, diags in PATIENTS_GROUPES
+        for diag in diags
+    ]
+    # Les lignes uniques sont intercalées, comme dans un vrai registre.
+    for i, unique in enumerate(PATIENTS_UNIQUES):
+        lignes.insert(4 + 7 * i, unique)
+    if len(lignes) != len(PATIENTS_NOMS):
+        raise RuntimeError("un nom par patient")
+    for nom, (age, commune, cp, sexe, diag) in zip(PATIENTS_NOMS, lignes):
+        E("NOM", nom, "cellule")
+        E("AGE", str(age), "cellule")
+        E("LIEU", commune, "cellule")
+        E("LIEU", cp, "cellule")
+        E("SANTE", diag, "cellule")
+        ws.append([nom, age, commune, cp, sexe, diag])
+    for col, w in zip("ABCDEF", (14, 8, 14, 12, 8, 26)):
+        ws.column_dimensions[col].width = w
+    # La mention reste hors du tableau évalué : feuille à part.
+    ws2 = wb.create_sheet("À lire")
+    ws2["A1"] = MENTION
+    ws2.column_dimensions["A"].width = 60
+    wb.save(chemin)
+    normaliser_zip(chemin)
+
+
 # ---------------------------------------------------------------------------
 # PPTX
 # ---------------------------------------------------------------------------
@@ -1026,6 +1090,76 @@ L'IA mentionne aussi [PERSONNE_99], qui n'existe pas dans la session : elle doit
 
 
 # ---------------------------------------------------------------------------
+# V2 : personne reconnaissable par ses indices, donnée de santé dans un courrier
+# ---------------------------------------------------------------------------
+
+
+def construire_cr_commission(d: Fiche, chemin: Path) -> None:
+    """Compte rendu où une personne reste reconnaissable par sa fonction et sa
+    commune (infirmière du dispensaire de Farino, 62 ans), même noms masqués."""
+    from docx import Document
+
+    E = d.e
+    doc = Document()
+    cp = doc.core_properties
+    cp.author = E("PERSONNE", PG, "metadonnee")
+    cp.title = "Compte rendu de la commission santé et sécurité"
+    cp.created = cp.modified = DATE0
+    cp.language = "fr-FR"
+    doc.add_heading("Compte rendu de la commission santé et sécurité", level=1)
+    doc.add_paragraph(MENTION)
+    doc.add_paragraph(
+        f"Réunion du {E('DATE', '9 octobre 2026', 'corps')} à {E('LIEU', 'Farino', 'corps')}, salle polyvalente."
+    )
+    doc.add_paragraph(
+        f"{E('PERSONNE', HK, 'corps')}, {E('FONCTION', 'infirmière', 'corps')} du dispensaire de "
+        f"{E('LIEU', 'Farino', 'corps')}, {E('AGE', '62 ans', 'corps')}, présente le bilan des accidents de l'année."
+    )
+    doc.add_paragraph(
+        f"{E('PERSONNE', PG, 'corps')}, {E('FONCTION', FONC[PG], 'corps')} de {E('SOCIETE', SOC_N, 'corps')}, "
+        f"détaille les travaux prévus pour un budget de {E('MONTANT', '450 000 XPF', 'corps')}."
+    )
+    doc.add_paragraph(
+        f"{E('PERSONNE', ML, 'corps')}, {E('SYNDICAT', 'délégué syndical USTKE', 'corps')}, demande un suivi des "
+        f"risques psychosociaux. Contact : {E('EMAIL', EM[ML], 'corps')}."
+    )
+    doc.add_paragraph(
+        f"Rappel : le {d.p('diabète')} touche près d'un adulte sur huit dans le pays. La "
+        f"{d.p('section syndicale')} sera consultée sur le plan d'action ; aucune antenne en {d.p('Martinique')}."
+    )
+    doc.save(chemin)
+    normaliser_zip(chemin)
+
+
+def construire_courrier_arret(d: Fiche, chemin: Path) -> None:
+    """Courrier qui mentionne l'arrêt maladie d'un salarié (donnée de santé)."""
+    E = d.e
+    t = f"""{MENTION}
+
+Service des ressources humaines
+{E('ADRESSE', ADR_A, 'corps')}
+
+Fait à {E('LIEU', 'Nouméa', 'corps')}, le {E('DATE', '2 novembre 2026', 'corps')}
+
+Objet : {E('SANTE', 'arrêt maladie', 'corps')} de M. {E('PERSONNE', ON, 'corps')}
+
+Madame,
+
+M. {E('PERSONNE', ON, 'corps')}, {E('FONCTION', 'chargé de mission', 'corps')} chez {E('SOCIETE', SOC_A, 'corps')}, matricule {E('MATRICULE', 'MAT-008812', 'corps')}, est en {E('SANTE', 'arrêt maladie', 'corps')} du 3 au {E('DATE', '21 novembre 2026', 'corps')}, {E('SANTE', 'suivi pour une hernie discale', 'corps')}. Son {E('EVENEMENT', 'arrêt de travail', 'corps')} fait suite à une chute sur le chantier de {E('LIEU', 'Koné', 'corps')}.
+
+Pendant son absence, ses dossiers sont confiés à {E('PERSONNE', ML, 'corps')} ({E('EMAIL', EM[ML], 'corps')}, {E('TEL', TEL_ML, 'corps')}).
+
+Rappel du règlement : en cas d'{d.p('hospitalisation')}, le service prévient l'assurance. Le {d.p('diabète')} n'est pas couvert par cette procédure.
+
+Veuillez agréer, Madame, nos salutations distinguées.
+
+{E('PERSONNE', MC, 'corps')}
+{E('FONCTION', 'Directrice des ressources humaines', 'corps')}
+"""
+    chemin.write_text(t, encoding="utf-8", newline="\n")
+
+
+# ---------------------------------------------------------------------------
 # LISEZMOI
 # ---------------------------------------------------------------------------
 
@@ -1043,12 +1177,15 @@ La vérité terrain lisible par les tests est dans `attendu.json` : toute valeur
 |---|---|
 | `contrat-prestation.docx` | nom coupé entre deux mises en forme, en-tête, pied de page, commentaire, révision suivie, lien `mailto:`, propriétés |
 | `fichier-clients.xlsx` | tableau Excel, téléphones et montants saisis en nombres, formule, commentaire de cellule, graphique, 2e feuille |
+| `patients.xlsx` | évaluation des trois critères : tableau de patients où un groupe partage le même diagnostic et où trois lignes sont uniques |
 | `presentation-projet.pptx` | diapositives, notes du présentateur, graphique, image contenant du texte |
 | `facture.pdf` | PDF avec texte, métadonnées |
 | `courrier-scanne.pdf`, `carte-visite.png` | images seules : aucun texte extractible, OCR nécessaire |
 | `compte-rendu.odt`, `planning.ods`, `support.odp` | formats OpenDocument |
 | `notes.txt`, `export.csv`, `brief.md` | texte brut, CSV à séparateur `;`, Markdown |
 | `report-en.docx`, `informe-es.txt` | anglais et espagnol, téléphones internationaux |
+| `compte-rendu-commission.docx` | évaluation des textes : une personne reste reconnaissable par sa fonction et sa commune (infirmière du dispensaire de Farino, 62 ans), une fonction dans une société nommée, une appartenance syndicale |
+| `courrier-arret-maladie.txt` | donnée de santé liée à une personne (arrêt maladie, suivi médical), arrêt de travail, mentions générales à ne pas détecter |
 | `reponse-ia-exemple.md` | réponse d'IA avec balises correctes, altérées et inventée |
 
 Les mêmes sociétés et les mêmes sept personnes reviennent d'un fichier à l'autre : Jean Dupont (écrit aussi
@@ -1313,6 +1450,8 @@ def main() -> int:
          "Nom coupé entre deux runs, en-tête, pied, commentaire, révision suivie, lien mailto, propriétés, RIDET, IBAN, SIRET, BP."),
         ("fichier-clients.xlsx", "fr", construire_xlsx,
          "Objet Table, téléphones et montants numériques, formule avec littéral nominatif, commentaire de cellule, graphique, feuille libre ; pas de TCD."),
+        ("patients.xlsx", "fr", construire_patients,
+         "Tableau de patients fictifs (nom, âge, commune, code postal, sexe, diagnostic) : un groupe au diagnostic commun, trois lignes uniques ; mention sur une feuille à part."),
         ("presentation-projet.pptx", "fr", construire_pptx,
          "Noms d'équipe, notes du présentateur, graphique avec noms en catégories (emplacement corps), image contenant du texte (OCR)."),
         ("facture.pdf", "fr", construire_facture,
@@ -1329,6 +1468,10 @@ def main() -> int:
         ("brief.md", "fr", construire_brief, "Markdown avec tableau, lien mailto, URL, IP, pièges."),
         ("report-en.docx", "en", construire_report_en, "Document anglais : noms, emails, téléphones UK et US, IBAN GB."),
         ("informe-es.txt", "es", construire_es, "Texte espagnol : noms, emails, téléphones ES et MX, IBAN ES."),
+        ("compte-rendu-commission.docx", "fr", construire_cr_commission,
+         "Compte rendu : personne reconnaissable par sa fonction et sa commune, fonction dans une société nommée, délégué syndical ; mentions générales de santé et de syndicat à ne pas détecter."),
+        ("courrier-arret-maladie.txt", "fr", construire_courrier_arret,
+         "Courrier : arrêt maladie et suivi médical d'un salarié (santé), arrêt de travail (événement), matricule ; règle générale et mention technique à ne pas détecter."),
         ("reponse-ia-exemple.md", "fr", construire_reponse_ia,
          "Aucune donnée sensible : sert à tester la restauration (balises correctes, altérées [Personne 1], [PERSONNE\\_1], **[SOCIETE_1]**, [personne_2], inventée [PERSONNE_99])."),
     ]

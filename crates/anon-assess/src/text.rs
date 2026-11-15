@@ -29,7 +29,9 @@
 //!   prudence), département, province, région ou territoire
 //!   (`population::area`), code postal ([`POSTAL_CODE_POPULATION`], ou la zone
 //!   de « 54*** »), lieu inconnu des données ([`UNKNOWN_PLACE_POPULATION`]) ;
-//!   sans lieu, la population de la France. Plusieurs lieux : le plus petit.
+//!   sans lieu, la population de la France. Plusieurs lieux : chacun donne un
+//!   groupe, avec les âges de son territoire, et le plus petit est retenu (le
+//!   résultat ne dépend pas de l'ordre des lieux).
 //! - âge : `population::age_share` du territoire du lieu (France par défaut)
 //!   sur l'âge exact (« 62 ans ») ou la tranche affichée (« 60-69 ans ») ; une
 //!   date de naissance donne l'âge au 1er janvier [`REFERENCE_YEAR`], divisé
@@ -59,6 +61,18 @@
 //!   `Fix::Generalize` pour un seul indice, `Fix::GeneralizeMany` sinon ;
 //! - le masquage de l'organisation (règle fonction et organisation) ;
 //! - le masquage de chaque indice qui agrandit le groupe.
+//!
+//! Dernier recours, si aucun candidat n'agrandit le groupe (indices redondants :
+//! masquer l'un laisse les autres isoler, alors que la recherche, bornée à
+//! [`MAX_FIX_DIMENSIONS`] indices ou gênée par un indice sans hiérarchie comme
+//! un lieu homonyme, n'atteint pas `k_min`) : masquer l'indice qui isole le plus
+//! à lui seul (plus petit groupe quand il est le seul exposé, le premier à
+//! égalité), parmi ceux dont le masquage ne réduit pas l'estimation. Chaque
+//! mention porte un `value_id` (champ obligatoire de `Mention`) et un groupe
+//! sous `k_min` a toujours au moins un indice (sans indice, le groupe est la
+//! population de la France) : toute personne en échec d'isolement reçoit au
+//! moins une correction. La première correction atteint `k_min` ou masque une
+//! valeur de plus : appliquée puis réévaluée, la suite se termine.
 //!
 //! Aucune correction proposée ne réduit l'estimation.
 //!
@@ -626,36 +640,38 @@ fn group_size(dims: &[Dimension<'_>], state: &[usize], org_visible: bool) -> u64
     if named_role {
         return NAMED_ROLE_GROUP;
     }
-    let france = territory_population(Territory::France);
-    let mut place: Option<(u64, Territory)> = None;
-    for i in 0..dims.len() {
-        if let Some(Measure::Place {
-            population,
-            territory,
-        }) = at(i).map(|l| l.measure)
-            && place.is_none_or(|(p, _)| population < p)
-        {
-            place = Some((population, territory));
-        }
-    }
-    let (population, territory) = place.unwrap_or((france, Territory::France));
-    let mut age = 1.0f64;
-    let mut job = 1.0f64;
-    for i in 0..dims.len() {
-        match at(i).map(|l| l.measure) {
-            Some(Measure::Ages { from, to, per_year }) => {
-                let s = age_share(territory, from, to) / per_year.max(1.0);
-                age = age.min(s);
+    let measure = |i: usize| at(i).map_or(Measure::Nothing, |l| l.measure);
+    let job = (0..dims.len()).fold(1.0f64, |j, i| match measure(i) {
+        Measure::Share(s) => j.min(s.clamp(0.0, 1.0)),
+        _ => j,
+    });
+    // Groupe dans un lieu, avec les âges de son territoire.
+    let within = |population: u64, territory: Territory| -> u64 {
+        let age = (0..dims.len()).fold(1.0f64, |a, i| match measure(i) {
+            Measure::Ages { from, to, per_year } => {
+                a.min(age_share(territory, from, to) / per_year.max(1.0))
             }
-            Some(Measure::Share(s)) => job = job.min(s.clamp(0.0, 1.0)),
-            _ => {}
+            _ => a,
+        });
+        let x = population as f64 * age * job;
+        if !x.is_finite() {
+            return population.max(1);
         }
-    }
-    let x = population as f64 * age * job;
-    if !x.is_finite() {
-        return population.max(1);
-    }
-    (x.round() as u64).clamp(1, population.max(1))
+        (x.round() as u64).clamp(1, population.max(1))
+    };
+    // Plusieurs lieux : le plus petit groupe, quel que soit l'ordre des lieux
+    // (garder le premier des lieux de même population rendait l'estimation
+    // dépendante de l'ordre, et une forme moins précise pouvait la réduire).
+    (0..dims.len())
+        .filter_map(|i| match measure(i) {
+            Measure::Place {
+                population,
+                territory,
+            } => Some(within(population, territory)),
+            _ => None,
+        })
+        .min()
+        .unwrap_or_else(|| within(territory_population(Territory::France), Territory::France))
 }
 
 /// Perte d'un niveau : nombre de crans depuis la forme actuelle.
@@ -750,6 +766,32 @@ fn best_generalization(dims: &[Dimension<'_>], org_visible: bool, k_min: u32) ->
     })
 }
 
+/// Dernier recours de l'isolement, quand aucun candidat n'agrandit le groupe :
+/// masquer l'indice qui isole le plus à lui seul (plus petit groupe quand il est
+/// le seul exposé ; le premier à égalité), parmi ceux dont le masquage ne réduit
+/// pas l'estimation `now`. `None` seulement sans indice.
+fn last_resort(dims: &[Dimension<'_>], org_visible: bool, now: u64) -> Option<Fix> {
+    let hidden: Vec<usize> = dims
+        .iter()
+        .map(|d| d.levels.len().saturating_sub(1))
+        .collect();
+    let with = |from: &[usize], i: usize, value: usize| {
+        let mut state = from.to_vec();
+        if let Some(s) = state.get_mut(i) {
+            *s = value;
+        }
+        group_size(dims, &state, org_visible)
+    };
+    let base = vec![0usize; dims.len()];
+    dims.iter()
+        .enumerate()
+        .filter(|(i, _)| with(&base, *i, hidden.get(*i).copied().unwrap_or(0)) >= now)
+        .min_by_key(|(i, _)| with(&hidden, *i, 0))
+        .map(|(_, d)| Fix::Mask {
+            value_id: d.mention.value_id,
+        })
+}
+
 /// Corrections de l'isolement, classées (voir l'en-tête du module).
 fn isolation_fixes(dims: &[Dimension<'_>], orgs: &[&Mention], now: u64, k_min: u32) -> Vec<Fix> {
     let org_visible = !orgs.is_empty();
@@ -790,6 +832,9 @@ fn isolation_fixes(dims: &[Dimension<'_>], orgs: &[&Mention], now: u64, k_min: u
     }
     // Aucune correction qui laisse le groupe aussi petit.
     candidates.retain(|c| c.estimate > now);
+    if candidates.is_empty() {
+        return last_resort(dims, org_visible, now).into_iter().collect();
+    }
     let k = u64::from(k_min);
     candidates.sort_by(|a, b| {
         let (ra, rb) = (a.estimate >= k, b.estimate >= k);

@@ -40,6 +40,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - **Contrôle de fuite** : un identifiant de structure du fichier (numéro de ligne, référence de cellule, priorité d'un style Word, dimensions) n'est plus pris pour une valeur restée lisible. Un âge validé « 35 », « 62 » ou « 73 » bloquait tout document Word du dossier, un âge « 19 » un classeur de 19 lignes. Une valeur restée dans le contenu est toujours signalée.
 - **Mesure de revue** : les chiffres d'une balise (« 35 » dans `[NOM_35]`) ne comptent plus comme une valeur lisible, et un fichier refusé fait échouer la mesure au lieu d'en être retiré.
 - **Suppression de lignes hors norme** (`anon-assess`) : seules les valeurs rares de la ligne (moins de `k_min` lignes dans la colonne) sont masquées ; une valeur courante comme « M » ou « 75 » n'est plus remplacée dans tout le dossier.
+- **Évaluation des textes** (`anon-assess`) : une personne isolable par des indices redondants (plusieurs dates de naissance au mois près, un lieu homonyme sans hiérarchie, plus de six indices à rendre moins précis) recevait un échec « groupe trop petit » sans aucune correction. En dernier recours, l'indice qui isole le plus à lui seul est proposé au masquage. Avec plusieurs lieux, chacun donne un groupe avec les âges de son territoire et le plus petit est retenu : l'estimation ne dépend plus de l'ordre des lieux, et rendre un lieu moins précis ne réduit plus le groupe d'une autre personne.
 
 ## [0.1.1] - 2026-11-14
 

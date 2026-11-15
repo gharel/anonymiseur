@@ -409,6 +409,138 @@ fn generalized_forms_are_read() {
     );
 }
 
+/// Forme d'un indice rendu moins précis d'un cran, visible sans hiérarchie
+/// (comme le générateur de `tests/textes.rs`).
+fn one_step(id: usize, kind: EntityKind, value: &str) -> Mention {
+    Mention {
+        value_id: id,
+        kind,
+        value: value.into(),
+        shown: generalize(kind, value, 1).map_or(Shown::Visible, Shown::Generalized),
+    }
+}
+
+/// Cas minimal de la propriété `first_fix_never_lowers_the_estimate`
+/// (`tests/textes.proptest-regressions`) : plus de `MAX_FIX_DIMENSIONS`
+/// indices à hiérarchie, dont le septième (« août 1971 ») n'entre pas dans la
+/// recherche, et « Mont-Dore » (homonymes, sans hiérarchie). Indices
+/// redondants : masquer l'un laisse les autres isoler (groupe 1). L'échec
+/// recevait une liste de corrections vide ; il reçoit désormais, en dernier
+/// recours, le masquage de l'indice qui isole le plus à lui seul, et la suite
+/// des corrections conseillées se termine.
+#[test]
+fn redundant_clues_beyond_the_search_still_get_a_fix() {
+    let units = vec![
+        unit(vec![
+            masked(0, Personne, "Personne 3", 3),
+            one_step(1, AgeK, "0 ans"),
+            one_step(2, DateNaiss, "03/02/2001"),
+            one_step(3, DateNaiss, "1988"),
+            one_step(4, DateNaiss, "12/08/1946"),
+            one_step(5, Fonction, "responsable technique"),
+        ]),
+        unit(vec![
+            masked(0, Personne, "Personne 3", 3),
+            visible(6, Lieu, "Farino"),
+            one_step(7, DateNaiss, "août 1971"),
+            one_step(8, Lieu, "Mont-Dore"),
+        ]),
+    ];
+    let k = 2;
+    let mut current = units.clone();
+    let mut previous = 0;
+    // Chaque correction atteint k_min ou masque un indice de plus : au plus un
+    // tour par indice.
+    for round in 0..=8 {
+        let a = run(&current, k);
+        let estimate = person(&a, 0).group_estimate.unwrap();
+        assert!(
+            estimate >= previous,
+            "tour {round} : {previous} -> {estimate}"
+        );
+        previous = estimate;
+        let Some(f) = small_group(&a) else {
+            assert!(round > 0, "le cas minimal doit échouer");
+            assert!(a.is_anonymous(), "{:?}", a.failures);
+            return;
+        };
+        assert!(
+            !f.fixes.is_empty(),
+            "tour {round} : groupe {estimate} sans correction"
+        );
+        if round == 0 {
+            assert_eq!(estimate, 1);
+            // Farino, commune de quelques centaines d'habitants, isole le plus.
+            assert_eq!(f.fixes, vec![Fix::Mask { value_id: 6 }]);
+        }
+        let first = f.fixes[0].clone();
+        apply(&mut current, &first);
+    }
+    panic!("la suite des corrections conseillées ne se termine pas");
+}
+
+/// Second cas minimal de la propriété `first_fix_never_lowers_the_estimate`
+/// (`tests/textes.proptest-regressions`) : « 98800 » (Nouvelle-Calédonie) et
+/// « 54000 » (France), deux codes postaux de même population, sont rattachés à
+/// la personne 0. L'estimation gardait le premier lieu et les âges de son
+/// territoire : rendre « 98800 » moins précis, correction conseillée pour la
+/// personne 5, faisait passer le groupe de la personne 0 de 143 à 87.
+/// Désormais chaque lieu donne un groupe, avec les âges de son territoire, et
+/// le plus petit est retenu : l'ordre des lieux ne compte plus et aucune
+/// correction ne réduit le groupe d'une autre personne.
+#[test]
+fn a_less_precise_place_never_shrinks_another_group() {
+    let units = vec![
+        unit(vec![
+            masked(0, Personne, "Personne 1", 1),
+            visible(1, Lieu, "98800"),
+            visible(2, AgeK, "0 ans"),
+        ]),
+        unit(vec![
+            visible(3, Lieu, "Farino"),
+            generalized(4, DateNaiss, "12/08/1946", "août 1946"),
+            visible(5, Personne, "Personne visible 2"),
+            visible(3, Lieu, "Farino"),
+            visible(1, Lieu, "98800"),
+            visible(6, Lieu, "54000"),
+            masked(0, Personne, "Personne 1", 1),
+            visible(7, Societe, "Nautilus Pacifique SARL"),
+        ]),
+    ];
+    let k = 4;
+    let a = run(&units, k);
+    let before: HashMap<SubjectRef, u64> = a
+        .subjects
+        .iter()
+        .map(|s| (s.subject.clone(), s.group_estimate.unwrap()))
+        .collect();
+    assert!(small_group(&a).is_some());
+    for f in &a.failures {
+        let mut fixed = units.clone();
+        apply(&mut fixed, &f.fixes[0]);
+        for s in &run(&fixed, k).subjects {
+            let (old, new) = (before[&s.subject], s.group_estimate.unwrap());
+            assert!(
+                new >= old,
+                "{:?} : {old} -> {new} après {:?}",
+                s.subject,
+                f.fixes[0]
+            );
+        }
+    }
+    // L'ordre des lieux ne change pas l'estimation.
+    let estimate = |first: &str, second: &str| {
+        let units = vec![unit(vec![
+            masked(0, Personne, "X", 1),
+            visible(1, Lieu, first),
+            visible(2, Lieu, second),
+            visible(3, AgeK, "0 ans"),
+        ])];
+        person(&run(&units, k), 0).group_estimate.unwrap()
+    };
+    assert_eq!(estimate("98800", "54000"), estimate("54000", "98800"));
+}
+
 /// En V2.0, l'approche simplifiée s'applique quelles que soient les réponses.
 #[test]
 fn verdict_ignores_context_answers() {

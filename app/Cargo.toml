@@ -19,9 +19,14 @@ ia = ["dep:anon-ner", "anon-ner/ia", "anon-ner/embed"]
 anon-core = { version = "0.1.0", path = "../crates/anon-core" }
 anon-engine = { version = "0.1.0", path = "../crates/anon-engine" }
 anon-ner = { version = "0.1.0", path = "../crates/anon-ner", default-features = false, optional = true }
+# Réponse restaurée enregistrée en .docx (document Word neuf, minimal).
+anon-office = { version = "0.1.0", path = "../crates/anon-office" }
 anon-pdf = { version = "0.1.0", path = "../crates/anon-pdf" }
 anon-replace = { version = "0.1.0", path = "../crates/anon-replace" }
 anon-vault = { version = "0.1.0", path = "../crates/anon-vault" }
+# Heure locale du nom de la clé de restauration (dossier-JJ-MM-AAAA-HHhMM.anonmap).
+# MIT ou Apache-2.0, aucun réseau ; sans les fonctionnalités par défaut.
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 # Dossiers Documents (exemples) et configuration (préférences) du système.
 # MIT ou Apache-2.0, aucun réseau ; sous Windows, API Known Folder.
 dirs = "7.0.0"

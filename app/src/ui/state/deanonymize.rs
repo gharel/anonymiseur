@@ -7,6 +7,7 @@ use super::files::FileEntry;
 use crate::ui::service::RestoreOutcome;
 use anon_core::Session;
 use anon_engine::RestoreReport;
+use std::ops::Range;
 use std::path::PathBuf;
 
 /// Clé de restauration.
@@ -93,6 +94,19 @@ pub struct RestoreJob {
 pub struct DeanonymizeState {
     pub map: MapStatus,
     pub password: String,
+    /// Fichier de la clé ouverte ou à ouvrir.
+    pub key_path: Option<PathBuf>,
+    /// Identifiant de la clé pour le trousseau (`anon_vault::keychain::key_id`).
+    pub key_id: Option<String>,
+    /// « Retenir sur cet ordinateur » : le mot de passe saisi entre dans le
+    /// trousseau du système.
+    pub remember: bool,
+    /// Destruction de la clé demandée, en attente de confirmation.
+    pub destroy_confirm: bool,
+    /// La clé vient d'être détruite : l'étape Réponse le dit.
+    pub destroyed: bool,
+    /// Place des valeurs remises dans la réponse restaurée (octets).
+    pub restored_marks: Vec<Range<usize>>,
     /// Message d'erreur d'ouverture (sans contenu de l'utilisateur).
     pub unlock_error: Option<String>,
     /// Fichiers renvoyés par l'IA, à restaurer.
@@ -121,6 +135,12 @@ impl Default for DeanonymizeState {
         Self {
             map: MapStatus::None,
             password: String::new(),
+            key_path: None,
+            key_id: None,
+            remember: false,
+            destroy_confirm: false,
+            destroyed: false,
+            restored_marks: Vec::new(),
             unlock_error: None,
             input_files: Vec::new(),
             pasted: String::new(),
@@ -165,8 +185,13 @@ impl DeanonymizeState {
     pub fn choose_map(&mut self, path: PathBuf) -> Result<(), UnlockError> {
         let r = if is_map(&path) {
             let name = crate::ui::service::file_name(&path);
+            self.key_path = Some(path.clone());
+            self.key_id = None;
+            self.destroyed = false;
+            self.destroy_confirm = false;
             self.map = MapStatus::Locked { path, name };
             self.text_result = None;
+            self.restored_marks.clear();
             self.file_results.clear();
             Ok(())
         } else {
@@ -187,7 +212,10 @@ impl DeanonymizeState {
         self.password.clear();
         self.unlock_error = None;
         self.text_result = None;
+        self.restored_marks.clear();
         self.restore_error = None;
+        self.destroyed = false;
+        self.destroy_confirm = false;
     }
 
     /// Prépare l'ouverture : renvoie le chemin et le mot de passe, efface ce dernier de l'écran.
@@ -286,6 +314,7 @@ impl DeanonymizeState {
         &mut self,
         restore: impl FnOnce(&str, &Session) -> (String, RestoreReport),
     ) -> Result<(), RestoreError> {
+        self.restored_marks.clear();
         let r = self
             .check(!self.pasted.trim().is_empty())
             .and_then(|()| match self.session() {
@@ -301,6 +330,46 @@ impl DeanonymizeState {
         }
         self.restore_error = r.err();
         r
+    }
+
+    /// Comme [`DeanonymizeState::restore_text`], avec la place des valeurs
+    /// remises (`Engine::restore_text_marked`) : l'écran les surligne.
+    pub fn restore_text_marked(
+        &mut self,
+        restore: impl FnOnce(&str, &Session) -> (String, Vec<Range<usize>>, RestoreReport),
+    ) -> Result<(), RestoreError> {
+        let mut marks = Vec::new();
+        let r = self.restore_text(|t, s| {
+            let (text, m, report) = restore(t, s);
+            marks = m;
+            (text, report)
+        });
+        self.restored_marks = if r.is_ok() { marks } else { Vec::new() };
+        r
+    }
+
+    /// Date de fin de conservation de la clé ouverte, si elle est dépassée
+    /// à la date `today` (`AAAA-MM-JJ`).
+    pub fn expired_since(&self, today: &str) -> Option<&str> {
+        let until = self.session()?.keep_until.as_deref()?;
+        anon_vault::retention::is_past(until, today).then_some(until)
+    }
+
+    /// Date de fin de conservation de la clé ouverte.
+    pub fn keep_until(&self) -> Option<&str> {
+        self.session()?.keep_until.as_deref()
+    }
+
+    /// Une clé ouverte ou choisie peut être détruite.
+    pub fn can_destroy(&self) -> bool {
+        self.busy.is_none() && self.has_key() && self.key_path.is_some()
+    }
+
+    /// Clé détruite : tout est oublié ; l'étape Réponse rappelle que les
+    /// documents d'origine restent des données personnelles.
+    pub fn destroy_done(&mut self) {
+        *self = Self::default();
+        self.destroyed = true;
     }
 
     /// Restauration des fichiers : données pour le fil de travail.
@@ -526,5 +595,62 @@ mod tests {
         }
         s.restore_files_done(Vec::new());
         assert!(s.busy.is_none());
+    }
+
+    #[test]
+    fn restored_values_are_located() {
+        let engine = Engine::standard();
+        let mut s = DeanonymizeState {
+            pasted: "Bonjour [PERSONNE_1], voir [PERSONNE_9].".into(),
+            ..Default::default()
+        };
+        s.open_in_memory("dossier.anonmap".into(), session());
+        assert_eq!(
+            s.restore_text_marked(|t, k| engine.restore_text_marked(t, k)),
+            Ok(())
+        );
+        let (text, report) = s.text_result.clone().unwrap_or_default();
+        let shown: Vec<&str> = s.restored_marks.iter().map(|r| &text[r.clone()]).collect();
+        assert_eq!(shown, ["Hélène Kaloï"]);
+        assert_eq!(report.unknown, ["[PERSONNE_9]"]);
+        // Une restauration sans repères les efface.
+        assert_eq!(s.restore_text(|t, k| engine.restore_text(t, k)), Ok(()));
+        assert!(s.restored_marks.is_empty());
+        // Réponse effacée : plus de résultat, plus de repères.
+        s.pasted.clear();
+        assert!(
+            s.restore_text_marked(|t, k| engine.restore_text_marked(t, k))
+                .is_err()
+        );
+        assert!(s.restored_marks.is_empty());
+    }
+
+    #[test]
+    fn an_expired_key_is_reminded_then_destroyed() {
+        let mut key = session();
+        key.keep_until = Some("2026-01-31".into());
+        let mut s = DeanonymizeState::default();
+        let _ = s.choose_map("C:/cles/dossier.anonmap".into());
+        assert_eq!(s.key_path, Some(PathBuf::from("C:/cles/dossier.anonmap")));
+        s.unlock_done(Ok(key));
+        assert_eq!(s.keep_until(), Some("2026-01-31"));
+        assert_eq!(s.expired_since("2026-11-16"), Some("2026-01-31"));
+        assert_eq!(
+            s.expired_since("2026-01-31"),
+            None,
+            "le dernier jour compte encore"
+        );
+        assert!(s.can_destroy());
+        s.destroy_confirm = true;
+        s.destroy_done();
+        assert!(s.destroyed);
+        assert!(!s.has_key() && s.key_path.is_none() && s.key_id.is_none());
+        assert!(!s.can_destroy());
+        // Une autre clé choisie : le message de destruction disparaît.
+        let _ = s.choose_map("C:/cles/autre.anonmap".into());
+        assert!(!s.destroyed);
+        // Une clé sans date (V1) n'est jamais signalée.
+        s.unlock_done(Ok(session()));
+        assert_eq!(s.expired_since("2099-01-01"), None);
     }
 }

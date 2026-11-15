@@ -8,7 +8,7 @@ use anon_core::text::apply_replacements;
 use anon_core::{
     BlockRole, EntityKind, Handler, Profile, Session, Source, Tag, TextTransform, Treatment,
 };
-use anon_engine::{AnonymizeOptions, Engine, InputFile, NoProgress, RiskLevel, ai_instruction};
+use anon_engine::{AnonymizeOptions, Engine, InputFile, NoProgress, ai_instruction};
 use anon_office::handler_for;
 use anon_replace::{Replacer, Restorer, SessionExt};
 use common::*;
@@ -63,7 +63,6 @@ fn parcours_complet_sur_chaque_exemple() {
                 "nom du fichier produit"
             );
             assert!(out.report.replacements > 0, "{}", f.name);
-            assert!(!out.report.risk.advice.is_empty());
 
             // Aucune valeur attendue détectée (présente dans la session) ne subsiste.
             let deep = handler(&f.name).deep_scan(&out.bytes).unwrap();
@@ -377,10 +376,11 @@ fn options_utilisateur() {
     assert!(back.contains("Hélène Kaloï"));
 }
 
-/// Le conseil « utilisez le profil Renforcé » ne s'affiche qu'en profil Standard.
-/// En Renforcé, le bilan invite à cocher les informations restées visibles.
+/// Informations indirectes laissées visibles : l'évaluation des trois critères
+/// (qui remplace le rapport de risque de la V1) le signale dans les deux
+/// profils, et propose une correction pour chaque échec.
 #[test]
-fn conseil_de_risque_selon_le_profil() {
+fn indices_visibles_signales_par_l_evaluation() {
     const NOTE: &str = "Réunion du 12 mars 2024 à Dumbéa. Hélène Kaloï, 44 ans, \
         infirmière, présente un budget de 12 500 euros.";
     let engine = Engine::standard();
@@ -393,20 +393,12 @@ fn conseil_de_risque_selon_le_profil() {
                 c.selected = false;
             }
         }
-        let mut session = Session::new();
-        engine.apply_selection(&analysis, &mut session);
-        let risk = engine
-            .anonymize(&file, &analysis, &mut session, &AnonymizeOptions::default())
-            .unwrap()
-            .report
-            .risk;
-        assert_eq!(risk.level, RiskLevel::Eleve, "{profile:?}");
-        let suggests_renforce = risk.advice.iter().any(|a| a.contains("profil Renforcé"));
-        assert_eq!(
-            suggests_renforce,
-            profile == Profile::Standard,
-            "{profile:?} : {:?}",
-            risk.advice
+        let a = engine.assess(&analysis, &anon_core::AssessSettings::default());
+        assert!(!a.is_anonymous(), "{profile:?} : {:?}", a.verdict);
+        assert!(!a.failures.is_empty());
+        assert!(
+            a.failures.iter().all(|f| !f.fixes.is_empty()),
+            "{profile:?}"
         );
     }
 }

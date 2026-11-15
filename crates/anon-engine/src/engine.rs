@@ -6,17 +6,16 @@ use crate::analysis::{
 use crate::error::{EngineError, Leak, extension_of};
 use crate::evaluation::{self, FIX_ALL_MAX_ROUNDS, FixUndo};
 use crate::media::{LOW_OCR_CONFIDENCE, ManualMask, Masker, Unmasker, sha256_hex};
-use crate::risk::{RiskReport, assess};
 use crate::structure::structural_counts;
 use anon_core::{
     AssessInput, AssessSettings, Assessment, BlockContext, BlockRole, DetectOptions, Detection,
-    Detector, EntityKind, Fix, Goal, Handler, ImageProcessor, MediaTransform, PixelRect, Profile,
-    Session, Tag, TextBlock, TextTransform, TransformOptions, Verdict, Warning, WarningCode,
+    Detector, Fix, Goal, Handler, ImageProcessor, MediaTransform, PixelRect, Profile, Session, Tag,
+    TextBlock, TextTransform, TransformOptions, Verdict, Warning, WarningCode,
 };
 use anon_detect::{ColumnDetector, ListDetector, QuasiDetector, RuleDetector, merge};
 use anon_dict::DictionaryDetector;
 use anon_replace::{Replacer, RestoreReport, Restorer};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 /// Fichier à traiter : nom (avec extension, sans chemin) et contenu.
@@ -88,7 +87,6 @@ pub struct FileReport {
     /// Remplacements de texte et zones d'image masquées.
     pub replacements: usize,
     pub warnings: Vec<Warning>,
-    pub risk: RiskReport,
 }
 
 /// Fichier anonymisé, contrôle de fuite passé.
@@ -662,30 +660,6 @@ impl Engine {
         analysis.apply_to(session);
     }
 
-    /// Quasi-identifiants encore visibles dans des blocs. Ils sont toujours
-    /// cherchés en profil Renforcé ; `profile` (celui de l'analyse) oriente les conseils.
-    fn risk(&self, blocks: &[TextBlock], profile: Profile) -> RiskReport {
-        let opts = DetectOptions {
-            profile: Profile::Renforce,
-            disabled: BTreeSet::new(),
-        };
-        let list = ListDetector::default();
-        let mut counts: BTreeMap<EntityKind, usize> = BTreeMap::new();
-        for b in blocks {
-            for d in self.detect_block(b, &opts, &list) {
-                let inside_tag = b
-                    .text
-                    .get(d.start..d.end)
-                    .is_none_or(|s| s.contains('[') || s.contains(']'));
-                if d.kind.is_quasi_identifier() && !inside_tag {
-                    let n = counts.entry(d.kind).or_insert(0);
-                    *n = n.saturating_add(1);
-                }
-            }
-        }
-        assess(&counts, profile)
-    }
-
     /// Anonymise un fichier avec la session : masquage des images, réécriture,
     /// contrôle de fuite bloquant. Aucun octet n'est rendu si une valeur subsiste.
     ///
@@ -809,7 +783,6 @@ impl Engine {
             return Err(EngineError::Leak { leaks });
         }
 
-        let risk = self.risk(&deep, analysis.profile);
         if keep_originals {
             // Un format qui ne conserve pas l'image octet pour octet (page d'un PDF
             // scanné) ne permet pas de la reconnaître ensuite : garder son original
@@ -843,7 +816,6 @@ impl Engine {
             report: FileReport {
                 replacements: out.replacements.saturating_add(masked),
                 warnings,
-                risk,
             },
         })
     }
@@ -908,11 +880,38 @@ impl Engine {
 
     /// Réponse d'IA restaurée, avec le bilan (balises inconnues…).
     pub fn restore_text(&self, text: &str, session: &Session) -> (String, RestoreReport) {
+        let (out, _, report) = self.restore_text_marked(text, session);
+        (out, report)
+    }
+
+    /// Comme [`Engine::restore_text`], avec la place (octets, dans le texte
+    /// restauré) de chaque valeur remise : l'interface les surligne.
+    pub fn restore_text_marked(
+        &self,
+        text: &str,
+        session: &Session,
+    ) -> (String, Vec<std::ops::Range<usize>>, RestoreReport) {
         let r = Restorer::new(session);
-        let out = r
-            .apply(text, &BlockContext::new("texte", BlockRole::Body))
-            .into_owned();
-        (out, r.report())
+        // Même parcours que `apply_replacements` : texte restauré identique.
+        let reps = r.replacements(text, &BlockContext::new("texte", BlockRole::Body));
+        let mut out = String::with_capacity(text.len());
+        let mut marks = Vec::with_capacity(reps.len());
+        let mut at = 0;
+        for rep in reps {
+            if rep.start < at || rep.end > text.len() || rep.start > rep.end {
+                continue;
+            }
+            let Some(before) = text.get(at..rep.start) else {
+                continue;
+            };
+            out.push_str(before);
+            let start = out.len();
+            out.push_str(&rep.with);
+            marks.push(start..out.len());
+            at = rep.end;
+        }
+        out.push_str(text.get(at..).unwrap_or_default());
+        (out, marks, r.report())
     }
 
     /// Vrai si l'édition vérifie les visages (détecteur injecté).
@@ -929,7 +928,13 @@ impl Engine {
     /// Évalue le dossier pour un destinataire : isolement, recoupement,
     /// déduction, sujet par sujet. Moins d'une seconde sur les exemples.
     pub fn assess(&self, analysis: &Analysis, settings: &AssessSettings) -> Assessment {
-        anon_assess::assess(&self.assess_input(analysis), settings)
+        self.assess_from(&self.assess_input(analysis), settings)
+    }
+
+    /// Évalue une entrée déjà construite par [`Engine::assess_input`] (qui
+    /// donne aussi, par exemple, les tableaux évalués et leurs feuilles).
+    pub fn assess_from(&self, input: &AssessInput, settings: &AssessSettings) -> Assessment {
+        anon_assess::assess(input, settings)
     }
 
     /// Applique une correction proposée par l'évaluation. `Mask` coche la
@@ -944,9 +949,10 @@ impl Engine {
 
     /// Annule une correction (ou « Tout corriger ») : l'analyse revient
     /// exactement à son état d'avant. Annuler dans l'ordre inverse des
-    /// applications.
-    pub fn undo_fix(&self, analysis: &mut Analysis, undo: FixUndo) {
-        evaluation::undo_fix(analysis, undo);
+    /// applications. Renvoie de quoi rétablir (Ctrl+Maj+Z) : passé de nouveau
+    /// à `undo_fix`, il redonne l'état d'après, et de quoi l'annuler encore.
+    pub fn undo_fix(&self, analysis: &mut Analysis, undo: FixUndo) -> FixUndo {
+        evaluation::undo_fix(analysis, undo)
     }
 
     /// « Tout corriger » : applique la première correction de chaque échec,

@@ -1034,6 +1034,15 @@ pub fn text_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
         ("surlignage « masqué »", p.masked.ink, p.masked.fill),
         ("surlignage « à décider »", p.pending.ink, p.pending.fill),
         ("texte « à décider » de la file", p.data.ink, p.pending.fill),
+        // Lot 8 : bilan, envoi, réponse.
+        ("critère en échec (badge du bilan)", p.error, p.error_tint),
+        ("phrase de passe sur surface", p.heading, p.surface),
+        (
+            "valeur restaurée dans la réponse",
+            p.masked.ink,
+            p.masked.fill,
+        ),
+        ("balise inconnue dans la réponse", p.data.ink, p.data.fill),
     ];
     for (name, t) in [
         ("badge marque", p.brand),
@@ -1094,6 +1103,14 @@ pub fn ui_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
             "contour de la valeur courante (masquée)",
             p.border_focus,
             p.masked.fill,
+        ),
+        // Lot 8 : bilan et réponse.
+        ("icône de critère en échec sur surface", p.error, p.surface),
+        ("icône de critère réussi sur surface", p.accent, p.surface),
+        (
+            "soulignement d'une valeur restaurée sur creux",
+            p.masked.edge,
+            p.sunken,
         ),
     ]
 }

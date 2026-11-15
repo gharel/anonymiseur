@@ -796,6 +796,7 @@ impl AnonymizeState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::state::anonymize::tests::engine;
     use crate::ui::state::files::FileEntry;
     use anon_engine::{Engine, InputFile, NoProgress};
     use std::path::PathBuf;
@@ -932,11 +933,11 @@ mod tests {
         s.sync_review(&session);
         assert!(masked(&s, "gérant"));
         assert_eq!(s.history.next_undo(), Some(Action::Mask));
-        assert_eq!(s.undo(&session), Some(Action::Mask));
+        assert_eq!(s.undo(engine(), &session), Some(Action::Mask));
         s.sync_review(&session);
         assert!(!masked(&s, "gérant"));
         assert!(s.is_undecided(gerant));
-        assert_eq!(s.redo(&session), Some(Action::Mask));
+        assert_eq!(s.redo(engine(), &session), Some(Action::Mask));
         assert!(!s.is_undecided(gerant));
     }
 
@@ -964,7 +965,7 @@ mod tests {
             "tout le dossier"
         );
         assert_eq!(s.history.next_undo(), Some(Action::Keep));
-        s.undo(&session);
+        s.undo(engine(), &session);
         s.sync_review(&session);
         assert!(
             s.document_view()
@@ -1017,7 +1018,7 @@ mod tests {
             "partout"
         );
         assert!(s.always.is_empty());
-        assert_eq!(s.undo(&session), Some(Action::MaskEverywhere));
+        assert_eq!(s.undo(engine(), &session), Some(Action::MaskEverywhere));
         assert!(s.candidate(added).is_none());
     }
 
@@ -1035,7 +1036,7 @@ mod tests {
         let added = s.mask_selection(true, &session).unwrap();
         assert_eq!(s.always, vec![("Corail".to_owned(), EntityKind::Societe)]);
         assert!(s.candidate(added).is_some_and(|c| c.selected));
-        assert_eq!(s.undo(&session), Some(Action::AlwaysMask));
+        assert_eq!(s.undo(engine(), &session), Some(Action::AlwaysMask));
         assert!(s.always.is_empty(), "la liste revient aussi");
         // Une sélection vide ou faite d'espaces ne masque rien.
         s.select_text(Some(TextRange {

@@ -4,6 +4,27 @@
 use super::state::files::FileEntry;
 use std::path::{Path, PathBuf};
 
+/// Sous-dossiers des clés de restauration sous le dossier Documents :
+/// `Anonymiseur/Clés`, distinct du dossier des fichiers produits.
+pub const KEYS_SUBDIR: [&str; 2] = ["Anonymiseur", "Clés"];
+
+/// Dossier des clés sous un dossier Documents.
+pub fn keys_dir_in(documents: &Path) -> PathBuf {
+    KEYS_SUBDIR
+        .iter()
+        .fold(documents.to_path_buf(), |d, part| d.join(part))
+}
+
+/// Dialogue « Enregistrer sous » : titre, dossier de départ, nom proposé et
+/// formats (libellé, extensions sans point).
+#[derive(Debug, Clone, Copy)]
+pub struct SaveRequest<'a> {
+    pub title: &'a str,
+    pub start: Option<&'a Path>,
+    pub name: &'a str,
+    pub filters: &'a [(&'a str, &'a [&'a str])],
+}
+
 pub trait Platform {
     /// Dialogue de choix de documents à masquer.
     fn pick_documents(&mut self) -> Vec<FileEntry>;
@@ -16,11 +37,14 @@ pub trait Platform {
     /// Emplacement fixe des exemples (`Documents/Anonymiseur/Exemples`), s'il
     /// est connu.
     fn examples_dir(&mut self) -> Option<PathBuf>;
+    /// Dossier proposé pour les clés de restauration
+    /// (`Documents/Anonymiseur/Clés`), s'il est connu.
+    fn keys_dir(&mut self) -> Option<PathBuf>;
     /// Dialogue de choix du dossier où copier les fichiers d'exemple (repli
     /// quand le dossier Documents est introuvable).
     fn pick_examples_folder(&mut self) -> Option<PathBuf>;
-    /// Dialogue « Enregistrer sous » pour un texte Markdown.
-    fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf>;
+    /// Dialogue « Enregistrer sous ».
+    fn save_file(&mut self, request: SaveRequest<'_>) -> Option<PathBuf>;
     /// Ouvre un dossier dans l'explorateur.
     fn open_folder(&mut self, path: &Path);
 }
@@ -64,7 +88,7 @@ impl Platform for NativePlatform {
     }
 
     fn pick_folder(&mut self, start: Option<&Path>) -> Option<PathBuf> {
-        let mut d = rfd::FileDialog::new().set_title("Choisir le dossier de sortie");
+        let mut d = rfd::FileDialog::new().set_title("Choisir un dossier");
         if let Some(s) = start {
             d = d.set_directory(s);
         }
@@ -75,18 +99,24 @@ impl Platform for NativePlatform {
         dirs::document_dir().map(|d| super::service::examples_dir_in(&d))
     }
 
+    fn keys_dir(&mut self) -> Option<PathBuf> {
+        dirs::document_dir().map(|d| keys_dir_in(&d))
+    }
+
     fn pick_examples_folder(&mut self) -> Option<PathBuf> {
         rfd::FileDialog::new()
             .set_title("Choisir où copier les fichiers d'exemple")
             .pick_folder()
     }
 
-    fn save_markdown(&mut self, start: Option<&Path>, name: &str) -> Option<PathBuf> {
+    fn save_file(&mut self, request: SaveRequest<'_>) -> Option<PathBuf> {
         let mut d = rfd::FileDialog::new()
-            .set_title("Enregistrer le texte masqué")
-            .add_filter("Markdown", &["md"])
-            .set_file_name(name);
-        if let Some(s) = start {
+            .set_title(request.title)
+            .set_file_name(request.name);
+        for (label, extensions) in request.filters {
+            d = d.add_filter(*label, extensions);
+        }
+        if let Some(s) = request.start {
             d = d.set_directory(s);
         }
         d.save_file()
@@ -111,6 +141,11 @@ pub struct NullPlatform {
     pub requests: Vec<&'static str>,
     /// Emplacement des exemples rendu par [`Platform::examples_dir`].
     pub examples: Option<PathBuf>,
+    /// Dossier des clés rendu par [`Platform::keys_dir`].
+    pub keys: Option<PathBuf>,
+    /// Dossier où « Enregistrer sous » enregistre (sous le nom proposé) ;
+    /// `None` : l'enregistrement est annulé.
+    pub save_to: Option<PathBuf>,
 }
 
 impl Platform for NullPlatform {
@@ -138,17 +173,34 @@ impl Platform for NullPlatform {
         self.examples.clone()
     }
 
+    fn keys_dir(&mut self) -> Option<PathBuf> {
+        self.keys.clone()
+    }
+
     fn pick_examples_folder(&mut self) -> Option<PathBuf> {
         self.requests.push("dossier des exemples");
         None
     }
 
-    fn save_markdown(&mut self, _start: Option<&Path>, _name: &str) -> Option<PathBuf> {
+    fn save_file(&mut self, request: SaveRequest<'_>) -> Option<PathBuf> {
         self.requests.push("enregistrer");
-        None
+        self.save_to.as_ref().map(|d| d.join(request.name))
     }
 
     fn open_folder(&mut self, _path: &Path) {
         self.requests.push("ouvrir le dossier");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_go_under_documents() {
+        assert_eq!(
+            keys_dir_in(Path::new("C:/Users/x/Documents")),
+            PathBuf::from("C:/Users/x/Documents/Anonymiseur/Clés")
+        );
     }
 }

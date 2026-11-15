@@ -28,6 +28,10 @@ pub enum Action {
     MaskEverywhere,
     /// Texte sélectionné, ajouté à la liste « toujours masquer ».
     AlwaysMask,
+    /// Correction proposée par le bilan, appliquée (« Appliquer »).
+    Fix,
+    /// Toutes les corrections proposées (« Tout corriger »).
+    FixAll,
 }
 
 impl Action {
@@ -48,6 +52,8 @@ impl Action {
             Action::Keep => "valeur gardée",
             Action::MaskEverywhere => "texte masqué partout",
             Action::AlwaysMask => "texte toujours masqué",
+            Action::Fix => "correction appliquée",
+            Action::FixAll => "corrections appliquées",
         }
     }
 }
@@ -99,6 +105,32 @@ impl<T> History<T> {
         let (action, after) = self.redo.pop()?;
         self.undo.push((action, current));
         Some((action, after))
+    }
+
+    /// Retire la dernière décision de la pile « annuler », sans rien empiler :
+    /// l'appelant défait la décision puis empile dans « rétablir » de quoi la
+    /// refaire ([`History::push_redo`]).
+    pub fn pop_undo(&mut self) -> Option<(Action, T)> {
+        self.undo.pop()
+    }
+
+    /// Empile de quoi refaire une décision qui vient d'être annulée.
+    pub fn push_redo(&mut self, action: Action, entry: T) {
+        self.redo.push((action, entry));
+    }
+
+    /// Retire la dernière décision annulée de la pile « rétablir ».
+    pub fn pop_redo(&mut self) -> Option<(Action, T)> {
+        self.redo.pop()
+    }
+
+    /// Empile de quoi annuler une décision rétablie (la pile « rétablir » est
+    /// gardée, contrairement à [`History::record`]).
+    pub fn push_undo(&mut self, action: Action, entry: T) {
+        self.undo.push((action, entry));
+        if self.undo.len() > self.limit {
+            self.undo.remove(0);
+        }
     }
 
     pub fn can_undo(&self) -> bool {
@@ -207,8 +239,26 @@ mod tests {
             Action::Keep,
             Action::MaskEverywhere,
             Action::AlwaysMask,
+            Action::Fix,
+            Action::FixAll,
         ] {
             assert!(!a.label().is_empty());
         }
+    }
+
+    #[test]
+    fn pop_and_push_keep_both_stacks() {
+        let mut h = History::default();
+        h.record(Action::Fix, 'a');
+        h.record(Action::FixAll, 'b');
+        assert_eq!(h.pop_undo(), Some((Action::FixAll, 'b')));
+        h.push_redo(Action::FixAll, 'B');
+        assert_eq!(h.next_redo(), Some(Action::FixAll));
+        assert_eq!(h.pop_redo(), Some((Action::FixAll, 'B')));
+        h.push_redo(Action::FixAll, 'B');
+        // Empiler pour annuler ne vide pas « rétablir ».
+        h.push_undo(Action::Fix, 'c');
+        assert!(h.can_redo());
+        assert_eq!(h.len(), 2);
     }
 }

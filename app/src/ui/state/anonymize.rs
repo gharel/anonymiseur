@@ -5,17 +5,26 @@
 //! Les traitements longs sont confiés au fil de travail par `AnonApp` ; l'état
 //! reçoit leurs résultats par les méthodes `*_done`.
 
+use super::bilan::{Assessed, BilanState};
 use super::files::{FileEntry, default_output_dir, is_tool_output};
 use super::generalize::{generalize, is_generalizable};
 use super::history::{Action, History};
 use super::images::{FileMask, ManualMasks};
 use super::review::Review;
-use crate::ui::service::{BatchReport, Protection, Rejected, unsupported_reason};
-use anon_core::{
-    DetectOptions, EntityKind, Family, Goal, PixelRect, Profile, Session, Tag, Treatment,
+use crate::ui::service::{
+    BatchReport, FolderAssessment, KeyPlan, Protection, Rejected, SendPlan, key_file_name,
+    local_now, unsupported_reason,
 };
-use anon_engine::{Analysis, AnalyzeOptions, Candidate, InputFile, SELECT_MIN_CONFIDENCE};
-use anon_vault::{PasswordStrength, password_strength};
+use anon_core::{
+    AssessSettings, DetectOptions, EntityKind, Family, Fix, Goal, PixelRect, Profile, Session, Tag,
+    Treatment,
+};
+use anon_engine::{
+    Analysis, AnalyzeOptions, Candidate, Engine, FixUndo, InputFile, SELECT_MIN_CONFIDENCE,
+};
+use anon_vault::{
+    DEFAULT_PASSPHRASE_WORDS, PasswordStrength, generate_passphrase, password_strength,
+};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
@@ -29,6 +38,8 @@ pub enum Busy {
     Analyzing,
     OpeningKey,
     Anonymizing,
+    /// « Tout corriger » : corrections et réévaluation.
+    Fixing,
 }
 
 impl Busy {
@@ -37,6 +48,7 @@ impl Busy {
             Busy::Analyzing => "Analyse des documents",
             Busy::OpeningKey => "Ouverture de la clé",
             Busy::Anonymizing => "Masquage et vérification finale",
+            Busy::Fixing => "Corrections et nouvelle évaluation",
         }
     }
 }
@@ -232,21 +244,52 @@ pub fn is_acceptable(s: PasswordStrength) -> bool {
 }
 
 /// Protection de la clé de restauration (étape « Envoyer »).
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ProtectState {
     pub mode: ProtectMode,
     pub password: String,
     pub confirm: String,
+    /// Phrase de passe proposée par l'outil : tant que le mot de passe la
+    /// reprend, aucune confirmation n'est demandée (elle s'affiche en clair,
+    /// à copier ou noter).
+    pub generated: Option<String>,
+    /// Retenir le mot de passe dans le trousseau de cet ordinateur.
+    pub remember: bool,
+    /// Durée de conservation de la clé, en mois (`RETENTION_CHOICES`).
+    pub keep_months: u32,
+    /// Objectif « Anonymiser définitivement » : envoi confirmé alors que
+    /// l'évaluation ne conclut pas (fichiers `_masque_sans_cle`).
+    pub confirmed: bool,
     /// Fichier `.anonmap` choisi pour la reprise, avant ouverture.
     pub existing_path: Option<PathBuf>,
     pub existing: Option<ExistingTable>,
     pub existing_error: Option<String>,
 }
 
+impl Default for ProtectState {
+    fn default() -> Self {
+        Self {
+            mode: ProtectMode::default(),
+            password: String::new(),
+            confirm: String::new(),
+            generated: None,
+            remember: false,
+            keep_months: anon_vault::retention::DEFAULT_RETENTION_MONTHS,
+            confirmed: false,
+            existing_path: None,
+            existing: None,
+            existing_error: None,
+        }
+    }
+}
+
 impl std::fmt::Debug for ProtectState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ProtectState")
             .field("mode", &self.mode)
+            .field("generated", &self.generated.is_some())
+            .field("remember", &self.remember)
+            .field("keep_months", &self.keep_months)
             .field("existing", &self.existing)
             .finish_non_exhaustive()
     }
@@ -257,15 +300,45 @@ impl ProtectState {
         password_strength(&self.password)
     }
 
+    /// Le mot de passe est la phrase de passe proposée par l'outil.
+    pub fn uses_generated(&self) -> bool {
+        !self.password.is_empty() && self.generated.as_deref() == Some(self.password.as_str())
+    }
+
+    /// Propose une phrase de passe (`anon_vault::generate_passphrase`), qui
+    /// devient le mot de passe de la clé.
+    pub fn propose_passphrase(&mut self) {
+        let phrase = generate_passphrase(DEFAULT_PASSPHRASE_WORDS);
+        if phrase.is_empty() {
+            // Générateur du système en échec : l'utilisateur choisit le sien.
+            self.generated = None;
+            return;
+        }
+        self.password = phrase.clone();
+        self.confirm.clear();
+        self.generated = Some(phrase);
+    }
+
+    /// L'utilisateur choisit son propre mot de passe (à saisir et confirmer).
+    pub fn choose_own(&mut self) {
+        self.generated = None;
+        self.password.clear();
+        self.confirm.clear();
+    }
+
     pub fn password_issue(&self) -> Option<PasswordIssue> {
-        if self.mode != ProtectMode::NewPassword || self.password.is_empty() {
+        if self.mode != ProtectMode::NewPassword
+            || self.password.is_empty()
+            || self.uses_generated()
+        {
             return None;
         }
         (!is_acceptable(self.strength())).then_some(PasswordIssue::TooWeak)
     }
 
     pub fn confirm_issue(&self) -> Option<PasswordIssue> {
-        if self.mode != ProtectMode::NewPassword || self.confirm.is_empty() {
+        if self.mode != ProtectMode::NewPassword || self.confirm.is_empty() || self.uses_generated()
+        {
             return None;
         }
         (self.confirm != self.password).then_some(PasswordIssue::Mismatch)
@@ -274,6 +347,7 @@ impl ProtectState {
     /// Ce qui manque pour continuer, en une phrase.
     pub fn blocker(&self) -> Option<&'static str> {
         match self.mode {
+            ProtectMode::NewPassword if self.uses_generated() => None,
             ProtectMode::NewPassword => {
                 if self.password.is_empty() {
                     Some("Choisissez un mot de passe pour la clé de restauration.")
@@ -303,7 +377,8 @@ impl ProtectState {
     pub fn can_proceed(&self) -> bool {
         match self.mode {
             ProtectMode::NewPassword => {
-                is_acceptable(self.strength()) && self.password == self.confirm
+                self.uses_generated()
+                    || (is_acceptable(self.strength()) && self.password == self.confirm)
             }
             ProtectMode::ExistingTable => self.existing.is_some() && !self.password.is_empty(),
             ProtectMode::Irreversible => true,
@@ -320,7 +395,9 @@ impl ProtectState {
     pub fn clear_secrets(&mut self) {
         self.password.clear();
         self.confirm.clear();
+        self.generated = None;
         self.existing = None;
+        self.confirmed = false;
     }
 }
 
@@ -332,6 +409,7 @@ pub enum StepError {
     NothingSelected,
     PasswordNotReady,
     NoOutputDir,
+    NoKeyDir,
     Busy,
 }
 
@@ -345,10 +423,19 @@ impl StepError {
                 "Choisissez un mot de passe robuste et confirmez-le, ou reprenez une clé existante."
             }
             StepError::NoOutputDir => "Choisissez le dossier où enregistrer les fichiers.",
+            StepError::NoKeyDir => NO_KEY_DIR,
             StepError::Busy => "Un traitement est déjà en cours.",
         }
     }
 }
+
+/// Raison : aucun dossier pour la clé de restauration.
+pub const NO_KEY_DIR: &str = "Choisissez le dossier de la clé de restauration.";
+/// Raison : l'évaluation n'est pas encore à jour (« Anonymiser définitivement »).
+pub const ASSESSING: &str = "Patientez : l'évaluation du dossier est en cours.";
+/// Raison : envoi sans conclusion d'anonymat, à confirmer.
+pub const CONFIRM_NEEDED: &str =
+    "Confirmez l'envoi : l'évaluation ne conclut pas à l'anonymat du dossier.";
 
 /// Documents à lire et à analyser : fichiers sur le disque et textes collés.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -365,10 +452,54 @@ pub struct AnonymizeJob {
     pub never: Vec<String>,
     /// Zones tracées à la main sur les images.
     pub masks: Vec<FileMask>,
-    pub protection: Protection,
-    pub out_dir: PathBuf,
+    /// Protection, dossier des fichiers, clé (dossier, nom, conservation,
+    /// trousseau) et réglages de l'évaluation.
+    pub plan: SendPlan,
     /// Session de départ : clé reprise, ou session courante.
     pub session: Option<Session>,
+}
+
+/// Données confiées au fil de travail pour évaluer le dossier.
+#[derive(Debug)]
+pub struct AssessJob {
+    /// Copie de l'analyse (les données en mémoire sont partagées).
+    pub analysis: Analysis,
+    pub masks: Vec<FileMask>,
+    pub settings: AssessSettings,
+    /// Révision des décisions évaluées.
+    pub revision: u64,
+}
+
+/// Données confiées au fil de travail pour « Tout corriger ».
+#[derive(Debug)]
+pub struct FixAllJob {
+    /// Copie de l'analyse, corrigée sur le fil de travail puis rendue.
+    pub analysis: Analysis,
+    pub masks: Vec<FileMask>,
+    pub settings: AssessSettings,
+}
+
+/// Ce que l'historique d'annulation garde d'une décision.
+#[derive(Clone, PartialEq)]
+pub enum Undoable {
+    /// Décisions de vérification d'avant (pile « annuler ») ou d'après (pile
+    /// « rétablir »).
+    Decisions(Decisions),
+    /// Correction du bilan : de quoi passer à l'autre état
+    /// (`Engine::undo_fix`), et les valeurs tranchées de cet autre état.
+    Fix {
+        token: FixUndo,
+        decided: BTreeSet<usize>,
+    },
+}
+
+impl std::fmt::Debug for Undoable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Undoable::Decisions(d) => d.fmt(f),
+            Undoable::Fix { token, .. } => token.fmt(f),
+        }
+    }
 }
 
 /// Décisions de vérification : ce que l'historique d'annulation conserve.
@@ -429,6 +560,10 @@ pub struct AnonymizeState {
     pub mask_preview: Vec<Vec<PixelRect>>,
     pub protect: ProtectState,
     pub out_dir: Option<PathBuf>,
+    /// Dossier des clés de restauration (`Documents/Anonymiseur/Clés` par défaut).
+    pub key_dir: Option<PathBuf>,
+    /// Nom de la prochaine clé (`dossier-JJ-MM-AAAA-HHhMM.anonmap`).
+    pub key_name: Option<String>,
     pub report: Option<BatchReport>,
     pub busy: Option<Busy>,
     pub error: Option<StepError>,
@@ -440,12 +575,17 @@ pub struct AnonymizeState {
     pub focus_row: Option<usize>,
     /// Faire défiler le tableau jusqu'à `focus_row` à la prochaine image.
     pub jump: bool,
-    /// Annuler, rétablir les décisions de vérification.
-    pub history: History<Decisions>,
+    /// Annuler, rétablir les décisions de vérification et les corrections.
+    pub history: History<Undoable>,
     /// Valeurs tranchées par l'utilisateur : elles quittent la file « À décider ».
     pub decided: BTreeSet<usize>,
     /// Vérification dans le document : document affiché, file, sélection.
     pub review: Review,
+    /// Révision des décisions : change à chaque décision, correction ou
+    /// annulation (une évaluation porte sur une révision).
+    pub revision: u64,
+    /// Bilan : dernière évaluation, contexte, fiche.
+    pub bilan: BilanState,
 }
 
 /// Colonnes triables du tableau de vérification.
@@ -486,6 +626,8 @@ impl Default for AnonymizeState {
             mask_preview: Vec::new(),
             protect: ProtectState::default(),
             out_dir: None,
+            key_dir: None,
+            key_name: None,
             report: None,
             busy: None,
             error: None,
@@ -496,6 +638,8 @@ impl Default for AnonymizeState {
             history: History::default(),
             decided: BTreeSet::new(),
             review: Review::default(),
+            revision: 0,
+            bilan: BilanState::default(),
         }
     }
 }
@@ -694,6 +838,7 @@ impl AnonymizeState {
         self.history.clear();
         self.decided.clear();
         self.review.reset();
+        self.bilan.reset();
         if analysis.cancelled || self.inputs.is_empty() {
             self.analysis = None;
             return false;
@@ -726,6 +871,10 @@ impl AnonymizeState {
     }
 
     fn update_previews(&mut self, session: &Session) {
+        // Ce qui est masqué a pu changer : l'évaluation et la confirmation
+        // d'envoi sont à refaire.
+        self.revision = self.revision.wrapping_add(1);
+        self.protect.confirmed = false;
         self.tag_preview = self
             .analysis
             .as_ref()
@@ -910,6 +1059,20 @@ impl AnonymizeState {
                     .is_none()
                     .then_some("Choisissez le dossier où enregistrer les fichiers.")
             })
+            .or_else(|| self.key_dir_missing().then_some(NO_KEY_DIR))
+    }
+
+    /// Une clé sera écrite, mais aucun dossier n'est choisi pour elle.
+    fn key_dir_missing(&self) -> bool {
+        self.protect.mode != ProtectMode::Irreversible && self.key_dir.is_none()
+    }
+
+    /// La clé serait écrite dans le dossier des fichiers produits : elle
+    /// risque de partir avec eux.
+    pub fn key_beside_outputs(&self) -> bool {
+        self.protect.mode != ProtectMode::Irreversible
+            && self.key_dir.is_some()
+            && self.key_dir == self.out_dir
     }
 
     /// Aligne la protection sur l'objectif : aucune clé pour « Anonymiser
@@ -920,10 +1083,12 @@ impl AnonymizeState {
             (Goal::Mask, ProtectMode::Irreversible) => ProtectMode::NewPassword,
             (Goal::Mask, m) => m,
         };
+        self.protect.confirmed = false;
         if mode != self.protect.mode {
             self.protect.mode = mode;
             self.protect.password.clear();
             self.protect.confirm.clear();
+            self.protect.generated = None;
             self.report = None;
         }
     }
@@ -987,31 +1152,202 @@ impl AnonymizeState {
     /// déjà été enregistré à l'étape Envoyer.
     pub(super) fn checkpoint(&mut self, action: Action) {
         if let Some(d) = self.decisions() {
-            self.history.record(action, d);
+            self.history.record(action, Undoable::Decisions(d));
             self.report = None;
+            self.revision = self.revision.wrapping_add(1);
+            self.protect.confirmed = false;
         }
     }
 
-    /// Annule la dernière décision ; renvoie sa nature.
-    pub fn undo(&mut self, session: &Session) -> Option<Action> {
-        if self.busy.is_some() {
+    /// Passe à l'état gardé par `entry` ; renvoie de quoi revenir à l'état
+    /// courant. Une correction passe par `Engine::undo_fix`.
+    fn swap(&mut self, entry: Undoable, engine: &Engine, session: &Session) -> Option<Undoable> {
+        match entry {
+            Undoable::Decisions(d) => {
+                let current = self.decisions()?;
+                self.restore_decisions(d, session);
+                Some(Undoable::Decisions(current))
+            }
+            Undoable::Fix { token, decided } => {
+                let a = self.analysis.as_mut()?;
+                let back = engine.undo_fix(a, token);
+                let decided = std::mem::replace(&mut self.decided, decided);
+                self.report = None;
+                self.focus_row = None;
+                self.refresh_preview(session);
+                Some(Undoable::Fix {
+                    token: back,
+                    decided,
+                })
+            }
+        }
+    }
+
+    /// Annule la dernière décision ou correction ; renvoie sa nature.
+    pub fn undo(&mut self, engine: &Engine, session: &Session) -> Option<Action> {
+        if self.busy.is_some() || self.analysis.is_none() {
             return None;
         }
-        let current = self.decisions()?;
-        let (action, before) = self.history.undo(current)?;
-        self.restore_decisions(before, session);
+        let (action, entry) = self.history.pop_undo()?;
+        let back = self.swap(entry, engine, session)?;
+        self.history.push_redo(action, back);
         Some(action)
     }
 
-    /// Rétablit la dernière décision annulée ; renvoie sa nature.
-    pub fn redo(&mut self, session: &Session) -> Option<Action> {
-        if self.busy.is_some() {
+    /// Rétablit la dernière décision ou correction annulée ; renvoie sa nature.
+    pub fn redo(&mut self, engine: &Engine, session: &Session) -> Option<Action> {
+        if self.busy.is_some() || self.analysis.is_none() {
             return None;
         }
-        let current = self.decisions()?;
-        let (action, after) = self.history.redo(current)?;
-        self.restore_decisions(after, session);
+        let (action, entry) = self.history.pop_redo()?;
+        let back = self.swap(entry, engine, session)?;
+        self.history.push_undo(action, back);
         Some(action)
+    }
+
+    // --- Bilan : évaluation et corrections ----------------------------------
+
+    /// Évaluation à jour pour ces réglages, s'il y en a une.
+    pub fn assessment(&self, settings: &AssessSettings) -> Option<&Assessed> {
+        self.bilan.current(self.revision, settings)
+    }
+
+    /// Demande d'évaluation pour le fil de travail, si elle est nécessaire :
+    /// une copie de l'analyse, les zones tracées, les réglages.
+    pub fn begin_assessment(&mut self, settings: AssessSettings) -> Option<AssessJob> {
+        if self.busy.is_some() || !self.bilan.needs(self.revision, &settings) {
+            return None;
+        }
+        let analysis = self.analysis.as_ref()?.clone();
+        self.bilan.pending = Some((self.revision, settings));
+        Some(AssessJob {
+            analysis,
+            masks: self.masks.masks.clone(),
+            settings,
+            revision: self.revision,
+        })
+    }
+
+    /// Évaluation reçue du fil de travail.
+    pub fn assessment_done(
+        &mut self,
+        revision: u64,
+        settings: AssessSettings,
+        result: FolderAssessment,
+    ) {
+        self.bilan.received(revision, settings, result);
+    }
+
+    /// État (cochée, traitement) de chaque valeur, pour savoir ce qu'une
+    /// correction a tranché.
+    fn value_states(&self) -> HashMap<usize, (bool, Treatment)> {
+        self.candidates()
+            .iter()
+            .map(|c| (c.id, (c.selected, c.treatment.clone())))
+            .collect()
+    }
+
+    /// Retient une correction appliquée : les valeurs qu'elle a changées
+    /// quittent la file « À décider » ; une seule annulation la défait.
+    fn record_fix(
+        &mut self,
+        action: Action,
+        token: FixUndo,
+        before: &HashMap<usize, (bool, Treatment)>,
+        session: &Session,
+    ) {
+        let decided = self.decided.clone();
+        let changed: Vec<usize> = self
+            .candidates()
+            .iter()
+            .filter(|c| before.get(&c.id) != Some(&(c.selected, c.treatment.clone())))
+            .map(|c| c.id)
+            .collect();
+        self.decided.extend(changed);
+        self.history
+            .record(action, Undoable::Fix { token, decided });
+        self.report = None;
+        self.focus_row = None;
+        self.refresh_preview(session);
+    }
+
+    /// Applique une correction du bilan (`Engine::apply_fix`). Renvoie faux
+    /// si elle ne change rien.
+    pub fn apply_fix(&mut self, engine: &Engine, fix: &Fix, session: &Session) -> bool {
+        if self.busy.is_some() {
+            return false;
+        }
+        let before = self.value_states();
+        let Some(a) = self.analysis.as_mut() else {
+            return false;
+        };
+        let token = engine.apply_fix(a, fix);
+        if token.is_empty() {
+            return false;
+        }
+        self.record_fix(Action::Fix, token, &before, session);
+        true
+    }
+
+    /// « Tout corriger » : une copie de l'analyse pour le fil de travail
+    /// (`Engine::fix_all`, plusieurs évaluations).
+    pub fn begin_fix_all(&mut self, settings: AssessSettings) -> Result<FixAllJob, StepError> {
+        let r = if self.busy.is_some() {
+            Err(StepError::Busy)
+        } else {
+            match self.analysis.as_ref() {
+                None => Err(StepError::NotAnalyzed),
+                Some(a) => {
+                    self.busy = Some(Busy::Fixing);
+                    Ok(FixAllJob {
+                        analysis: a.clone(),
+                        masks: self.masks.masks.clone(),
+                        settings,
+                    })
+                }
+            }
+        };
+        self.error = r.as_ref().err().copied();
+        r
+    }
+
+    /// Résultat de « Tout corriger » : l'analyse corrigée remplace l'actuelle,
+    /// la correction entre dans l'historique (une seule annulation), et
+    /// l'évaluation du résultat est gardée. Renvoie vrai si quelque chose a
+    /// changé.
+    pub fn fix_all_done(
+        &mut self,
+        analysis: Analysis,
+        token: FixUndo,
+        settings: AssessSettings,
+        result: FolderAssessment,
+        session: &Session,
+    ) -> bool {
+        self.busy = None;
+        if token.is_empty() || self.analysis.is_none() {
+            return false;
+        }
+        let before = self.value_states();
+        self.analysis = Some(analysis);
+        self.record_fix(Action::FixAll, token, &before, session);
+        self.bilan.received(self.revision, settings, result);
+        true
+    }
+
+    /// Ce qui empêche l'envoi pour l'objectif « Anonymiser définitivement » :
+    /// une évaluation pas encore à jour, ou un envoi sans conclusion
+    /// d'anonymat pas encore confirmé.
+    pub fn verdict_blocker(&self, settings: &AssessSettings) -> Option<&'static str> {
+        if settings.goal != Goal::Anonymize {
+            return None;
+        }
+        match self.assessment(settings) {
+            None => Some(ASSESSING),
+            Some(a) if !a.assessment.is_anonymous() && !self.protect.confirmed => {
+                Some(CONFIRM_NEEDED)
+            }
+            Some(_) => None,
+        }
     }
 
     pub fn can_undo(&self) -> bool {
@@ -1251,17 +1587,27 @@ impl AnonymizeState {
             Err(StepError::PasswordNotReady)
         } else if self.out_dir.is_none() {
             Err(StepError::NoOutputDir)
+        } else if self.key_dir_missing() {
+            Err(StepError::NoKeyDir)
         } else {
             match (self.analysis.take(), self.out_dir.clone()) {
                 (Some(analysis), Some(out_dir)) => {
                     self.busy = Some(Busy::Anonymizing);
+                    let key = KeyPlan {
+                        dir: self.key_dir.clone().unwrap_or_default(),
+                        name: self
+                            .key_name
+                            .clone()
+                            .unwrap_or_else(|| key_file_name(&local_now())),
+                        keep_months: self.protect.keep_months,
+                        remember: self.protect.remember,
+                    };
                     Ok(AnonymizeJob {
                         inputs: std::mem::take(&mut self.inputs),
                         analysis,
                         never: self.never.clone(),
                         masks: self.masks.masks.clone(),
-                        protection: self.protect.protection(),
-                        out_dir,
+                        plan: SendPlan::new(self.protect.protection(), out_dir, key),
                         session: self
                             .protect
                             .existing
@@ -1289,15 +1635,19 @@ impl AnonymizeState {
         self.inputs = inputs;
         self.analysis = Some(analysis);
         self.protect.clear_secrets();
+        // Le prochain envoi aura sa propre clé, à son heure.
+        self.key_name = None;
         self.report = Some(report);
     }
 
     /// Recommence (les documents sont oubliés). La liste « toujours masquer »
-    /// de la session est gardée.
+    /// de la session et le dossier des clés sont gardés.
     pub fn reset(&mut self) {
         let always = std::mem::take(&mut self.always);
+        let key_dir = self.key_dir.take();
         *self = Self::default();
         self.always = always;
+        self.key_dir = key_dir;
     }
 
     /// Document d'entrée par nom (export du texte d'un fichier bloqué).
@@ -1307,9 +1657,16 @@ impl AnonymizeState {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
+    use super::super::bilan::says_anonymous;
     use super::*;
     use anon_engine::{Engine, NoProgress};
+
+    /// Moteur des tests (construit une fois).
+    pub(crate) fn engine() -> &'static Engine {
+        static ENGINE: std::sync::OnceLock<Engine> = std::sync::OnceLock::new();
+        ENGINE.get_or_init(Engine::standard)
+    }
 
     const LETTRE: &str = "Madame Hélène Kaloï, 44 ans, a rencontré Pierre Garnier.\n\
         Contact : helene.kaloi@example.com.\nNautilus Pacifique SARL";
@@ -1530,7 +1887,7 @@ mod tests {
 
         // Annuler pas à pas, dans l'ordre inverse.
         let mut undone = Vec::new();
-        while let Some(a) = s.undo(&session) {
+        while let Some(a) = s.undo(engine(), &session) {
             undone.push(a);
         }
         assert_eq!(
@@ -1550,7 +1907,7 @@ mod tests {
         assert!(s.masks.is_empty());
 
         // Tout rétablir.
-        while s.redo(&session).is_some() {}
+        while s.redo(engine(), &session).is_some() {}
         assert!(s.candidate(first).is_none(), "retirée de nouveau");
         assert!(s.candidate(added).is_some_and(|c| c.selected));
         assert_eq!(s.masks.len(), 1);
@@ -1567,7 +1924,7 @@ mod tests {
             .unwrap();
         assert!(s.set_generalized(age, true, &session));
         assert_eq!(s.generalized(age), Some("40-49 ans"));
-        assert_eq!(s.undo(&session), Some(Action::Treatment));
+        assert_eq!(s.undo(engine(), &session), Some(Action::Treatment));
         assert_eq!(s.generalized(age), None);
         let checked = s.selected_count();
         s.set_all_visible(false, &session);
@@ -1575,9 +1932,9 @@ mod tests {
         // Sans changement, rien n'est retenu.
         s.set_all_visible(false, &session);
         assert_eq!(s.history.next_undo(), Some(Action::UncheckAll));
-        assert_eq!(s.undo(&session), Some(Action::UncheckAll));
+        assert_eq!(s.undo(engine(), &session), Some(Action::UncheckAll));
         assert_eq!(s.selected_count(), checked);
-        assert_eq!(s.redo(&session), Some(Action::UncheckAll));
+        assert_eq!(s.redo(engine(), &session), Some(Action::UncheckAll));
         assert_eq!(s.selected_count(), 0);
     }
 
@@ -1698,10 +2055,10 @@ mod tests {
         assert_eq!(s.begin_anonymize().err(), Some(StepError::Busy));
         if let Ok(job) = job {
             assert_eq!(
-                job.out_dir,
+                job.plan.out_dir,
                 PathBuf::from("C:/dossier").join(super::super::files::OUTPUT_DIR_NAME)
             );
-            assert_eq!(job.protection, Protection::Irreversible);
+            assert_eq!(job.plan.protection, Protection::Irreversible);
             s.anonymize_done(BatchReport::default(), job.inputs, job.analysis);
         }
         assert!(s.report.is_some());
@@ -1902,5 +2259,229 @@ mod tests {
         assert_eq!(r.added, 0);
         assert!(r.map.is_some());
         assert!(s.files.is_empty());
+    }
+
+    // --- Bilan : évaluation, corrections, envoi -----------------------------
+
+    /// Évalue le dossier comme le fil de travail.
+    pub(crate) fn assess_now(s: &mut AnonymizeState, settings: AssessSettings) {
+        if let Some(job) = s.begin_assessment(settings) {
+            let mut a = job.analysis;
+            let r = crate::ui::service::assess_folder(engine(), &mut a, &job.masks, &job.settings);
+            s.assessment_done(job.revision, job.settings, r);
+        }
+    }
+
+    /// Identifiant de la première valeur de ce type.
+    fn first_of(s: &AnonymizeState, kind: EntityKind) -> usize {
+        s.visible()
+            .into_iter()
+            .find(|id| s.candidate(*id).is_some_and(|c| c.kind == kind))
+            .unwrap_or(usize::MAX)
+    }
+
+    #[test]
+    fn a_fix_enters_the_history() {
+        let (mut s, session) = reviewed();
+        let person = first_of(&s, EntityKind::Personne);
+        s.set_selected(person, false, &session);
+        let settings = AssessSettings::default();
+        assess_now(&mut s, settings);
+        let assessed = s.assessment(&settings).cloned().unwrap();
+        assert!(!assessed.assessment.is_anonymous());
+        let fix = assessed
+            .assessment
+            .failures
+            .iter()
+            .flat_map(|f| f.fixes.iter())
+            .find(|f| matches!(f, Fix::Mask { value_id } if *value_id == person))
+            .cloned()
+            .unwrap();
+        let revision = s.revision;
+        assert!(s.apply_fix(engine(), &fix, &session));
+        assert_ne!(s.revision, revision, "l'évaluation est à refaire");
+        assert!(s.assessment(&settings).is_none());
+        assert!(s.candidate(person).is_some_and(|c| c.selected));
+        assert!(s.decided.contains(&person), "la valeur quitte la file");
+        assert_eq!(s.history.next_undo(), Some(Action::Fix));
+        // Ctrl+Z, Ctrl+Maj+Z.
+        assert_eq!(s.undo(engine(), &session), Some(Action::Fix));
+        assert!(s.candidate(person).is_some_and(|c| !c.selected));
+        assert_eq!(s.redo(engine(), &session), Some(Action::Fix));
+        assert!(s.candidate(person).is_some_and(|c| c.selected));
+        // Déjà appliquée : rien ne change, rien n'entre dans l'historique.
+        assert!(!s.apply_fix(engine(), &fix, &session));
+        assert_eq!(s.undo(engine(), &session), Some(Action::Fix));
+        assert_eq!(s.undo(engine(), &session), Some(Action::Uncheck));
+        assert!(s.candidate(person).is_some_and(|c| c.selected));
+    }
+
+    #[test]
+    fn fix_all_is_undone_at_once() {
+        let (mut s, session) = reviewed();
+        // La personne et ses indices restés visibles : plusieurs échecs.
+        for id in s.visible() {
+            let visible = s
+                .candidate(id)
+                .is_some_and(|c| c.kind == EntityKind::Personne || c.kind.is_quasi_identifier());
+            if visible {
+                s.set_selected(id, false, &session);
+            }
+        }
+        let settings = AssessSettings::default();
+        assess_now(&mut s, settings);
+        assert!(
+            s.assessment(&settings)
+                .is_some_and(|a| !a.assessment.is_anonymous())
+        );
+        let before = s.analysis.as_ref().map(|a| a.candidates.clone());
+        let job = s.begin_fix_all(settings).unwrap();
+        assert_eq!(s.busy, Some(Busy::Fixing));
+        assert!(!s.can_undo(), "pas d'annulation pendant les corrections");
+        assert_eq!(s.begin_fix_all(settings).err(), Some(StepError::Busy));
+        let mut fixed = job.analysis;
+        let (token, result) =
+            crate::ui::service::fix_all_folder(engine(), &mut fixed, &job.masks, &job.settings);
+        assert!(s.fix_all_done(fixed, token, job.settings, result, &session));
+        assert!(s.busy.is_none());
+        assert!(
+            s.assessment(&settings).is_some(),
+            "l'évaluation du résultat est gardée"
+        );
+        let after = s.analysis.as_ref().map(|a| a.candidates.clone());
+        assert_ne!(after, before);
+        assert_eq!(s.undo(engine(), &session), Some(Action::FixAll));
+        assert_eq!(
+            s.analysis.as_ref().map(|a| a.candidates.clone()),
+            before,
+            "une seule annulation"
+        );
+        assert_eq!(s.redo(engine(), &session), Some(Action::FixAll));
+        assert_eq!(s.analysis.as_ref().map(|a| a.candidates.clone()), after);
+    }
+
+    #[test]
+    fn a_new_recipient_asks_for_a_new_assessment() {
+        let (mut s, _) = reviewed();
+        let ai = s.bilan.settings(Goal::Mask, anon_core::Recipient::PublicAi);
+        assert!(s.assessment(&ai).is_none());
+        assess_now(&mut s, ai);
+        assert!(s.assessment(&ai).is_some());
+        assert!(s.begin_assessment(ai).is_none(), "déjà à jour");
+        let publication = s
+            .bilan
+            .settings(Goal::Mask, anon_core::Recipient::Publication);
+        assert!(s.assessment(&publication).is_none());
+        assert!(s.begin_assessment(publication).is_some());
+        assert!(
+            s.begin_assessment(publication).is_none(),
+            "déjà demandée, pas encore reçue"
+        );
+        // Une réponse de contexte change aussi les réglages.
+        s.bilan.answers.published = Some(false);
+        let contextual = s
+            .bilan
+            .settings(Goal::Mask, anon_core::Recipient::Publication);
+        assert_ne!(contextual, publication);
+        assert!(s.bilan.needs(s.revision, &contextual));
+        // Une évaluation plus ancienne qui arrive en retard est ignorée.
+        assess_now(&mut s, contextual);
+        let latest = s.bilan.latest.as_ref().map(|a| a.revision);
+        let old = crate::ui::service::FolderAssessment {
+            assessment: s
+                .bilan
+                .latest
+                .as_ref()
+                .map(|a| a.assessment.clone())
+                .unwrap(),
+            tables: Vec::new(),
+        };
+        s.assessment_done(s.revision.wrapping_sub(1), ai, old);
+        assert_eq!(s.bilan.latest.as_ref().map(|a| a.revision), latest);
+    }
+
+    #[test]
+    fn sending_without_conclusion_needs_a_confirmation() {
+        let (mut s, session) = reviewed();
+        let person = first_of(&s, EntityKind::Personne);
+        s.set_selected(person, false, &session);
+        s.apply_goal(Goal::Anonymize);
+        let settings = s
+            .bilan
+            .settings(Goal::Anonymize, anon_core::Recipient::PublicAi);
+        assert_eq!(s.verdict_blocker(&settings), Some(ASSESSING));
+        assess_now(&mut s, settings);
+        assert_eq!(s.verdict_blocker(&settings), Some(CONFIRM_NEEDED));
+        assert!(!says_anonymous(CONFIRM_NEEDED));
+        s.protect.confirmed = true;
+        assert_eq!(s.verdict_blocker(&settings), None);
+        // Une décision de plus : la confirmation est à redonner.
+        s.set_selected(person, true, &session);
+        assert!(!s.protect.confirmed);
+        // L'objectif « Masquer pour l'IA » n'est jamais bloqué par le verdict.
+        let mask = s.bilan.settings(Goal::Mask, anon_core::Recipient::PublicAi);
+        assert_eq!(s.verdict_blocker(&mask), None);
+    }
+
+    #[test]
+    fn the_key_has_its_own_folder_name_and_duration() {
+        let (mut s, _) = reviewed();
+        s.protect.propose_passphrase();
+        assert!(s.protect.uses_generated());
+        assert_eq!(
+            s.protect.blocker(),
+            None,
+            "phrase proposée : rien à confirmer"
+        );
+        assert_eq!(s.protect_blocker(), Some(NO_KEY_DIR));
+        assert_eq!(s.begin_anonymize().err(), Some(StepError::NoKeyDir));
+        let keys = PathBuf::from("C:/Documents/Anonymiseur/Clés");
+        s.key_dir = Some(keys.clone());
+        assert!(!s.key_beside_outputs());
+        s.key_name = Some("dossier-16-11-2026-14h05.anonmap".into());
+        s.protect.keep_months = 24;
+        s.protect.remember = true;
+        let phrase = s.protect.password.clone();
+        let job = s.begin_anonymize().unwrap();
+        assert_eq!(job.plan.key.dir, keys);
+        assert_eq!(job.plan.key.name, "dossier-16-11-2026-14h05.anonmap");
+        assert_eq!(job.plan.key.keep_months, 24);
+        assert!(job.plan.key.remember);
+        assert_eq!(job.plan.protection, Protection::Password(phrase));
+        // Clé dans le dossier des fichiers produits : avertissement.
+        let mut t = AnonymizeState::default();
+        t.key_dir = Some(PathBuf::from("C:/d/Anonymisés"));
+        t.out_dir = t.key_dir.clone();
+        assert!(t.key_beside_outputs());
+        t.apply_goal(Goal::Anonymize);
+        assert!(!t.key_beside_outputs(), "sans clé, rien à signaler");
+    }
+
+    #[test]
+    fn a_passphrase_is_proposed_and_can_be_replaced() {
+        let mut p = ProtectState::default();
+        assert_eq!(p.keep_months, 12, "conservation par défaut : 12 mois");
+        p.propose_passphrase();
+        let first = p.password.clone();
+        assert!(first.split('-').count() > DEFAULT_PASSPHRASE_WORDS);
+        assert!(is_acceptable(p.strength()));
+        assert!(p.can_proceed());
+        assert_eq!(p.password_issue(), None);
+        assert!(
+            !format!("{p:?}").contains(&first),
+            "aucun secret dans Debug"
+        );
+        p.propose_passphrase();
+        assert_ne!(p.password, first, "« Générer une autre »");
+        // Modifiée à la main : confirmation exigée, comme un mot de passe choisi.
+        p.password.push('x');
+        assert!(!p.uses_generated());
+        assert_eq!(p.blocker(), Some("Confirmez le mot de passe."));
+        p.choose_own();
+        assert!(p.password.is_empty() && p.generated.is_none());
+        assert_eq!(
+            p.blocker(),
+            Some("Choisissez un mot de passe pour la clé de restauration.")
+        );
     }
 }

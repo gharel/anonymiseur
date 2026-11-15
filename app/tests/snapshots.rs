@@ -13,7 +13,9 @@ use anon_engine::{Engine, NoProgress};
 use anonymiseur::moteur::IaStatus;
 use anonymiseur::ui::gallery::{self, GalleryState};
 use anonymiseur::ui::platform::{NullPlatform, file_entry};
-use anonymiseur::ui::service::{Outcome, anonymize_batch, file_name, read_documents};
+use anonymiseur::ui::service::{
+    Outcome, anonymize_batch, assess_folder, file_name, fix_all_folder, read_documents,
+};
 use anonymiseur::ui::state::anonymize::Busy;
 use anonymiseur::ui::state::deanonymize::MapStatus;
 use anonymiseur::ui::state::review::{Occurrence, VerifyMode};
@@ -97,6 +99,15 @@ fn app_with(
 /// un dossier temporaire, mais on n'en montre pas le chemin : il dépend de la
 /// machine et contient le nom de l'utilisateur.
 const SHOWN_DIR: &str = "C:/Documents/Formation";
+/// Dossier des clés affiché dans les instantanés.
+const SHOWN_KEYS: &str = "C:/Documents/Anonymiseur/Clés";
+/// Nom de clé fixe des instantanés (l'heure changerait l'image).
+const KEY_NAME: &str = "dossier-16-11-2026-14h05.anonmap";
+/// Jour fixe des instantanés, et fin de conservation de leur clé (12 mois).
+const TODAY: &str = "2026-11-16";
+const KEEP_UNTIL: &str = "2027-11-16";
+/// Phrase de passe fixe des instantanés (elle est tirée au hasard sinon).
+const PHRASE: &str = "lagune-cerf-volant-banian-roulotte-coquillage-47";
 
 fn neutralize_paths(app: &mut AnonApp) {
     let shown = PathBuf::from(SHOWN_DIR);
@@ -104,10 +115,16 @@ fn neutralize_paths(app: &mut AnonApp) {
     if app.anonymize.out_dir.is_some() {
         app.anonymize.out_dir = Some(shown.clone());
     }
+    if app.anonymize.key_dir.is_some() {
+        app.anonymize.key_dir = Some(PathBuf::from(SHOWN_KEYS));
+    }
+    if app.anonymize.key_name.is_some() {
+        app.anonymize.key_name = Some(KEY_NAME.into());
+    }
     if let Some(report) = app.anonymize.report.as_mut() {
         report.out_dir = shown.clone();
         if let Some(map) = report.map_path.as_mut() {
-            *map = renamed(map);
+            *map = PathBuf::from(SHOWN_KEYS).join(map.file_name().unwrap_or_default());
         }
         for f in &mut report.files {
             if let Outcome::Written { path, .. } = &mut f.outcome {
@@ -117,6 +134,20 @@ fn neutralize_paths(app: &mut AnonApp) {
     }
     if app.deanonymize.out_dir.is_some() {
         app.deanonymize.out_dir = Some(shown.clone());
+    }
+    // Dates : celles d'un jour fixe (l'image ne change pas avec le calendrier).
+    // Seule la date posée à l'envoi, aujourd'hui plus 12 mois, est remplacée.
+    app.fixed_today = Some(TODAY.into());
+    let sent = anon_vault::retention::add_months(&anon_vault::retention::today(), 12);
+    if let Some(report) = app.anonymize.report.as_mut()
+        && report.keep_until == sent
+    {
+        report.keep_until = Some(KEEP_UNTIL.into());
+    }
+    if let MapStatus::Unlocked { session, .. } = &mut app.deanonymize.map
+        && session.keep_until == sent
+    {
+        session.keep_until = Some(KEEP_UNTIL.into());
     }
 }
 
@@ -133,6 +164,43 @@ fn snap(name: &str, setup: impl Fn(&mut AnonApp)) {
         results.extend_harness(&mut harness);
     }
     results.unwrap();
+}
+
+/// Dossier du bilan : un tableau de patients (groupes isolables, corrigés par
+/// « Tout corriger ») et un texte.
+const BILAN: [&str; 2] = ["patients.xlsx", "notes.txt"];
+
+/// Évalue le dossier tout de suite (comme l'application à l'image suivante).
+fn assess_now(app: &mut AnonApp) {
+    let engine = app.engine.clone().unwrap();
+    let settings = app.assess_settings();
+    if let Some(job) = app.anonymize.begin_assessment(settings) {
+        let mut a = job.analysis;
+        let r = assess_folder(&engine, &mut a, &job.masks, &job.settings);
+        app.anonymize.assessment_done(job.revision, job.settings, r);
+    }
+}
+
+/// « Tout corriger », comme le fil de travail.
+fn fix_all(app: &mut AnonApp) {
+    let engine = app.engine.clone().unwrap();
+    let settings = app.assess_settings();
+    let job = app.anonymize.begin_fix_all(settings).unwrap();
+    let mut a = job.analysis;
+    let (token, result) = fix_all_folder(&engine, &mut a, &job.masks, &job.settings);
+    let session = app.session.clone();
+    assert!(
+        app.anonymize
+            .fix_all_done(a, token, job.settings, result, &session)
+    );
+}
+
+/// Étape Envoyer prête : phrase de passe fixe, dossier et nom de la clé.
+fn ready_to_send(app: &mut AnonApp) {
+    app.anonymize.protect.generated = Some(PHRASE.into());
+    app.anonymize.protect.password = PHRASE.into();
+    app.anonymize.key_dir = Some(PathBuf::from(SHOWN_KEYS));
+    app.anonymize.key_name = Some(KEY_NAME.into());
 }
 
 /// Ajoute les fichiers au dossier et lance une vraie analyse (étape Vérifier).
@@ -173,7 +241,14 @@ fn out_dir(tag: &str) -> PathBuf {
 /// Parcours jusqu'à l'envoi : fichiers masqués et clé chiffrée écrits dans
 /// `dir`, clé ouverte en mémoire pour l'étape Réponse.
 fn anonymize_all(app: &mut AnonApp, dir: PathBuf) {
-    analyze(app);
+    anonymize_these(app, dir, &FICHIERS);
+}
+
+/// Comme [`anonymize_all`], pour les fichiers `names`.
+fn anonymize_these(app: &mut AnonApp, dir: PathBuf, names: &[&str]) {
+    analyze_these(app, names);
+    app.anonymize.key_dir = Some(dir.join("Clés"));
+    app.anonymize.key_name = Some(KEY_NAME.into());
     app.anonymize.out_dir = Some(dir);
     app.anonymize.protect.password = PASSWORD.into();
     app.anonymize.protect.confirm = PASSWORD.into();
@@ -186,13 +261,15 @@ fn anonymize_all(app: &mut AnonApp, dir: PathBuf) {
         &job.never,
         &job.masks,
         &mut app.session,
-        &job.protection,
-        &job.out_dir,
+        &job.plan,
+        None,
         &NoProgress,
     );
     let map = report.map_path.clone().unwrap();
     app.deanonymize
         .open_in_memory(file_name(&map), app.session.clone());
+    app.deanonymize.key_path = Some(map);
+    app.deanonymize.key_id = report.key_id.clone();
     app.anonymize
         .anonymize_done(report, job.inputs, job.analysis);
     app.workspace.enter(Step::Send);
@@ -328,19 +405,42 @@ fn verify_images() {
 
 #[test]
 fn bilan() {
+    // Verdict non anonyme : un tableau dont des groupes de lignes restent isolables.
     snap("dossier_2_bilan", |app| {
-        analyze(app);
+        analyze_these(app, &BILAN);
+        app.anonymize.bilan.guesses_open = true;
+        app.workspace.enter(Step::Bilan);
+    });
+}
+
+#[test]
+fn bilan_corrected() {
+    // Après « Tout corriger » : aucune personne reconnaissable.
+    snap("dossier_2b_bilan_corrige", |app| {
+        analyze_these(app, &BILAN);
+        fix_all(app);
         app.workspace.enter(Step::Bilan);
     });
 }
 
 #[test]
 fn send() {
+    // Phrase de passe proposée, dossier des clés, conservation, fiche.
     snap("dossier_3_envoyer", |app| {
         analyze(app);
+        ready_to_send(app);
         app.workspace.enter(Step::Send);
-        app.anonymize.protect.password = PASSWORD.into();
-        app.anonymize.protect.confirm = "Cheval-Agrafe".into();
+    });
+}
+
+#[test]
+fn send_without_key() {
+    // « Anonymiser définitivement », évaluation non concluante : confirmation.
+    snap("dossier_3d_envoyer_sans_cle", |app| {
+        analyze_these(app, &BILAN);
+        app.workspace.goal = Goal::Anonymize;
+        app.anonymize.apply_goal(Goal::Anonymize);
+        app.workspace.enter(Step::Send);
     });
 }
 
@@ -397,7 +497,21 @@ fn response() {
         let engine = app.engine.clone().unwrap();
         let d = &mut app.deanonymize;
         d.pasted = std::fs::read_to_string(exemple("reponse-ia-exemple.md")).unwrap();
-        d.restore_text(|t, s| engine.restore_text(t, s)).unwrap();
+        d.restore_text_marked(|t, s| engine.restore_text_marked(t, s))
+            .unwrap();
+    });
+}
+
+#[test]
+fn response_expired_key() {
+    // Durée de conservation dépassée : rappel en tête, destruction à confirmer.
+    snap("dossier_4c_cle_expiree", |app| {
+        anonymize_all(app, out_dir("cle-expiree"));
+        app.workspace.enter(Step::Response);
+        if let MapStatus::Unlocked { session, .. } = &mut app.deanonymize.map {
+            session.keep_until = Some("2026-05-16".into());
+        }
+        app.deanonymize.destroy_confirm = true;
     });
 }
 
@@ -506,10 +620,11 @@ fn tab_to_field(h: &mut Harness<'_, AnonApp>, id: egui::Id, max: usize) {
 
 #[test]
 fn parcours_complet_au_clavier() {
-    use anonymiseur::ui::widgets::field::field_id;
     let dir = examples_dir("clavier");
+    let keys = out_dir("clavier-cles");
     let platform = NullPlatform {
         examples: Some(dir.clone()),
+        keys: Some(keys.clone()),
         ..NullPlatform::default()
     };
     let mut h = app_with(1280.0, 800.0, platform, |_| {});
@@ -527,7 +642,7 @@ fn parcours_complet_au_clavier() {
     assert!(!h.state().palette.open);
     assert_eq!(h.state().workspace.screen, Screen::Folder);
     assert_eq!(h.state().workspace.step, Step::Verify);
-    assert_eq!(h.state().anonymize.files.len(), 14);
+    assert_eq!(h.state().anonymize.files.len(), 17);
     let checked = h.state().anonymize.selected_count();
     assert!(checked > 10);
 
@@ -553,27 +668,52 @@ fn parcours_complet_au_clavier() {
     h.run();
     assert_eq!(h.state().anonymize.selected_count(), checked);
 
-    // Bilan, puis Envoyer : le mot de passe a le focus à l'arrivée.
+    // Bilan : le verdict, puis « Tout corriger » depuis la palette, défait par
+    // une seule annulation et rétabli.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
     h.run();
     assert_eq!(h.state().workspace.step, Step::Bilan);
+    let failing = |h: &Harness<'_, AnonApp>| {
+        let st = h.state();
+        let a = st.anonymize.assessment(&st.assess_settings()).unwrap();
+        a.assessment.subjects.iter().filter(|s| !s.passes()).count()
+    };
+    let before = failing(&h);
+    assert!(before > 0, "des points à corriger sur les exemples");
+    h.get_by_label("Tout corriger");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    h.run();
+    h.event(egui::Event::Text("tout corriger".into()));
+    h.run();
+    h.key_press(Key::Enter);
+    h.run();
+    let after = failing(&h);
+    assert!(after < before, "{after} points restants sur {before}");
+    assert_eq!(
+        h.state().anonymize.history.next_undo(),
+        Some(anonymiseur::ui::state::history::Action::FixAll)
+    );
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(failing(&h), before, "une seule annulation");
+    h.key_press_modifiers(cmd_shift(), Key::Z);
+    h.run();
+    assert_eq!(failing(&h), after);
+
+    // Envoyer : une phrase de passe est proposée, la clé a son nom et son
+    // dossier ; Ctrl+Entrée enregistre.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
     h.run();
     assert_eq!(h.state().workspace.step, Step::Send);
-    assert_eq!(
-        h.ctx.memory(|m| m.focused()),
-        Some(field_id(anonymiseur::ui::screens::send::PASSWORD_FIELD))
-    );
-    h.event(egui::Event::Text(PASSWORD.into()));
-    h.run();
-    tab_to_field(&mut h, field_id("mdp-confirmation"), 4);
-    h.event(egui::Event::Text(PASSWORD.into()));
-    h.run();
+    assert!(h.state().anonymize.protect.uses_generated());
+    h.get_by_label("Générer une autre");
     h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
     h.run();
     let report = h.state().anonymize.report.clone().unwrap();
     assert!(report.fatal.is_none());
-    assert!(report.map_path.is_some(), "clé écrite");
+    let map = report.map_path.clone().expect("clé écrite");
+    assert_eq!(map.parent(), Some(keys.as_path()));
+    assert!(file_name(&map).starts_with("dossier-"));
     assert!(report.delivered() >= 12);
     assert_eq!(h.state().session.goal, Goal::Mask);
     assert!(h.state().deanonymize.is_unlocked(), "clé gardée en mémoire");
@@ -704,13 +844,35 @@ fn objectif_anonymiser_definitivement_sans_cle() {
     h.run();
     h.state_mut().workspace.enter(Step::Send);
     h.run();
-    // Aucun mot de passe demandé : l'action principale est possible.
+    // Aucun mot de passe demandé. Sans conclusion d'anonymat, l'envoi se
+    // confirme d'abord (lot 8) ; les fichiers prennent alors `_masque_sans_cle`.
     h.get_by_label("Aucune clé de restauration");
+    let anonymous = {
+        let st = h.state();
+        let a = st.anonymize.assessment(&st.assess_settings()).unwrap();
+        a.assessment.is_anonymous()
+    };
+    if !anonymous {
+        let go = h.get_by_label("Masquer et enregistrer");
+        assert!(go.accesskit_node().is_disabled(), "confirmation exigée");
+        h.get_by_label("Confirmer l'envoi sans correction : fichiers masqués, sans clé")
+            .click();
+        h.run();
+    }
     h.get_by_label("Masquer et enregistrer").click();
     h.run();
     let report = h.state().anonymize.report.clone().unwrap();
     assert_eq!(report.delivered(), 1);
     assert!(report.map_path.is_none(), "aucune clé écrite");
+    let Outcome::Written { path, .. } = &report.files[0].outcome else {
+        panic!("{:?}", report.files[0].outcome);
+    };
+    let expected = if anonymous {
+        "notes_anonyme.txt"
+    } else {
+        "notes_masque_sans_cle.txt"
+    };
+    assert_eq!(file_name(path), expected);
     assert_eq!(h.state().session.goal, Goal::Anonymize);
     assert!(h.state().session.irreversible);
     assert!(!std::fs::read_dir(dir.join("")).unwrap().any(|e| {
@@ -906,7 +1068,7 @@ fn bouton_exemples_reutilise_le_meme_dossier() {
     h.get_by_label("Essayer avec des exemples").click();
     h.run();
     let files = h.state().anonymize.files.clone();
-    assert_eq!(files.len(), 14, "documents d'exemple seulement");
+    assert_eq!(files.len(), 17, "documents d'exemple seulement");
     assert!(files.iter().all(|f| f.path.starts_with(&dir)));
     assert!(
         files
@@ -927,7 +1089,7 @@ fn bouton_exemples_reutilise_le_meme_dossier() {
     h.run();
     h.get_by_label("Essayer avec des exemples").click();
     h.run();
-    assert_eq!(h.state().anonymize.files.len(), 14);
+    assert_eq!(h.state().anonymize.files.len(), 17);
     assert_eq!(
         std::fs::read_to_string(dir.join("notes.txt")).unwrap(),
         "modifié"
@@ -1014,7 +1176,7 @@ fn controles_alignes_sur_chaque_ecran() {
             ],
         ),
     );
-    assert_aligned("Barre d'action", &rects(&h, &["Accueil", "Continuer"]));
+    assert_aligned("Barre d'action", &rects(&h, &["Accueil", "Voir le bilan"]));
     let bar = rects(
         &h,
         &[
@@ -1088,7 +1250,7 @@ fn premiere_decision_visible_sans_defiler() {
     for (w, hh) in [(1280.0, 800.0), (900.0, 650.0)] {
         let mut h = app(w, hh, analyze);
         h.run();
-        let action = h.get_by_label("Continuer").rect();
+        let action = h.get_by_label("Voir le bilan").rect();
         for b in ["Masquer", "Garder"] {
             let r = h.get_by_label(b).rect();
             assert!(
@@ -1110,7 +1272,7 @@ fn premiere_decision_visible_sans_defiler() {
     let first = st.visible()[0];
     let label = format!("Sélectionner {}", st.candidate(first).unwrap().value);
     let row = h.get_by_label(&label).rect();
-    let action = h.get_by_label("Continuer").rect();
+    let action = h.get_by_label("Voir le bilan").rect();
     assert!(
         row.max.y < action.min.y - 8.0,
         "première valeur à y = {}, barre d'action à y = {}",
@@ -1888,4 +2050,467 @@ fn documents_et_file_en_fenetre_etroite() {
     );
     h.get_by_label("Déplier le panneau « À décider »");
     h.get_by_label("Rechercher dans le document");
+}
+
+// --- Bilan, envoi, réponse (lot 8) -------------------------------------------
+
+use anon_core::{Handler, Verdict};
+use anonymiseur::ui::state::bilan::says_anonymous;
+use anonymiseur::ui::state::history::Action as HistoryAction;
+
+/// Verdict de l'évaluation à jour, s'il y en a une.
+fn verdict(h: &Harness<'_, AnonApp>) -> Option<Verdict> {
+    let st = h.state();
+    st.anonymize
+        .assessment(&st.assess_settings())
+        .map(|a| a.assessment.verdict)
+}
+
+#[test]
+fn ligne_de_bilan_dans_la_barre_de_verification() {
+    let mut h = app(1280.0, 800.0, |app| analyze_these(app, &BILAN));
+    h.run();
+    assert_eq!(h.state().workspace.step, Step::Verify);
+    let Some(Verdict::Reidentifiable { subjects }) = verdict(&h) else {
+        panic!("{:?}", verdict(&h));
+    };
+    let line = if subjects == 1 {
+        "Bilan : 1 personne reste reconnaissable".to_owned()
+    } else {
+        format!("Bilan : {subjects} personnes restent reconnaissables")
+    };
+    h.get_by_label(&line);
+    // Le résumé de la vérification reste affiché à côté.
+    h.get_by_label(&h.state().anonymize.review_summary());
+    h.get_by_label("Voir le bilan").click();
+    h.run();
+    assert_eq!(h.state().workspace.step, Step::Bilan);
+}
+
+#[test]
+fn bilan_appliquer_annuler_tout_corriger() {
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, &BILAN);
+        app.workspace.enter(Step::Bilan);
+    });
+    h.run();
+    let before = verdict(&h).unwrap();
+    assert!(!matches!(before, Verdict::Anonymous), "{before:?}");
+    // Trois critères, une ligne chacun.
+    for c in ["Isolement", "Recoupement", "Déduction"] {
+        h.get_by_label(c);
+    }
+    // Appliquer la correction conseillée du premier point.
+    h.get_all_by_label_contains("Appliquer : ")
+        .next()
+        .unwrap()
+        .click();
+    h.run();
+    assert_eq!(
+        h.state().anonymize.history.next_undo(),
+        Some(HistoryAction::Fix)
+    );
+    assert!(
+        h.state()
+            .toasts
+            .texts()
+            .iter()
+            .any(|t| t.starts_with("Correction appliquée")),
+        "{:?}",
+        h.state().toasts.texts()
+    );
+    assert!(verdict(&h).is_some(), "évaluation refaite aussitôt");
+    // Ctrl+Z : la correction est défaite par l'annulation du moteur.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert!(
+        h.state()
+            .toasts
+            .texts()
+            .contains(&"Annulé : correction appliquée.")
+    );
+    assert_eq!(verdict(&h), Some(before));
+    assert!(!h.state().anonymize.can_undo());
+    // « Tout corriger » : plus personne de reconnaissable ; une annulation.
+    h.get_by_label("Tout corriger").click();
+    h.run();
+    assert_eq!(verdict(&h), Some(Verdict::Anonymous));
+    assert!(
+        h.get_all_by_label_contains("Aucune personne reconnaissable pour ce destinataire")
+            .count()
+            >= 1
+    );
+    // Changer de destinataire relance l'évaluation, pour lui.
+    h.get_by_role_and_label(Role::ComboBox, "Destinataire")
+        .click();
+    h.run();
+    h.get_by_label("Publication").click();
+    h.run();
+    let st = h.state();
+    assert_eq!(st.workspace.recipient, anon_core::Recipient::Publication);
+    let a = st.anonymize.assessment(&st.assess_settings()).unwrap();
+    assert_eq!(
+        a.assessment.settings.recipient,
+        anon_core::Recipient::Publication
+    );
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(verdict(&h), Some(before), "une seule annulation");
+}
+
+#[test]
+fn questions_de_contexte_reportees_dans_la_fiche() {
+    let save = out_dir("fiche");
+    let platform = NullPlatform {
+        save_to: Some(save.clone()),
+        ..NullPlatform::default()
+    };
+    let mut h = app_with(1280.0, 2400.0, platform, |app| {
+        analyze_these(app, &["notes.txt"]);
+        app.workspace.enter(Step::Bilan);
+    });
+    h.run();
+    // « Le document sera-t-il publié ? » : Non.
+    let no = h.get_all_by_label("Non").nth(1).unwrap();
+    no.click();
+    h.run();
+    assert_eq!(h.state().anonymize.bilan.answers.published, Some(false));
+    h.get_by_label("Justification de vos réponses");
+    // Fiche, depuis l'étape Envoyer : Markdown, à l'endroit choisi.
+    h.state_mut().anonymize.bilan.fiche.legal_basis = "Intérêt légitime".into();
+    h.state_mut().workspace.enter(Step::Send);
+    h.run();
+    h.get_by_label("Enregistrer la fiche").click();
+    h.run();
+    let fiche = std::fs::read_dir(&save)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.extension().is_some_and(|e| e == "md"))
+        .expect("fiche enregistrée");
+    let md = std::fs::read_to_string(&fiche).unwrap();
+    assert!(md.contains("Approche contextuelle"), "{md}");
+    assert!(md.contains("Le document sera-t-il publié ? non"));
+    assert!(md.contains("Base légale : Intérêt légitime"));
+    assert!(file_name(&fiche).starts_with("fiche-evaluation-"));
+    assert!(!says_anonymous(&file_name(&fiche)));
+}
+
+#[test]
+fn trousseau_retenir_rouvrir_sans_mot_de_passe_detruire() {
+    let dir = out_dir("trousseau");
+    let keys = dir.join("Clés");
+    let platform = NullPlatform {
+        keys: Some(keys.clone()),
+        ..NullPlatform::default()
+    };
+    let mut h = app_with(1280.0, 2400.0, platform, |app| {
+        analyze_these(app, &["notes.txt"]);
+        app.anonymize.out_dir = Some(dir.join("Anonymisés"));
+    });
+    h.run();
+    // Envoyer : phrase proposée, « Retenir le mot de passe sur cet ordinateur ».
+    step_tab(&h, "Envoyer").click();
+    h.run();
+    assert!(h.state().anonymize.protect.uses_generated());
+    h.get_by_label("Retenir le mot de passe sur cet ordinateur")
+        .click();
+    h.run();
+    h.get_by_label("Masquer et enregistrer").click();
+    h.run();
+    let report = h.state().anonymize.report.clone().unwrap();
+    assert_eq!(report.remembered, Some(Ok(())));
+    let map = report.map_path.clone().unwrap();
+    let id = report.key_id.clone().unwrap();
+    assert!(h.state().keychain().unwrap().recall(&id).unwrap().is_some());
+
+    // Nouvelle session : la clé en mémoire est oubliée ; déposée, elle se
+    // rouvre sans mot de passe (trousseau simulé).
+    h.get_by_label("Nouvelle session").click();
+    h.run();
+    assert!(!h.state().deanonymize.has_key());
+    h.input_mut()
+        .dropped_files
+        .push(Arc::new(Dropped(map.clone())));
+    h.run();
+    assert_eq!(h.state().workspace.step, Step::Response);
+    assert!(
+        h.state().deanonymize.is_unlocked(),
+        "ouverte sans mot de passe"
+    );
+    assert!(h.query_by_label("Mot de passe de la clé").is_none());
+
+    // Détruire : confirmation, fichier supprimé, mot de passe oublié.
+    h.get_by_label("Détruire la clé").click();
+    h.run();
+    assert!(map.exists(), "rien n'est détruit avant la confirmation");
+    h.get_by_label("Confirmer la destruction de la clé").click();
+    h.run();
+    assert!(!map.exists());
+    assert!(h.state().keychain().unwrap().recall(&id).unwrap().is_none());
+    assert!(h.state().deanonymize.destroyed);
+    h.get_by_label_contains("Vos documents d'origine restent des données personnelles");
+}
+
+#[test]
+fn mot_de_passe_saisi_et_retenu_a_l_ouverture() {
+    // Une clé sans mot de passe retenu : il est demandé, avec « Retenir sur
+    // cet ordinateur » ; la fois suivante, plus rien n'est demandé.
+    let dir = out_dir("retenir-a-l-ouverture");
+    let mut h = app(1280.0, 1600.0, |app| anonymize_all(app, dir.clone()));
+    h.run();
+    let map = h
+        .state()
+        .anonymize
+        .report
+        .clone()
+        .unwrap()
+        .map_path
+        .unwrap();
+    h.get_by_label("Nouvelle session").click();
+    h.run();
+    h.input_mut()
+        .dropped_files
+        .push(Arc::new(Dropped(map.clone())));
+    h.run();
+    assert!(!h.state().deanonymize.is_unlocked());
+    tab_to_field(
+        &mut h,
+        field_id(anonymiseur::ui::screens::response::PASSWORD_FIELD),
+        4,
+    );
+    h.event(egui::Event::Text(PASSWORD.into()));
+    h.run();
+    h.get_by_label("Retenir sur cet ordinateur").click();
+    h.run();
+    h.get_by_label("Ouvrir la clé").click();
+    h.run();
+    assert!(h.state().deanonymize.is_unlocked());
+    assert!(
+        h.state()
+            .toasts
+            .texts()
+            .contains(&"Clé ouverte. Mot de passe retenu sur cet ordinateur.")
+    );
+    h.get_by_label("Nouvelle session").click();
+    h.run();
+    h.input_mut().dropped_files.push(Arc::new(Dropped(map)));
+    h.run();
+    assert!(
+        h.state().deanonymize.is_unlocked(),
+        "retenu : ouverte d'emblée"
+    );
+}
+
+#[test]
+fn reponse_exportee_en_md_et_docx() {
+    let save = out_dir("export-reponse");
+    let platform = NullPlatform {
+        save_to: Some(save.clone()),
+        ..NullPlatform::default()
+    };
+    let mut h = app_with(1280.0, 1600.0, platform, |app| {
+        anonymize_all(app, out_dir("export-reponse-envoi"));
+        app.workspace.enter(Step::Response);
+        let engine = app.engine.clone().unwrap();
+        app.deanonymize.pasted = std::fs::read_to_string(exemple("reponse-ia-exemple.md")).unwrap();
+        app.deanonymize
+            .restore_text_marked(|t, s| engine.restore_text_marked(t, s))
+            .unwrap();
+    });
+    h.run();
+    assert!(!h.state().deanonymize.restored_marks.is_empty());
+    h.get_by_label("Enregistrer en .md").click();
+    h.run();
+    h.get_by_label("Enregistrer en .docx").click();
+    h.run();
+    let (text, _) = h.state().deanonymize.text_result.clone().unwrap();
+    let md = std::fs::read_to_string(save.join("reponse-restauree.md")).unwrap();
+    assert_eq!(md, text);
+    let docx = std::fs::read(save.join("reponse-restauree.docx")).unwrap();
+    let blocks = anon_office::DocxHandler.extract(&docx).unwrap().blocks;
+    let first = text.lines().find(|l| !l.trim().is_empty()).unwrap();
+    assert!(blocks.iter().any(|b| b.text == first.trim_end()), "{first}");
+}
+
+/// Écrans où l'évaluation ne conclut pas à l'anonymat (invariant 9).
+fn not_anonymous_screens() -> Vec<(&'static str, Setup)> {
+    let mut screens = every_screen();
+    screens.push((
+        "bilan, tableau",
+        Box::new(|app: &mut AnonApp| {
+            analyze_these(app, &BILAN);
+            app.anonymize.bilan.guesses_open = true;
+            app.workspace.enter(Step::Bilan);
+        }),
+    ));
+    screens.push((
+        "envoyer sans clé",
+        Box::new(|app: &mut AnonApp| {
+            analyze_these(app, &BILAN);
+            app.workspace.goal = Goal::Anonymize;
+            app.anonymize.apply_goal(Goal::Anonymize);
+            app.workspace.enter(Step::Send);
+        }),
+    ));
+    screens.push((
+        "envoyé sans clé",
+        Box::new(|app: &mut AnonApp| {
+            analyze_these(app, &BILAN);
+            app.workspace.goal = Goal::Anonymize;
+            app.anonymize.apply_goal(Goal::Anonymize);
+            assess_now(app);
+            app.anonymize.protect.confirmed = true;
+            app.anonymize.out_dir = Some(out_dir("invariant-sans-cle"));
+            let mut job = app.anonymize.begin_anonymize().unwrap();
+            job.plan.settings = app.assess_settings();
+            let engine = app.engine.clone().unwrap();
+            let report = anonymize_batch(
+                &engine,
+                &job.inputs,
+                &job.analysis,
+                &job.never,
+                &job.masks,
+                &mut app.session,
+                &job.plan,
+                None,
+                &NoProgress,
+            );
+            app.anonymize
+                .anonymize_done(report, job.inputs, job.analysis);
+            app.workspace.enter(Step::Send);
+        }),
+    ));
+    screens.push((
+        "réponse, clé expirée",
+        Box::new(|app: &mut AnonApp| {
+            anonymize_these(app, out_dir("invariant-expiree"), &BILAN);
+            app.workspace.enter(Step::Response);
+            if let MapStatus::Unlocked { session, .. } = &mut app.deanonymize.map {
+                session.keep_until = Some("2020-01-01".into());
+            }
+            app.deanonymize.destroy_confirm = true;
+        }),
+    ));
+    screens
+}
+
+#[test]
+fn anonyme_reserve_a_une_evaluation_qui_conclut() {
+    // Invariant 9 : le mot « anonyme » (ou « anonymes », mot entier, toutes
+    // casses) n'apparaît sur aucun écran tant que l'évaluation ne conclut pas
+    // à l'anonymat. « Anonymiser définitivement », « anonymiser » et
+    // « Anonymiseur » sont d'autres mots. Le contenu des documents est exclu.
+    let mut checked = Vec::new();
+    for (screen, setup) in not_anonymous_screens() {
+        let mut h = app(1280.0, 2400.0, setup);
+        h.run();
+        let st = h.state();
+        let anonymous = st
+            .anonymize
+            .assessment(&st.assess_settings())
+            .is_some_and(|a| a.assessment.is_anonymous());
+        if anonymous {
+            // Le mot y est permis : l'évaluation conclut à l'anonymat.
+            continue;
+        }
+        checked.push(screen);
+        let mut content: Vec<String> = vec![st.deanonymize.pasted.to_lowercase()];
+        if let Some((t, _)) = &st.deanonymize.text_result {
+            content.push(t.to_lowercase());
+        }
+        if let Some(a) = &st.anonymize.analysis {
+            for c in &a.candidates {
+                content.push(c.value.to_lowercase());
+                content.push(c.context.to_lowercase());
+            }
+        }
+        content.retain(|c| c.chars().count() >= 4);
+        for text in all_texts(&h) {
+            let lower = text.to_lowercase();
+            if content.iter().any(|c| lower.contains(c.as_str())) {
+                continue;
+            }
+            assert!(!says_anonymous(&text), "{screen} : « {text} »");
+        }
+    }
+    for screen in [
+        "bilan, tableau",
+        "envoyer sans clé",
+        "envoyé sans clé",
+        "réponse, clé expirée",
+    ] {
+        assert!(checked.contains(&screen), "{screen} : écran non vérifié");
+    }
+    // Contre-épreuve : après « Tout corriger », l'objectif « Anonymiser
+    // définitivement » annonce le suffixe « _anonyme ».
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, &BILAN);
+        app.workspace.goal = Goal::Anonymize;
+        app.anonymize.apply_goal(Goal::Anonymize);
+        fix_all(app);
+        app.workspace.enter(Step::Bilan);
+    });
+    h.run();
+    assert_eq!(verdict(&h), Some(Verdict::Anonymous));
+    assert!(all_texts(&h).iter().any(|t| says_anonymous(t)));
+}
+
+#[test]
+fn controles_alignes_bilan_envoi_reponse() {
+    use anonymiseur::ui::theme::CONTROL_SM;
+    // Bilan : correction conseillée, « Appliquer » et « Autre » sur une ligne.
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, &BILAN);
+        app.workspace.enter(Step::Bilan);
+    });
+    h.run();
+    let apply = h
+        .get_all_by_label_contains("Appliquer : ")
+        .next()
+        .unwrap()
+        .rect();
+    assert_eq!(apply.height(), CONTROL_SM);
+    if let Some(other) = h
+        .query_all_by_label_contains("Autres corrections, point 1")
+        .next()
+    {
+        assert_aligned(
+            "Bilan, correction",
+            &[
+                ("Appliquer".to_owned(), apply),
+                ("Autre".to_owned(), other.rect()),
+            ],
+        );
+    }
+    assert_eq!(h.get_by_label("Tout corriger").rect().height(), CONTROL_SM);
+    assert_aligned(
+        "Bilan, barre d'action",
+        &rects(&h, &["Retour", "Continuer"]),
+    );
+    // Envoyer : phrase de passe, « Copier », « Générer une autre ».
+    let mut h = app(1280.0, 2400.0, |app| {
+        analyze_these(app, &["notes.txt"]);
+        ready_to_send(app);
+        app.workspace.enter(Step::Send);
+    });
+    h.run();
+    let row = rects(&h, &["Copier", "Générer une autre"]);
+    assert_eq!(row[0].1.height(), CONTROL_SM);
+    assert_aligned("Envoyer, phrase de passe", &row);
+    assert_eq!(
+        h.get_by_label("Enregistrer la fiche").rect().height(),
+        CONTROL_SM
+    );
+    // Réponse : « Copier », « .md », « .docx » sur la ligne du titre.
+    let mut h = app(1280.0, 800.0, |app| {
+        anonymize_all(app, out_dir("alignement-reponse"));
+        app.workspace.enter(Step::Response);
+    });
+    h.run();
+    let row = rects(
+        &h,
+        &["Copier", "Enregistrer en .md", "Enregistrer en .docx"],
+    );
+    assert_eq!(row[0].1.height(), CONTROL_SM);
+    assert_aligned("Réponse, exports", &row);
 }

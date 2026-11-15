@@ -392,6 +392,27 @@ pub fn mono_job_marked(
     marks: &[std::ops::Range<usize>],
     wrap_width: f32,
 ) -> egui::text::LayoutJob {
+    let marks: Vec<(std::ops::Range<usize>, Mark)> =
+        marks.iter().map(|r| (r.clone(), Mark::Unknown)).collect();
+    mono_job_marks(text, &marks, wrap_width)
+}
+
+/// Nature d'une plage surlignée dans une réponse restaurée.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mark {
+    /// Valeur remise à la place de sa balise : couleur « masqué » neutre.
+    Restored,
+    /// Balise inconnue de la clé : couleur d'avertissement.
+    Unknown,
+}
+
+/// Comme [`mono_job`], avec des plages surlignées (octets, triées, sans
+/// chevauchement) : valeurs restaurées et balises inconnues.
+pub fn mono_job_marks(
+    text: &str,
+    marks: &[(std::ops::Range<usize>, Mark)],
+    wrap_width: f32,
+) -> egui::text::LayoutJob {
     let p = palette();
     let mut job = egui::text::LayoutJob::default();
     let normal = egui::TextFormat {
@@ -400,19 +421,29 @@ pub fn mono_job_marked(
         line_height: Some(area_line_height()),
         ..Default::default()
     };
-    let marked = egui::TextFormat {
+    let unknown = egui::TextFormat {
         background: p.data.fill,
         color: p.data.ink,
         underline: egui::Stroke::new(1.5, p.warning),
         ..normal.clone()
     };
+    let restored = egui::TextFormat {
+        background: p.masked.fill,
+        color: p.masked.ink,
+        underline: egui::Stroke::new(1.5, p.masked.edge),
+        ..normal.clone()
+    };
     let mut at = 0;
-    for m in marks {
-        let (Some(before), Some(tag)) = (text.get(at..m.start), text.get(m.clone())) else {
+    for (m, kind) in marks {
+        let (Some(before), Some(part)) = (text.get(at..m.start), text.get(m.clone())) else {
             continue;
         };
         job.append(before, 0.0, normal.clone());
-        job.append(tag, 0.0, marked.clone());
+        let format = match kind {
+            Mark::Restored => restored.clone(),
+            Mark::Unknown => unknown.clone(),
+        };
+        job.append(part, 0.0, format);
         at = m.end;
     }
     job.append(text.get(at..).unwrap_or_default(), 0.0, normal);

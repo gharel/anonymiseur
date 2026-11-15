@@ -21,7 +21,7 @@ mod error;
 mod evaluation;
 pub mod fiche;
 mod media;
-mod risk;
+mod mentions;
 mod structure;
 
 pub use analysis::{
@@ -40,10 +40,6 @@ pub use evaluation::{
 };
 pub use fiche::{FICHE_MAX_SUBJECTS, FicheDocument, FicheMeta, render_markdown};
 pub use media::{LOW_OCR_CONFIDENCE, MASK_MARGIN_PX, ManualMask, sha256_hex};
-pub use risk::{
-    RISK_COMBINED_RENFORCE, RISK_COMBINED_STANDARD, RISK_HIGH_KINDS, RISK_HIGH_TOTAL,
-    RISK_MODERATE_TOTAL, RISK_REMINDER, RiskLevel, RiskReport,
-};
 
 pub use anon_replace::RestoreReport;
 

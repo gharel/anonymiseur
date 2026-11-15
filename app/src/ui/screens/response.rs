@@ -1,20 +1,26 @@
-//! Étape « Réponse » : la réponse collée de l'IA et sa version restaurée,
-//! côte à côte. La clé reste ouverte en mémoire : rien n'est redemandé. Une
-//! clé ouverte depuis l'accueil demande son mot de passe une fois. Les balises
-//! inconnues de la clé sont signalées, jamais devinées. En dessous, les
+//! Étape « Réponse » (maquette E) : la réponse collée de l'IA et sa version
+//! restaurée, côte à côte, les valeurs remises surlignées. La clé reste
+//! ouverte en mémoire : rien n'est redemandé. Une clé ouverte depuis l'accueil
+//! s'ouvre sans mot de passe s'il est retenu sur cet ordinateur ; sinon il est
+//! demandé une fois, avec « Retenir sur cet ordinateur ». Les balises
+//! inconnues de la clé sont signalées, jamais devinées. Exports (copie, `.md`,
+//! `.docx`), date de conservation et destruction de la clé. En dessous, les
 //! fichiers renvoyés par l'IA se restaurent aussi.
 
 use super::{busy_card, card_title, control_row, copy_button, file_row, truncated_text};
-use crate::ui::app::Effect;
+use crate::ui::app::{Effect, RestoredFormat};
 use crate::ui::runner::Shared;
+use crate::ui::screens::send::french_date;
 use crate::ui::service::{file_name, unused_tags};
 use crate::ui::shortcuts;
 use crate::ui::state::deanonymize::{Busy, DeanonymizeState, MapStatus, tag_ranges};
 use crate::ui::state::toasts::count_label;
 use crate::ui::theme::{CONTROL_MD, CONTROL_SM, Weight, font, palette, radius};
 use crate::ui::widgets::button::icon_button;
-use crate::ui::widgets::field::{area_height_for_rows, mono_job_marked};
-use crate::ui::widgets::{Banner, Card, Icon, PillButton, TextField, body, muted, subheading};
+use crate::ui::widgets::field::{Mark, area_height_for_rows, mono_job_marks};
+use crate::ui::widgets::{
+    Banner, Card, Checkbox, Icon, PillButton, TextField, body, caption, muted, subheading,
+};
 use egui::{Frame, Margin, RichText, Ui};
 
 /// Identifiant du champ « mot de passe de la clé ».
@@ -23,19 +29,34 @@ pub const PASSWORD_FIELD: &str = "mdp-cle";
 pub const RESPONSE_FIELD: &str = "reponse-ia";
 /// Lignes visibles au moins dans chaque colonne.
 const MIN_ROWS: usize = 12;
-/// Hauteur occupée autour des colonnes : marges, titres, message.
-const CHROME_H: f32 = 150.0;
+/// Hauteur occupée autour des colonnes : marges, ligne de la clé, titres, message.
+const CHROME_H: f32 = 200.0;
 /// Largeur à partir de laquelle les deux colonnes sont côte à côte.
 const TWO_COLUMNS: f32 = 720.0;
+
+/// Message après la destruction d'une clé.
+pub const DESTROYED: &str = "Les réponses de l'IA ne peuvent plus être restaurées avec cette \
+clé. Vos documents d'origine restent des données personnelles : conservez-les ou supprimez-les \
+selon vos règles.";
 
 /// Hauteur des deux zones de texte pour une zone de contenu haute de `view_h`.
 pub fn area_height(view_h: f32) -> f32 {
     (view_h - CHROME_H).max(area_height_for_rows(MIN_ROWS))
 }
 
+/// Ce que l'écran doit savoir en plus de l'état de la clé.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponseContext {
+    /// Date du jour, `AAAA-MM-JJ` (rappel de conservation).
+    pub today: String,
+    /// Le trousseau du système est disponible (« Retenir sur cet ordinateur »).
+    pub keychain: bool,
+}
+
 pub fn show(
     ui: &mut Ui,
     st: &mut DeanonymizeState,
+    ctx: &ResponseContext,
     progress: &Shared,
     view_h: f32,
     fx: &mut Vec<Effect>,
@@ -54,6 +75,9 @@ pub fn show(
     }
     match st.map.clone() {
         MapStatus::None => {
+            if st.destroyed {
+                Banner::success(DESTROYED).title("Clé détruite").show(ui);
+            }
             Card::new().show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = palette().space(3);
                 card_title(ui, Icon::KeyRound, "Clé de restauration");
@@ -69,8 +93,9 @@ pub fn show(
                 }
             });
         }
-        MapStatus::Locked { name, .. } => unlock_card(ui, st, &name, fx),
+        MapStatus::Locked { name, .. } => unlock_card(ui, st, &name, ctx, fx),
         MapStatus::Unlocked { .. } => {
+            key_bar(ui, st, ctx, fx);
             side_by_side(ui, st, view_h, fx);
             message(ui, st);
             files_card(ui, st, fx);
@@ -78,7 +103,13 @@ pub fn show(
     }
 }
 
-fn unlock_card(ui: &mut Ui, st: &mut DeanonymizeState, name: &str, fx: &mut Vec<Effect>) {
+fn unlock_card(
+    ui: &mut Ui,
+    st: &mut DeanonymizeState,
+    name: &str,
+    ctx: &ResponseContext,
+    fx: &mut Vec<Effect>,
+) {
     let p = palette();
     Card::new().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = p.space(4);
@@ -95,6 +126,20 @@ fn unlock_card(ui: &mut Ui, st: &mut DeanonymizeState, name: &str, fx: &mut Vec<
             .width(ui.available_width().min(420.0))
             .show(ui);
         let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let remember = st.remember && ctx.keychain;
+        if ui
+            .add(Checkbox::new(remember, "Retenir sur cet ordinateur").enabled(ctx.keychain))
+            .clicked()
+            && ctx.keychain
+        {
+            st.remember = !remember;
+        }
+        if !ctx.keychain {
+            caption(
+                ui,
+                "Option indisponible : le trousseau du système n'est pas accessible.",
+            );
+        }
         let blocker = st.unlock_blocker();
         control_row(ui, CONTROL_MD, |ui| {
             ui.spacing_mut().item_spacing.x = p.space(3);
@@ -110,6 +155,91 @@ fn unlock_card(ui: &mut Ui, st: &mut DeanonymizeState, name: &str, fx: &mut Vec<
                 fx.push(Effect::PickKey);
             }
         });
+    });
+}
+
+/// En tête : la clé ouverte, sa date de conservation (rappel si elle est
+/// dépassée) et « Détruire la clé », avec sa confirmation.
+fn key_bar(ui: &mut Ui, st: &mut DeanonymizeState, ctx: &ResponseContext, fx: &mut Vec<Effect>) {
+    let p = palette();
+    let expired = st.expired_since(&ctx.today).map(french_date);
+    if let Some(until) = &expired {
+        Banner::warning(
+            "Une clé gardée plus longtemps que prévu prolonge le traitement des données. \
+Détruisez-la si vous n'en avez plus besoin.",
+        )
+        .title(&format!(
+            "La durée de conservation de cette clé est dépassée depuis le {until}."
+        ))
+        .show(ui);
+    }
+    let name = st.key_name().unwrap_or_default().to_owned();
+    let until = st.keep_until().map(french_date);
+    let destroyable = st.can_destroy() && !st.destroy_confirm;
+    control_row(ui, CONTROL_SM, |ui| {
+        ui.spacing_mut().item_spacing.x = p.space(2);
+        Icon::KeyRound.show(ui, p.accent, 18.0);
+        let w = (ui.available_width() - 360.0).max(120.0);
+        truncated_text(
+            ui,
+            w,
+            CONTROL_SM,
+            RichText::new(format!("Clé ouverte : {name}"))
+                .font(font(Weight::Medium, p.text_sm))
+                .color(p.text),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = p.space(3);
+            if destroyable {
+                let button = if expired.is_some() {
+                    PillButton::secondary("Détruire la clé")
+                } else {
+                    PillButton::ghost("Détruire la clé")
+                };
+                if ui
+                    .add(button.icon(Icon::Trash).small())
+                    .on_hover_text("Supprimer le fichier de la clé et son mot de passe retenu")
+                    .clicked()
+                {
+                    st.destroy_confirm = true;
+                }
+            }
+            if let (Some(until), None) = (&until, &expired) {
+                caption(ui, &format!("À conserver jusqu'au {until}"));
+            }
+        });
+    });
+    if st.destroy_confirm && st.can_destroy() {
+        destroy_confirmation(ui, st, fx);
+    }
+}
+
+/// Confirmation de la destruction de la clé.
+fn destroy_confirmation(ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>) {
+    let p = palette();
+    Banner::error(
+        "Le fichier de la clé est supprimé et son mot de passe oublié par cet ordinateur : \
+aucune réponse ne pourra plus être restaurée. Vos documents d'origine restent des données \
+personnelles.",
+    )
+    .title("Détruire définitivement la clé ?")
+    .show(ui);
+    control_row(ui, CONTROL_SM, |ui| {
+        ui.spacing_mut().item_spacing.x = p.space(3);
+        if ui
+            .add(
+                PillButton::primary("Détruire")
+                    .icon(Icon::Trash)
+                    .small()
+                    .accessible_label("Confirmer la destruction de la clé"),
+            )
+            .clicked()
+        {
+            fx.push(Effect::DestroyKey);
+        }
+        if ui.add(PillButton::ghost("Garder la clé").small()).clicked() {
+            st.destroy_confirm = false;
+        }
     });
 }
 
@@ -157,12 +287,37 @@ fn side_by_side(ui: &mut Ui, st: &mut DeanonymizeState, view_h: f32, fx: &mut Ve
     let restored = |ui: &mut Ui, st: &mut DeanonymizeState, fx: &mut Vec<Effect>| {
         ui.spacing_mut().item_spacing.y = p.space(2);
         let text = st.text_result.as_ref().map(|(t, _)| t.clone());
+        let ready = text.is_some();
+        let none = (!ready).then_some("Collez d'abord la réponse de l'IA.");
         column_head(ui, Icon::CircleCheck, "Réponse restaurée", |ui| {
+            ui.spacing_mut().item_spacing.x = p.space(2);
+            let word = super::guarded_button(
+                ui,
+                PillButton::ghost(".docx")
+                    .icon(Icon::Download)
+                    .small()
+                    .accessible_label("Enregistrer en .docx"),
+                none,
+            );
+            if word.clicked() {
+                fx.push(Effect::SaveRestored(RestoredFormat::Word));
+            }
+            let md = super::guarded_button(
+                ui,
+                PillButton::ghost(".md")
+                    .icon(Icon::Download)
+                    .small()
+                    .accessible_label("Enregistrer en .md"),
+                none,
+            );
+            if md.clicked() {
+                fx.push(Effect::SaveRestored(RestoredFormat::Markdown));
+            }
             if copy_button(
                 ui,
                 "copier-reponse",
                 PillButton::secondary("Copier").icon(Icon::Copy).small(),
-                text.is_some(),
+                ready,
             )
             .clicked()
             {
@@ -189,8 +344,18 @@ fn side_by_side(ui: &mut Ui, st: &mut DeanonymizeState, view_h: f32, fx: &mut Ve
                     .auto_shrink([false, false])
                     .show(ui, |ui| match &st.text_result {
                         Some((text, r)) => {
-                            let marks = tag_ranges(text, &r.unknown);
-                            let job = mono_job_marked(text, &marks, ui.available_width());
+                            let mut marks: Vec<(std::ops::Range<usize>, Mark)> = st
+                                .restored_marks
+                                .iter()
+                                .map(|m| (m.clone(), Mark::Restored))
+                                .chain(
+                                    tag_ranges(text, &r.unknown)
+                                        .into_iter()
+                                        .map(|m| (m, Mark::Unknown)),
+                                )
+                                .collect();
+                            marks.sort_by_key(|(m, _)| m.start);
+                            let job = mono_job_marks(text, &marks, ui.available_width());
                             ui.add(egui::Label::new(job).wrap().selectable(true));
                         }
                         None => {

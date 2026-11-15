@@ -15,16 +15,16 @@
 //! - **Images** : visages trouvés par le détecteur injecté, moins ceux que
 //!   couvre une zone masquée ; `None` sans détecteur (édition Lite).
 
-use crate::analysis::{Analysis, Candidate, SuppressedRows};
+use crate::analysis::{Analysis, Candidate, ImageMask, SuppressedRows};
+use crate::mentions::{MaskedFinder, ValueFinder};
 use anon_core::{
     AssessInput, BlockContext, BlockRole, ColumnRole, EntityKind, Fix, ImageInput, Mention,
-    PixelRect, Session, Shown, TableCell, TableData, TableInput, Tag, TextTransform, TextUnit,
-    Treatment,
+    PixelRect, Shown, TableCell, TableData, TableInput, Tag, TextTransform, TextUnit, Treatment,
 };
 use anon_detect::columns::kind_for_header;
 use anon_dict::hierarchy::{generalize, max_level};
+use anon_replace::key;
 use anon_replace::session_ext::match_key;
-use anon_replace::{Replacer, SessionExt, key};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
@@ -167,72 +167,20 @@ fn header_role(header: &str) -> Option<ColumnRole> {
     best.map(|(_, r)| r)
 }
 
-/// Un ensemble de valeurs de l'analyse sous forme de `Replacer`, et la valeur
-/// (identifiant de candidat) de chaque balise.
-struct Lookup {
-    replacer: Replacer,
-    owner: HashMap<Tag, usize>,
+/// Toutes les valeurs de l'analyse (module `mentions`).
+fn lookup(a: &Analysis, keep: impl Fn(&Candidate) -> bool) -> ValueFinder {
+    ValueFinder::new(a, keep)
 }
 
-fn lookup(a: &Analysis, keep: impl Fn(&Candidate) -> bool) -> Lookup {
-    let mut s = Session::new();
-    for n in &a.never {
-        s.add_never(n);
-    }
-    let mut owner = HashMap::new();
-    for i in a.ordered_indices() {
-        let Some(c) = a.candidates.get(i) else {
-            continue;
-        };
-        if !keep(c) {
-            continue;
-        }
-        let Some(tag) = s.intern_with_case(c.kind, &c.value, c.source, c.case_sensitive) else {
-            continue;
-        };
-        for v in &c.variants {
-            s.add_variant(tag, v);
-        }
-        owner.entry(tag).or_insert(c.id);
-    }
-    Lookup {
-        replacer: Replacer::new(&s),
-        owner,
-    }
+/// Ce que montrera le document produit : valeurs cochées sur la session de
+/// départ de l'analyse (module `mentions`).
+fn preview(a: &Analysis) -> MaskedFinder {
+    MaskedFinder::new(a, &a.base)
 }
 
-/// Ce que montrera le document produit : `Replacer` des valeurs cochées (sur
-/// la session de départ de l'analyse), valeur et traitement de chaque balise.
-struct Preview {
-    replacer: Replacer,
-    owner: HashMap<Tag, usize>,
-    treatments: HashMap<Tag, Treatment>,
-}
-
-fn preview(a: &Analysis) -> Preview {
-    let mut s = a.base.clone();
-    a.apply_to(&mut s);
-    let mut owner = HashMap::new();
-    for c in a.candidates.iter().filter(|c| c.selected) {
-        if let Some(tag) = s.tag_for(c.kind, &c.value) {
-            owner.entry(tag).or_insert(c.id);
-        }
-    }
-    let treatments = s
-        .entities
-        .iter()
-        .map(|e| (e.tag, e.treatment.clone()))
-        .collect();
-    Preview {
-        replacer: Replacer::new(&s),
-        owner,
-        treatments,
-    }
-}
-
-impl Preview {
+impl MaskedFinder {
     fn shown(&self, tag: Tag) -> Shown {
-        match self.treatments.get(&tag) {
+        match self.treatment(tag) {
             Some(Treatment::Generalize(g)) => Shown::Generalized(g.clone()),
             _ => Shown::Masked(tag),
         }
@@ -240,7 +188,7 @@ impl Preview {
 
     /// Forme affichée d'une cellule entière.
     fn cell(&self, text: &str) -> Shown {
-        let found = self.replacer.matches(text);
+        let found = self.matches(text);
         match found.as_slice() {
             [] => Shown::Visible,
             [m] if text.get(m.start..m.end) == Some(text.trim()) => self.shown(m.tag),
@@ -268,7 +216,7 @@ fn value_index(a: &Analysis) -> HashMap<(EntityKind, String), usize> {
 fn cell_value(
     text: &str,
     kind: Option<EntityKind>,
-    all: &Lookup,
+    all: &ValueFinder,
     index: &HashMap<(EntityKind, String), usize>,
 ) -> Option<usize> {
     let trimmed = text.trim();
@@ -278,8 +226,8 @@ fn cell_value(
     if let Some(id) = kind.and_then(|k| index.get(&(k, match_key(k, trimmed)))) {
         return Some(*id);
     }
-    match all.replacer.matches(text).as_slice() {
-        [m] if text.get(m.start..m.end) == Some(trimmed) => all.owner.get(&m.tag).copied(),
+    match all.find(text).as_slice() {
+        [f] if text.get(f.start..f.end) == Some(trimmed) => Some(f.id),
         _ => None,
     }
 }
@@ -289,7 +237,7 @@ fn cell_value(
 fn roles(
     t: &TableData,
     a: &Analysis,
-    all: &Lookup,
+    all: &ValueFinder,
     index: &HashMap<(EntityKind, String), usize>,
 ) -> Vec<ColumnRole> {
     t.headers
@@ -550,11 +498,11 @@ pub(crate) fn build_input(a: &Analysis, masks_apply: bool) -> AssessInput {
 
 /// Mentions d'un texte, dans l'ordre : valeurs cochées telles que les
 /// remplacera l'anonymisation, puis valeurs décochées (visibles) ailleurs.
-fn mentions(a: &Analysis, prev: &Preview, visible: &Lookup, text: &str) -> Vec<Mention> {
-    let masked = prev.replacer.matches(text);
+fn mentions(a: &Analysis, prev: &MaskedFinder, visible: &ValueFinder, text: &str) -> Vec<Mention> {
+    let masked = prev.matches(text);
     let mut out: Vec<(usize, Mention)> = Vec::new();
     for m in &masked {
-        if let Some(c) = prev.owner.get(&m.tag).and_then(|id| a.candidate(*id)) {
+        if let Some(c) = prev.owner(m.tag).and_then(|id| a.candidate(id)) {
             out.push((
                 m.start,
                 Mention {
@@ -566,11 +514,11 @@ fn mentions(a: &Analysis, prev: &Preview, visible: &Lookup, text: &str) -> Vec<M
             ));
         }
     }
-    for m in visible.replacer.matches(text) {
+    for m in visible.find(text) {
         if masked.iter().any(|s| s.start < m.end && m.start < s.end) {
             continue;
         }
-        if let Some(c) = visible.owner.get(&m.tag).and_then(|id| a.candidate(*id)) {
+        if let Some(c) = a.candidate(m.id) {
             out.push((
                 m.start,
                 Mention {
@@ -592,19 +540,24 @@ fn mentions(a: &Analysis, prev: &Preview, visible: &Lookup, text: &str) -> Vec<M
 
 #[derive(Clone, PartialEq)]
 enum UndoStep {
-    /// État d'une valeur avant la correction.
+    /// État d'une valeur à remettre.
     Value {
         id: usize,
         selected: bool,
         treatment: Treatment,
     },
-    /// Zone masquée ajoutée.
+    /// Zone masquée ajoutée : à retirer.
     Mask { id: usize },
-    /// Lignes supprimées ajoutées.
+    /// Zone masquée retirée par une annulation : à remettre (rétablir).
+    MaskBack(ImageMask),
+    /// Lignes supprimées ajoutées : à retirer.
     Rows { id: usize },
+    /// Lignes supprimées retirées par une annulation : à remettre (rétablir).
+    RowsBack(SuppressedRows),
 }
 
-/// De quoi annuler une ou plusieurs corrections ([`crate::Engine::undo_fix`]).
+/// De quoi annuler une ou plusieurs corrections ([`crate::Engine::undo_fix`]),
+/// ou, après une annulation, de quoi les rétablir.
 #[derive(Clone, PartialEq, Default)]
 pub struct FixUndo {
     steps: Vec<UndoStep>,
@@ -704,7 +657,10 @@ pub(crate) fn apply_fix(a: &mut Analysis, fix: &Fix) -> FixUndo {
 }
 
 /// Annule des corrections : l'analyse revient exactement à son état d'avant.
-pub(crate) fn undo_fix(a: &mut Analysis, undo: FixUndo) {
+/// Renvoie de quoi les rétablir : passé de nouveau à `undo_fix`, il redonne
+/// exactement l'état d'après (et de quoi l'annuler encore).
+pub(crate) fn undo_fix(a: &mut Analysis, undo: FixUndo) -> FixUndo {
+    let mut back = FixUndo::default();
     for step in undo.steps.into_iter().rev() {
         match step {
             UndoStep::Value {
@@ -713,16 +669,37 @@ pub(crate) fn undo_fix(a: &mut Analysis, undo: FixUndo) {
                 treatment,
             } => {
                 if let Some(c) = a.candidates.iter_mut().find(|c| c.id == id) {
+                    back.steps.push(UndoStep::Value {
+                        id,
+                        selected: c.selected,
+                        treatment: std::mem::replace(&mut c.treatment, treatment),
+                    });
                     c.selected = selected;
-                    c.treatment = treatment;
                 }
             }
             UndoStep::Mask { id } => {
-                a.remove_mask(id);
+                if let Some(m) = a.take_mask(id) {
+                    back.steps.push(UndoStep::MaskBack(m));
+                }
             }
-            UndoStep::Rows { id } => a.suppressed.retain(|s| s.id != id),
+            UndoStep::MaskBack(m) => {
+                back.steps.push(UndoStep::Mask { id: m.id });
+                a.put_mask(m);
+            }
+            UndoStep::Rows { id } => {
+                if let Some(pos) = a.suppressed.iter().position(|s| s.id == id) {
+                    back.steps
+                        .push(UndoStep::RowsBack(a.suppressed.remove(pos)));
+                }
+            }
+            UndoStep::RowsBack(rows) => {
+                back.steps.push(UndoStep::Rows { id: rows.id });
+                let pos = a.suppressed.partition_point(|s| s.id < rows.id);
+                a.suppressed.insert(pos, rows);
+            }
         }
     }
+    back
 }
 
 // ---------------------------------------------------------------------------
@@ -787,6 +764,7 @@ impl Analysis {
 mod tests {
     use super::*;
     use crate::{AnalyzeOptions, Engine};
+    use anon_core::Session;
     use proptest::prelude::*;
 
     #[test]
@@ -946,6 +924,46 @@ mod tests {
             }
             prop_assert!(state(&a) == before);
         }
+
+        /// Annuler puis rétablir (le jeton rendu par `undo_fix`) redonne
+        /// exactement l'état corrigé, et le jeton de rétablissement annule
+        /// encore : Ctrl+Z, Ctrl+Maj+Z, Ctrl+Z.
+        #[test]
+        fn undo_then_redo_restores_the_fixed_state(
+            fixes in {
+                let ids: Vec<usize> = sample().candidates.iter().map(|c| c.id).chain([999]).collect();
+                proptest::collection::vec(arb_fix(ids), 1..6)
+            }
+        ) {
+            let mut a = sample();
+            if let Some(first) = a.candidates.first().map(|c| c.id) {
+                a.set_selected(first, false);
+            }
+            a.add_mask(0, "image", PixelRect { x: 1, y: 1, w: 2, h: 2 });
+            let before = state(&a);
+            let mut undo = FixUndo::default();
+            for f in &fixes {
+                undo.extend(apply_fix(&mut a, f));
+            }
+            let fixed = state(&a);
+            let redo = undo_fix(&mut a, undo);
+            prop_assert!(state(&a) == before);
+            let undo = undo_fix(&mut a, redo);
+            prop_assert!(state(&a) == fixed);
+            undo_fix(&mut a, undo);
+            prop_assert!(state(&a) == before);
+        }
+    }
+
+    #[test]
+    fn a_copy_assesses_like_the_original() {
+        let a = sample();
+        let copy = a.clone();
+        let input = build_input(&a, true);
+        assert_eq!(build_input(&copy, true), input);
+        assert_eq!(copy.candidates, a.candidates);
+        // Les données gardées en mémoire sont partagées, pas recopiées.
+        assert!(std::sync::Arc::ptr_eq(&copy.store, &a.store));
     }
 
     #[test]

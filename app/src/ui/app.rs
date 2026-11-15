@@ -4,14 +4,16 @@
 //! dépôt, palette de commandes et panneau des raccourcis. Relie l'état au
 //! moteur : les traitements longs passent par le fil de travail.
 
-use super::platform::{Platform, file_entry};
+use super::platform::{Platform, SaveRequest, file_entry};
 use super::prefs::{self, Preferences};
 use super::runner::{Msg, Runner, Shared};
 use super::screens;
 use super::screens::palette::Outcome as PaletteOutcome;
-use super::service::{self, anonymize_batch_tracked, read_documents, restore_batch};
+use super::service::{
+    self, anonymize_batch_tracked, assess_folder, fix_all_folder, read_documents, restore_batch,
+};
 use super::shortcuts::{self, Command};
-use super::state::anonymize::{AddReport, AnalyzeJob, AnonymizeState, Busy};
+use super::state::anonymize::{AddReport, AnalyzeJob, AnonymizeState, Busy, ProtectMode};
 use super::state::bilan;
 use super::state::deanonymize::{DeanonymizeState, MapStatus, is_map};
 use super::state::drop_hint;
@@ -24,8 +26,9 @@ use super::widgets::field::field_id;
 use super::widgets::nav::{command_button, pill_menu, theme_button};
 use super::widgets::{Icon, PillButton, StepBar, StepItem, toast};
 use crate::moteur::IaStatus;
-use anon_core::{Goal, Recipient, Session};
+use anon_core::{AssessSettings, Fix, Goal, Recipient, Session};
 use anon_engine::Engine;
+use anon_vault::keychain::{MemoryStore, SecretStore, SystemStore};
 use egui::{
     CentralPanel, Frame, Margin, Panel, RichText, ScrollArea, Stroke, StrokeKind, Ui, vec2,
 };
@@ -110,7 +113,38 @@ pub enum Effect {
     Undo,
     Redo,
     Find,
+    /// Bilan : appliquer une correction proposée.
+    ApplyFix(Fix),
+    /// Bilan : « Tout corriger » (fil de travail, une seule annulation).
+    FixAll,
+    /// Envoyer : choisir le dossier de la clé de restauration.
+    PickKeyDir,
+    /// Envoyer : enregistrer la fiche d'évaluation (Markdown ou PDF).
+    SaveFiche,
+    /// Réponse : enregistrer la réponse restaurée (`.md` ou `.docx`).
+    SaveRestored(RestoredFormat),
+    /// Réponse : détruire la clé (après confirmation).
+    DestroyKey,
 }
+
+/// Format d'enregistrement de la réponse restaurée.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoredFormat {
+    Markdown,
+    Word,
+}
+
+impl RestoredFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            RestoredFormat::Markdown => "md",
+            RestoredFormat::Word => "docx",
+        }
+    }
+}
+
+/// Nom proposé pour la réponse restaurée.
+pub const RESTORED_NAME: &str = "reponse-restauree";
 
 /// Destination du texte demandé au presse-papiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +166,9 @@ pub struct AnonApp {
     pub toasts: Toasts,
     /// Panneau « Raccourcis » ouvert.
     pub show_shortcuts: bool,
+    /// Date du jour imposée (`AAAA-MM-JJ`) : instantanés et tests ; `None` :
+    /// la date du système.
+    pub fixed_today: Option<String>,
     /// Préférences (thème, destinataire, fenêtre).
     pub prefs: Preferences,
     /// Fichier des préférences ; `None` : rien n'est écrit (tests).
@@ -149,6 +186,14 @@ pub struct AnonApp {
     /// Instant de l'image en cours (secondes).
     now: f64,
     runner: Runner,
+    /// Évaluations faites pendant la vérification : toujours sur un fil à part,
+    /// pour que l'écran ne s'arrête jamais pendant le calcul.
+    live: Runner,
+    /// Évaluation confiée à `live` (révision, réglages), pas encore reçue.
+    live_key: Option<(u64, AssessSettings)>,
+    /// Trousseau du système (mémoire en test) ; `Err` : la raison pour
+    /// laquelle il n'est pas disponible.
+    keychain: Result<Arc<dyn SecretStore + Send + Sync>, String>,
     platform: Box<dyn Platform>,
 }
 
@@ -173,7 +218,15 @@ impl AnonApp {
             let m = crate::moteur::build();
             Msg::EngineReady(Arc::new(m.engine), m.ia)
         });
-        Self::assemble(runner, platform, None, None, loaded, path)
+        let keychain: Result<Arc<dyn SecretStore + Send + Sync>, String> = match SystemStore::new()
+        {
+            Ok(s) => Ok(Arc::new(s)),
+            Err(e) => Err(service::sentence(&e.to_string())),
+        };
+        let mut app = Self::assemble(runner, platform, None, None, loaded, path);
+        app.live = Runner::new(Some(ctx.clone()));
+        app.keychain = keychain;
+        app
     }
 
     /// Moteur déjà chargé, traitements exécutés immédiatement (tests, instantanés).
@@ -198,7 +251,7 @@ impl AnonApp {
 
     fn assemble(
         runner: Runner,
-        platform: Box<dyn Platform>,
+        mut platform: Box<dyn Platform>,
         engine: Option<Arc<Engine>>,
         ia: Option<IaStatus>,
         prefs: Preferences,
@@ -212,9 +265,11 @@ impl AnonApp {
             recipient: prefs.recipient,
             ..Session::new()
         };
+        let mut anonymize = AnonymizeState::default();
+        anonymize.key_dir = platform.keys_dir();
         Self {
             workspace,
-            anonymize: AnonymizeState::default(),
+            anonymize,
             deanonymize: DeanonymizeState::default(),
             palette: PaletteState::default(),
             session,
@@ -222,6 +277,7 @@ impl AnonApp {
             ia,
             toasts: Toasts::default(),
             show_shortcuts: false,
+            fixed_today: None,
             prefs,
             prefs_path,
             saved_prefs: prefs,
@@ -231,8 +287,36 @@ impl AnonApp {
             pending_focus: None,
             now: 0.0,
             runner,
+            live: Runner::new(None),
+            live_key: None,
+            // Tests et instantanés : jamais le trousseau de l'utilisateur.
+            keychain: Ok(Arc::new(MemoryStore::new())),
             platform,
         }
+    }
+
+    /// Trousseau utilisé (en mémoire pour les tests et instantanés).
+    pub fn keychain(&self) -> Option<&(dyn SecretStore + Send + Sync)> {
+        self.keychain.as_ref().ok().map(|k| k.as_ref())
+    }
+
+    /// Raison pour laquelle le trousseau n'est pas disponible.
+    pub fn keychain_unavailable(&self) -> Option<&str> {
+        self.keychain.as_ref().err().map(String::as_str)
+    }
+
+    /// Date du jour, `AAAA-MM-JJ` (imposée en test).
+    pub fn today(&self) -> String {
+        self.fixed_today
+            .clone()
+            .unwrap_or_else(anon_vault::retention::today)
+    }
+
+    /// Réglages de l'évaluation : objectif, destinataire, réponses de contexte.
+    pub fn assess_settings(&self) -> AssessSettings {
+        self.anonymize
+            .bilan
+            .settings(self.workspace.goal, self.workspace.recipient)
     }
 
     /// Avancement du traitement en cours (affichage, tests).
@@ -268,6 +352,24 @@ impl AnonApp {
             facts: self.facts(),
             can_undo: self.anonymize.can_undo(),
             can_redo: self.anonymize.can_redo(),
+            fix_all: self.fix_all_blocker(),
+        }
+    }
+
+    /// Ce qui empêche « Tout corriger », en une phrase.
+    pub fn fix_all_blocker(&self) -> Option<&'static str> {
+        if self.is_busy() {
+            return Some(workspace::BUSY);
+        }
+        if self.workspace.screen != Screen::Folder || self.anonymize.analysis.is_none() {
+            return Some(workspace::NO_DOCUMENT);
+        }
+        match self.anonymize.assessment(&self.assess_settings()) {
+            None => Some(super::state::anonymize::ASSESSING),
+            Some(a) if a.assessment.failures.iter().all(|f| f.fixes.is_empty()) => {
+                Some(pal::NOTHING_TO_FIX)
+            }
+            Some(_) => None,
         }
     }
 
@@ -439,13 +541,79 @@ impl AnonApp {
     }
 
     /// Choisit une clé de restauration et ouvre le dossier à l'étape Réponse.
+    /// Si son mot de passe est retenu sur cet ordinateur, elle s'ouvre sans le
+    /// demander ; sinon le champ du mot de passe prend le focus.
     fn open_key(&mut self, path: PathBuf) {
-        match self.deanonymize.choose_map(path) {
-            Ok(()) => {
-                self.workspace.enter(Step::Response);
-                self.pending_focus = Some(field_id(screens::response::PASSWORD_FIELD));
+        if let Err(e) = self.deanonymize.choose_map(path.clone()) {
+            self.toast(ToastKind::Error, e.message());
+            return;
+        }
+        self.workspace.enter(Step::Response);
+        let bytes = std::fs::read(&path).ok();
+        let key_id = bytes.as_deref().and_then(anon_vault::keychain::key_id);
+        self.deanonymize.key_id = key_id.clone();
+        let recalled = match (self.keychain(), &key_id) {
+            (Some(store), Some(id)) => store.recall(id).ok().flatten(),
+            _ => None,
+        };
+        match (recalled, bytes) {
+            (Some(password), Some(bytes)) => {
+                self.deanonymize.busy = Some(super::state::deanonymize::Busy::Opening);
+                let password = password.to_string();
+                self.runner.spawn(move |_| Msg::MapOpened {
+                    result: anon_vault::open(&bytes, &password),
+                    key_id,
+                    remembered: None,
+                });
             }
-            Err(e) => self.toast(ToastKind::Error, e.message()),
+            _ => self.pending_focus = Some(field_id(screens::response::PASSWORD_FIELD)),
+        }
+    }
+
+    /// Demande l'évaluation du dossier si la dernière est périmée : sur le fil
+    /// principal au bilan et à l'envoi (ou la première fois), sur un fil à part
+    /// pendant la vérification, pour que l'écran ne s'arrête jamais.
+    fn reconcile_assessment(&mut self) {
+        if self.workspace.screen != Screen::Folder
+            || self.is_busy()
+            || self.anonymize.analysis.is_none()
+        {
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            return;
+        };
+        let settings = self.assess_settings();
+        let in_verify = self.workspace.step == Step::Verify;
+        let first = self.anonymize.bilan.latest.is_none();
+        let live = in_verify && !first;
+        if !live && self.live_key.is_some() && self.anonymize.bilan.pending == self.live_key {
+            // Le bilan attend : la demande partie sur le fil à part est refaite ici.
+            self.anonymize.bilan.pending = None;
+            self.live_key = None;
+        }
+        if live && self.live.is_busy() {
+            // Une seule évaluation à la fois sur le fil à part.
+            return;
+        }
+        let Some(job) = self.anonymize.begin_assessment(settings) else {
+            return;
+        };
+        let key = (job.revision, job.settings);
+        let work = move |_: &Shared| {
+            let mut analysis = job.analysis;
+            let result = assess_folder(&engine, &mut analysis, &job.masks, &job.settings);
+            Msg::Assessed {
+                revision: job.revision,
+                settings: job.settings,
+                result,
+            }
+        };
+        if live {
+            self.live_key = Some(key);
+            self.live.spawn(work);
+        } else {
+            self.runner.spawn(work);
         }
     }
 
@@ -464,7 +632,9 @@ impl AnonApp {
 
     /// Résultats du fil de travail.
     pub fn poll(&mut self) {
-        for msg in self.runner.poll() {
+        let mut msgs = self.runner.poll();
+        msgs.extend(self.live.poll());
+        for msg in msgs {
             match msg {
                 Msg::EngineReady(engine, ia) => {
                     self.engine = Some(engine);
@@ -491,6 +661,39 @@ impl AnonApp {
                         );
                     }
                 }
+                Msg::Assessed {
+                    revision,
+                    settings,
+                    result,
+                } => {
+                    if self.live_key == Some((revision, settings)) {
+                        self.live_key = None;
+                    }
+                    self.anonymize.assessment_done(revision, settings, result);
+                }
+                Msg::FixedAll {
+                    analysis,
+                    token,
+                    settings,
+                    result,
+                } => {
+                    let changed = self.anonymize.fix_all_done(
+                        analysis,
+                        token,
+                        settings,
+                        result,
+                        &self.session,
+                    );
+                    if changed {
+                        let undo = shortcuts::UNDO.label();
+                        self.toast(
+                            ToastKind::Success,
+                            format!("Corrections appliquées. {undo} les annule toutes."),
+                        );
+                    } else {
+                        self.toast(ToastKind::Info, "Aucune correction à appliquer.");
+                    }
+                }
                 Msg::Anonymized {
                     report,
                     session,
@@ -502,21 +705,47 @@ impl AnonApp {
                     if let Some(map) = &report.map_path {
                         self.deanonymize
                             .open_in_memory(service::file_name(map), self.session.clone());
+                        self.deanonymize.key_path = Some(map.clone());
+                        self.deanonymize.key_id = report.key_id.clone();
                         self.restore_text_now();
                     }
+                    let remembered = report.remembered.clone();
                     self.anonymize.anonymize_done(report, inputs, analysis);
                     self.toast(kind, text);
+                    if let Some(Err(why)) = remembered {
+                        self.toast(
+                            ToastKind::Warning,
+                            format!("Mot de passe non retenu sur cet ordinateur : {why}"),
+                        );
+                    }
                 }
                 Msg::ExistingOpened(r) => {
                     self.anonymize
                         .existing_opened(r.map_err(|e| service::vault_message(&e)));
                 }
-                Msg::MapOpened(r) => {
-                    let ok = r.is_ok();
+                Msg::MapOpened {
+                    result,
+                    key_id,
+                    remembered,
+                } => {
+                    let ok = result.is_ok();
                     self.deanonymize
-                        .unlock_done(r.map_err(|e| service::vault_message(&e)));
+                        .unlock_done(result.map_err(|e| service::vault_message(&e)));
                     if ok {
-                        self.toast(ToastKind::Success, "Clé ouverte.");
+                        if key_id.is_some() {
+                            self.deanonymize.key_id = key_id;
+                        }
+                        match remembered {
+                            Some(Ok(())) => self.toast(
+                                ToastKind::Success,
+                                "Clé ouverte. Mot de passe retenu sur cet ordinateur.",
+                            ),
+                            Some(Err(why)) => self.toast(
+                                ToastKind::Warning,
+                                format!("Clé ouverte. Mot de passe non retenu : {why}"),
+                            ),
+                            None => self.toast(ToastKind::Success, "Clé ouverte."),
+                        }
                         self.restore_text_now();
                     }
                 }
@@ -624,7 +853,10 @@ impl AnonApp {
         }
         match workspace::primary(self.workspace.step, self.workspace.goal, &f) {
             Primary::GoTo(s) => workspace::blocker(s, self.workspace.goal, &f),
-            Primary::Write => self.anonymize.protect_blocker(),
+            Primary::Write => self
+                .anonymize
+                .protect_blocker()
+                .or_else(|| self.anonymize.verdict_blocker(&self.assess_settings())),
             Primary::OpenOutput => None,
             Primary::CopyRestored => self
                 .deanonymize
@@ -638,11 +870,22 @@ impl AnonApp {
     fn primary_label(&self) -> &'static str {
         match workspace::primary(self.workspace.step, self.workspace.goal, &self.facts()) {
             Primary::GoTo(Step::Response) => "Passer à la réponse",
+            Primary::GoTo(Step::Bilan) => "Voir le bilan",
             Primary::GoTo(_) => "Continuer",
             Primary::Write => "Masquer et enregistrer",
             Primary::OpenOutput => "Ouvrir le dossier des fichiers",
             Primary::CopyRestored => "Copier la réponse restaurée",
         }
+    }
+
+    /// Ligne de bilan de l'étape Vérifier (maquette B) : la dernière évaluation,
+    /// même si une décision récente la fait recalculer.
+    pub fn bilan_line(&self) -> Option<String> {
+        let a = &self.anonymize;
+        a.analysis.as_ref()?;
+        Some(bilan::short_line(
+            a.bilan.latest.as_ref().map(|x| &x.assessment),
+        ))
     }
 
     /// Message unique de la barre d'action.
@@ -654,17 +897,17 @@ impl AnonApp {
                 None if a.analysis.is_some() => a.review_summary(),
                 None => "Aucun document analysé.".to_owned(),
             },
-            Step::Bilan => {
-                let s = bilan::summarize(a);
-                format!(
-                    "Bilan provisoire : {}, {} encore visibles.",
-                    count_label(s.masked, "valeur masquée", "valeurs masquées"),
-                    count_label(s.clue_total(), "indice", "indices")
-                )
-            }
+            Step::Bilan => match (a.busy, a.assessment(&self.assess_settings())) {
+                (Some(b), _) => format!("{}…", b.label()),
+                (None, Some(x)) => bilan::verdict_line(&x.assessment),
+                (None, None) => "Évaluation du dossier en cours…".to_owned(),
+            },
             Step::Send => match (&a.report, a.busy) {
                 (_, Some(b)) => format!("{}…", b.label()),
-                (None, None) => match a.protect_blocker() {
+                (None, None) => match a
+                    .protect_blocker()
+                    .or_else(|| a.verdict_blocker(&self.assess_settings()))
+                {
                     Some(why) => why.to_owned(),
                     None => format!(
                         "Prêt : {} à masquer et enregistrer.",
@@ -825,7 +1068,7 @@ impl AnonApp {
         if self.deanonymize.is_unlocked() {
             let _ = self
                 .deanonymize
-                .restore_text(|t, s| engine.restore_text(t, s));
+                .restore_text_marked(|t, s| engine.restore_text_marked(t, s));
         }
     }
 
@@ -837,8 +1080,22 @@ impl AnonApp {
         }
     }
 
-    /// Arrivée sur une étape : le premier champ utile prend le focus.
+    /// Arrivée sur une étape : le premier champ utile prend le focus. À
+    /// l'envoi d'une nouvelle clé, une phrase de passe est proposée et la clé
+    /// reçoit son nom (heure locale).
     fn entered(&mut self, step: Step) {
+        if step == Step::Send && self.anonymize.report.is_none() {
+            let st = &mut self.anonymize;
+            if st.key_name.is_none() {
+                st.key_name = Some(service::key_file_name(&service::local_now()));
+            }
+            if self.workspace.goal == Goal::Mask
+                && st.protect.mode == ProtectMode::NewPassword
+                && st.protect.password.is_empty()
+            {
+                st.protect.propose_passphrase();
+            }
+        }
         self.pending_focus = match step {
             Step::Send
                 if self.anonymize.report.is_none()
@@ -886,11 +1143,29 @@ impl AnonApp {
             }
             Effect::Unlock => {
                 if let Ok((path, password)) = self.deanonymize.begin_unlock() {
+                    let remember = self.deanonymize.remember;
+                    let store = self.keychain.as_ref().ok().cloned();
                     self.runner.spawn(move |_| {
-                        Msg::MapOpened(match std::fs::read(&path) {
-                            Ok(bytes) => anon_vault::open(&bytes, &password),
-                            Err(_) => Err(anon_vault::VaultError::NotAVault),
-                        })
+                        let (result, key_id) = match std::fs::read(&path) {
+                            Ok(bytes) => (
+                                anon_vault::open(&bytes, &password),
+                                anon_vault::keychain::key_id(&bytes),
+                            ),
+                            Err(_) => (Err(anon_vault::VaultError::NotAVault), None),
+                        };
+                        // Retenu seulement si le mot de passe ouvre bien la clé.
+                        let remembered =
+                            (remember && result.is_ok()).then(|| match (&store, &key_id) {
+                                (Some(s), Some(id)) => {
+                                    s.remember(id, &password).map_err(|e| e.to_string())
+                                }
+                                _ => Err(anon_vault::VaultError::KeychainUnavailable.to_string()),
+                            });
+                        Msg::MapOpened {
+                            result,
+                            key_id,
+                            remembered,
+                        }
                     });
                 }
             }
@@ -1005,21 +1280,195 @@ impl AnonApp {
                 self.workspace.recipient = r;
                 self.session.recipient = r;
             }
-            Effect::Undo => match self.anonymize.undo(&self.session) {
-                Some(a) => self.toast(ToastKind::Info, format!("Annulé : {}.", a.label())),
-                None => self.toast(ToastKind::Info, "Aucune décision à annuler."),
-            },
-            Effect::Redo => match self.anonymize.redo(&self.session) {
-                Some(a) => self.toast(ToastKind::Info, format!("Rétabli : {}.", a.label())),
-                None => self.toast(ToastKind::Info, "Aucune décision à rétablir."),
-            },
+            Effect::Undo => {
+                let done = self
+                    .engine
+                    .clone()
+                    .and_then(|e| self.anonymize.undo(&e, &self.session));
+                match done {
+                    Some(a) => self.toast(ToastKind::Info, format!("Annulé : {}.", a.label())),
+                    None => self.toast(ToastKind::Info, "Aucune décision à annuler."),
+                }
+            }
+            Effect::Redo => {
+                let done = self
+                    .engine
+                    .clone()
+                    .and_then(|e| self.anonymize.redo(&e, &self.session));
+                match done {
+                    Some(a) => self.toast(ToastKind::Info, format!("Rétabli : {}.", a.label())),
+                    None => self.toast(ToastKind::Info, "Aucune décision à rétablir."),
+                }
+            }
             Effect::Find => {
                 if self.anonymize.analysis.is_some() {
                     self.go(Step::Verify);
                     self.pending_focus = Some(field_id(SEARCH_FIELD));
                 }
             }
+            Effect::ApplyFix(fix) => {
+                let Some(engine) = self.engine.clone() else {
+                    return;
+                };
+                if self.anonymize.apply_fix(&engine, &fix, &self.session) {
+                    let undo = shortcuts::UNDO.label();
+                    self.toast(
+                        ToastKind::Success,
+                        format!("Correction appliquée. {undo} l'annule."),
+                    );
+                } else {
+                    self.toast(ToastKind::Info, "Cette correction est déjà appliquée.");
+                }
+            }
+            Effect::FixAll => self.fix_all(),
+            Effect::PickKeyDir => {
+                let start = self.anonymize.key_dir.clone();
+                if let Some(dir) = self.platform.pick_folder(start.as_deref()) {
+                    self.anonymize.key_dir = Some(dir);
+                }
+            }
+            Effect::SaveFiche => self.save_fiche(),
+            Effect::SaveRestored(format) => self.save_restored(format),
+            Effect::DestroyKey => self.destroy_key(),
         }
+    }
+
+    /// « Tout corriger » : sur le fil de travail, une seule annulation.
+    fn fix_all(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            return;
+        };
+        let settings = self.assess_settings();
+        match self.anonymize.begin_fix_all(settings) {
+            Ok(job) => self.runner.spawn(move |_| {
+                let mut analysis = job.analysis;
+                let (token, result) =
+                    fix_all_folder(&engine, &mut analysis, &job.masks, &job.settings);
+                Msg::FixedAll {
+                    analysis,
+                    token,
+                    settings: job.settings,
+                    result,
+                }
+            }),
+            Err(e) => self.toast(ToastKind::Warning, e.message()),
+        }
+    }
+
+    /// Enregistre la fiche d'évaluation (Markdown, ou PDF si le nom choisi
+    /// finit par `.pdf`), par défaut à côté des fichiers produits.
+    fn save_fiche(&mut self) {
+        let settings = self.assess_settings();
+        let st = &self.anonymize;
+        let (Some(analysis), Some(assessed)) = (st.analysis.as_ref(), st.assessment(&settings))
+        else {
+            self.toast(
+                ToastKind::Warning,
+                "Patientez : l'évaluation du dossier est en cours.",
+            );
+            return;
+        };
+        let markdown = service::fiche_markdown(
+            analysis,
+            &st.masks.masks,
+            &assessed.assessment,
+            &st.bilan,
+            &self.today(),
+        );
+        let start = st
+            .report
+            .as_ref()
+            .map(|r| r.out_dir.clone())
+            .or_else(|| st.out_dir.clone());
+        let name = service::fiche_file_name(&service::local_now());
+        let request = SaveRequest {
+            title: "Enregistrer la fiche d'évaluation",
+            start: start.as_deref(),
+            name: &name,
+            filters: &[("Markdown", &["md"]), ("PDF", &["pdf"])],
+        };
+        let Some(path) = self.platform.save_file(request) else {
+            return;
+        };
+        let written = service::fiche_bytes(&markdown, &path)
+            .and_then(|bytes| service::save_bytes(&path, &bytes));
+        match written {
+            Ok(()) => self.toast(
+                ToastKind::Success,
+                format!("Fiche enregistrée : {}.", service::file_name(&path)),
+            ),
+            Err(why) => self.toast(ToastKind::Error, why),
+        }
+    }
+
+    /// Enregistre la réponse restaurée en `.md` ou en `.docx`.
+    fn save_restored(&mut self, format: RestoredFormat) {
+        let Some((text, _)) = self.deanonymize.text_result.clone() else {
+            self.toast(ToastKind::Warning, "Collez d'abord la réponse de l'IA.");
+            return;
+        };
+        let name = format!("{RESTORED_NAME}.{}", format.extension());
+        let filter: &[(&str, &[&str])] = match format {
+            RestoredFormat::Markdown => &[("Markdown", &["md"])],
+            RestoredFormat::Word => &[("Document Word", &["docx"])],
+        };
+        let start = self.deanonymize.out_dir.clone();
+        let request = SaveRequest {
+            title: "Enregistrer la réponse restaurée",
+            start: start.as_deref(),
+            name: &name,
+            filters: filter,
+        };
+        let Some(path) = self.platform.save_file(request) else {
+            return;
+        };
+        let written = service::restored_bytes(&text, &path)
+            .and_then(|bytes| service::save_bytes(&path, &bytes));
+        match written {
+            Ok(()) => self.toast(
+                ToastKind::Success,
+                format!("Réponse enregistrée : {}.", service::file_name(&path)),
+            ),
+            Err(why) => self.toast(ToastKind::Error, why),
+        }
+    }
+
+    /// Détruit la clé ouverte : fichier supprimé, mot de passe oublié par le
+    /// trousseau. Les documents d'origine restent, eux, des données personnelles.
+    fn destroy_key(&mut self) {
+        if !self.deanonymize.can_destroy() {
+            return;
+        }
+        let d = &self.deanonymize;
+        let done = service::destroy_key(
+            d.key_path.as_deref(),
+            d.key_id.as_deref(),
+            self.keychain
+                .as_ref()
+                .ok()
+                .map(|k| k.as_ref() as &dyn SecretStore),
+        );
+        if !done.file {
+            self.deanonymize.destroy_confirm = false;
+            self.toast(
+                ToastKind::Error,
+                "Suppression impossible : la clé est peut-être ouverte dans une autre \
+                 application. Rien n'a été détruit.",
+            );
+            return;
+        }
+        self.deanonymize.destroy_done();
+        let kind = if done.keychain {
+            ToastKind::Success
+        } else {
+            ToastKind::Warning
+        };
+        let text = if done.keychain {
+            "Clé détruite."
+        } else {
+            "Clé détruite. Le mot de passe n'a pas pu être retiré du trousseau."
+        };
+        self.toast(kind, text);
     }
 
     /// Masque et enregistre les documents (étape Envoyer).
@@ -1027,15 +1476,22 @@ impl AnonApp {
         let Some(engine) = self.engine.clone() else {
             return;
         };
-        if let Some(why) = self.anonymize.protect_blocker() {
+        let settings = self.assess_settings();
+        let blocker = self
+            .anonymize
+            .protect_blocker()
+            .or_else(|| self.anonymize.verdict_blocker(&settings));
+        if let Some(why) = blocker {
             self.toast(ToastKind::Warning, why);
             return;
         }
-        let Ok(job) = self.anonymize.begin_anonymize() else {
+        let Ok(mut job) = self.anonymize.begin_anonymize() else {
             return;
         };
-        let mut session = job.session.unwrap_or_else(|| self.session.clone());
+        job.plan.settings = settings;
+        let mut session = job.session.take().unwrap_or_else(|| self.session.clone());
         session.recipient = self.workspace.recipient;
+        let keychain = self.keychain.as_ref().ok().cloned();
         self.runner.spawn(move |progress| {
             let mut session = session;
             let report = anonymize_batch_tracked(
@@ -1045,12 +1501,12 @@ impl AnonApp {
                 &job.never,
                 &job.masks,
                 &mut session,
-                &job.protection,
-                &job.out_dir,
+                &job.plan,
+                keychain.as_deref().map(|k| k as &dyn SecretStore),
                 progress,
                 &|i| progress.mark_failed(i),
             );
-            drop(job.protection);
+            drop(job.plan);
             Msg::Anonymized {
                 report,
                 session: Box::new(session),
@@ -1175,6 +1631,18 @@ impl AnonApp {
         }
     }
 
+    /// Nom proposé pour le texte masqué d'un fichier, en `.md`, au même
+    /// suffixe que les fichiers produits (`anon_engine::output_file_name`) :
+    /// `_anonyme` seulement si l'évaluation à jour conclut à l'anonymat.
+    pub fn export_text_name(&self, name: &str) -> String {
+        let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(name);
+        let verdict = self
+            .anonymize
+            .assessment(&self.assess_settings())
+            .map(|a| a.assessment.verdict);
+        anon_engine::output_file_name(&format!("{stem}.md"), self.session.goal, verdict)
+    }
+
     /// Texte masqué d'un fichier bloqué par la vérification finale, en `.md`.
     fn export_text(&mut self, name: &str) {
         let Some(engine) = self.engine.clone() else {
@@ -1183,10 +1651,15 @@ impl AnonApp {
         let Some(input) = self.anonymize.input(name).cloned() else {
             return;
         };
-        let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(name);
-        let suggested = format!("{stem}_anonymise.md");
+        let suggested = self.export_text_name(name);
         let start = self.anonymize.report.as_ref().map(|r| r.out_dir.clone());
-        let Some(path) = self.platform.save_markdown(start.as_deref(), &suggested) else {
+        let request = SaveRequest {
+            title: "Enregistrer le texte masqué",
+            start: start.as_deref(),
+            name: &suggested,
+            filters: &[("Markdown", &["md"])],
+        };
+        let Some(path) = self.platform.save_file(request) else {
             return;
         };
         let (kind, msg) = match engine.export_text(&input, &self.session) {
@@ -1380,6 +1853,12 @@ impl AnonApp {
     fn action_bar(&mut self, ui: &mut Ui, fx: &mut Vec<Effect>) {
         let p = palette();
         let message = self.status_message();
+        // Étape Vérifier : la ligne de bilan d'abord (maquette B), puis le résumé.
+        let bilan_line = if self.workspace.step == Step::Verify && self.anonymize.busy.is_none() {
+            self.bilan_line()
+        } else {
+            None
+        };
         let blocker = self.primary_blocker();
         let label = self.primary_label();
         let next_key = shortcuts::NEXT.label();
@@ -1398,13 +1877,33 @@ impl AnonApp {
                     ui.spacing_mut().item_spacing.x = p.space(2);
                     Icon::Info.show(ui, p.accent, 18.0);
                     let w = (ui.available_width() - 460.0).max(160.0);
+                    let message_w = match &bilan_line {
+                        Some(line) => {
+                            let half = (w / 2.0).max(80.0);
+                            screens::truncated_text(
+                                ui,
+                                half,
+                                CONTROL_SM,
+                                RichText::new(line)
+                                    .font(font(Weight::Semibold, p.text_sm))
+                                    .color(p.heading),
+                            );
+                            (w - half - p.space(2)).max(80.0)
+                        }
+                        None => w,
+                    };
+                    let (weight, ink) = if bilan_line.is_some() {
+                        (Weight::Regular, p.text_secondary)
+                    } else {
+                        (Weight::Medium, p.text)
+                    };
                     screens::truncated_text(
                         ui,
-                        w,
+                        message_w,
                         CONTROL_SM,
                         RichText::new(&message)
-                            .font(font(Weight::Medium, p.text_sm))
-                            .color(p.text),
+                            .font(font(weight, p.text_sm))
+                            .color(ink),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = p.space(3);
@@ -1657,6 +2156,10 @@ impl AnonApp {
             A::Find => fx.push(Effect::Find),
             A::Shortcuts => fx.push(Effect::ShowShortcuts),
             A::NewSession => fx.push(Effect::NewSession),
+            A::FixAll => {
+                fx.push(Effect::Go(Step::Bilan));
+                fx.push(Effect::FixAll);
+            }
         }
     }
 
@@ -1698,18 +2201,39 @@ impl AnonApp {
                         fx,
                     ),
                     Step::Bilan => {
-                        let s = bilan::summarize(&self.anonymize);
-                        screens::bilan::show(ui, &s);
+                        let settings = self.assess_settings();
+                        screens::bilan::show(
+                            ui,
+                            &mut self.anonymize,
+                            &mut self.workspace,
+                            &settings,
+                            &shared,
+                            fx,
+                        );
                     }
-                    Step::Send => screens::send::show(
-                        ui,
-                        &mut self.anonymize,
-                        self.workspace.goal,
-                        &shared,
-                        fx,
-                    ),
+                    Step::Send => {
+                        let ctx = screens::send::SendContext {
+                            goal: self.workspace.goal,
+                            settings: self.assess_settings(),
+                            keychain: self.keychain.as_ref().err().cloned(),
+                            reused: !self.session.entities.is_empty(),
+                            today: self.today(),
+                        };
+                        screens::send::show(ui, &mut self.anonymize, &ctx, &shared, fx)
+                    }
                     Step::Response => {
-                        screens::response::show(ui, &mut self.deanonymize, &shared, view_h, fx)
+                        let ctx = screens::response::ResponseContext {
+                            today: self.today(),
+                            keychain: self.keychain.is_ok(),
+                        };
+                        screens::response::show(
+                            ui,
+                            &mut self.deanonymize,
+                            &ctx,
+                            &shared,
+                            view_h,
+                            fx,
+                        )
                     }
                 }
             });
@@ -1723,6 +2247,10 @@ impl AnonApp {
         theme::sync(ui);
         let p = palette();
         self.poll();
+        // Évaluation à refaire (décision, correction, destinataire) : demandée
+        // avant le rendu ; en test, le résultat arrive aussitôt.
+        self.reconcile_assessment();
+        self.poll();
         self.receive_paste(ui.ctx());
         self.take_dropped_files(ui);
         self.take_unrequested_paste(ui.ctx());
@@ -1732,7 +2260,7 @@ impl AnonApp {
         let mut effects = Vec::new();
         let commands = shortcuts::read(ui.ctx());
         self.run_commands(commands, &mut effects);
-        if self.runner.is_busy() {
+        if self.runner.is_busy() || self.live.is_busy() {
             // L'avancement est lu dans l'état partagé : on redessine régulièrement.
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
@@ -1774,6 +2302,8 @@ impl AnonApp {
         }
         self.apply(ui, effects);
         // Traitements synchrones (tests) : résultat visible dès cette image.
+        self.poll();
+        self.reconcile_assessment();
         self.poll();
         if self.pending_focus.is_some() {
             ui.ctx().request_repaint();

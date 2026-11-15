@@ -5,7 +5,8 @@
 //! - `anonymize` : documents, décisions de vérification, envoi ;
 //! - `history` : annuler, rétablir les décisions ;
 //! - `review` : vérification dans le document, file « À décider » ;
-//! - `bilan` : bilan provisoire avant envoi (remplacé au lot 8) ;
+//! - `bilan` : bilan avant envoi : évaluation des trois critères en phrases,
+//!   corrections, contexte du destinataire, champs de la fiche ;
 //! - `deanonymize` : clé de restauration et réponse de l'IA ;
 //! - `palette` : palette de commandes.
 

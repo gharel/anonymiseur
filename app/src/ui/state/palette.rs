@@ -29,6 +29,8 @@ pub enum Action {
     Find,
     Shortcuts,
     NewSession,
+    /// Bilan : appliquer toutes les corrections proposées.
+    FixAll,
 }
 
 /// Une ligne de la palette.
@@ -81,12 +83,16 @@ pub struct Context {
     pub facts: FolderFacts,
     pub can_undo: bool,
     pub can_redo: bool,
+    /// Ce qui empêche « Tout corriger » ; `None` : des corrections sont proposées.
+    pub fix_all: Option<&'static str>,
 }
 
 const NOTHING_TO_UNDO: &str = "Aucune décision à annuler.";
 const NOTHING_TO_REDO: &str = "Aucune décision à rétablir.";
 const FIND_ONLY_IN_VERIFY: &str = "La recherche porte sur le tableau de l'étape Vérifier.";
 const ALREADY_HOME: &str = "Vous êtes déjà à l'accueil.";
+/// Raison : le bilan ne propose aucune correction.
+pub const NOTHING_TO_FIX: &str = "Le bilan ne propose aucune correction.";
 
 /// Toutes les actions, dans l'ordre d'affichage, avec leur état.
 pub fn entries(c: &Context) -> Vec<Entry> {
@@ -213,6 +219,14 @@ pub fn entries(c: &Context) -> Vec<Entry> {
         )
         .key(shortcuts::REDO)
         .blocked((!c.can_redo).then_some(NOTHING_TO_REDO).or(busy)),
+    );
+    v.push(
+        Entry::new(
+            Action::FixAll,
+            "Tout corriger",
+            "bilan corrections corriger évaluation reconnaissable",
+        )
+        .blocked(busy.or(c.fix_all)),
     );
     v.push(
         Entry::new(
@@ -365,6 +379,7 @@ mod tests {
             },
             can_undo: true,
             can_redo: false,
+            fix_all: Some(NOTHING_TO_FIX),
         }
     }
 
@@ -425,6 +440,7 @@ mod tests {
             Action::Find,
             Action::Shortcuts,
             Action::NewSession,
+            Action::FixAll,
         ] {
             assert!(find(a).is_some(), "{a:?} absente");
         }

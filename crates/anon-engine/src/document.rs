@@ -15,10 +15,11 @@
 //! [`Analysis::refresh_document`]).
 
 use crate::analysis::Analysis;
-use anon_core::{BlockRole, EntityKind, Session, Tag};
+use crate::mentions::{MaskedFinder, ValueFinder};
+use anon_core::{BlockRole, EntityKind, Session};
 use anon_replace::session_ext::match_key;
-use anon_replace::{Replacer, SessionExt, fold, has_variable_separators};
-use std::collections::HashMap;
+use anon_replace::{fold, has_variable_separators};
+use std::collections::HashSet;
 use std::fmt;
 
 /// Occurrence d'une valeur dans un bloc. Offsets en octets, sur des frontières
@@ -150,24 +151,13 @@ fn reading_rank(role: BlockRole) -> u8 {
     }
 }
 
-/// Rang d'enregistrement d'un type : personnes complètes, autres types, puis
-/// noms et prénoms isolés (même ordre que l'enregistrement dans la session).
-fn rank(kind: EntityKind) -> u8 {
-    match kind {
-        EntityKind::Personne => 0,
-        EntityKind::Nom | EntityKind::Prenom => 2,
-        _ => 1,
-    }
-}
-
-/// Les deux recherches d'une vue : valeurs remplacées, toutes les valeurs.
+/// Les deux recherches d'une vue (module `mentions`) : valeurs remplacées,
+/// toutes les valeurs.
 struct Passes {
-    masked: Replacer,
-    /// Balise d'une valeur cochée : identifiant du candidat.
-    masked_owner: HashMap<Tag, usize>,
-    everything: Replacer,
-    /// Balise d'une valeur : identifiant du candidat, et vrai s'il est coché.
-    owner: HashMap<Tag, (usize, bool)>,
+    masked: MaskedFinder,
+    everything: ValueFinder,
+    /// Valeurs cochées (identifiants de candidats).
+    selected: HashSet<usize>,
 }
 
 impl Passes {
@@ -178,7 +168,7 @@ impl Passes {
             .matches(text)
             .into_iter()
             .filter_map(|m| {
-                self.masked_owner.get(&m.tag).map(|&id| Span {
+                self.masked.owner(m.tag).map(|id| Span {
                     start: m.start,
                     end: m.end,
                     candidate: id,
@@ -188,16 +178,14 @@ impl Passes {
             .collect();
         let kept: Vec<Span> = self
             .everything
-            .matches(text)
+            .find(text)
             .into_iter()
-            .filter_map(|m| {
-                let (id, selected) = *self.owner.get(&m.tag)?;
-                (!selected).then_some(Span {
-                    start: m.start,
-                    end: m.end,
-                    candidate: id,
-                    masked: false,
-                })
+            .filter(|f| !self.selected.contains(&f.id))
+            .map(|f| Span {
+                start: f.start,
+                end: f.end,
+                candidate: f.id,
+                masked: false,
             })
             .filter(|k| !spans.iter().any(|s| s.start < k.end && k.start < s.end))
             .collect();
@@ -251,51 +239,27 @@ impl Analysis {
     }
 
     fn passes(&self, session: &Session) -> Passes {
-        // Passe 1 : ce que l'anonymisation remplacerait.
-        let mut applied = session.clone();
-        self.apply_to(&mut applied);
-        let mut masked_owner: HashMap<Tag, usize> = HashMap::new();
-        for c in self.candidates.iter().filter(|c| c.selected) {
-            if let Some(tag) = applied.tag_for(c.kind, &c.value) {
-                masked_owner.entry(tag).or_insert(c.id);
-            }
-        }
-        let masked = Replacer::new(&applied);
-
-        // Passe 2 : toutes les valeurs, pour situer les valeurs gardées.
-        let mut all = Session::new();
-        for n in &self.never {
-            all.add_never(n);
-        }
-        let mut order: Vec<usize> = (0..self.candidates.len()).collect();
-        order.sort_by_key(|&i| self.candidates.get(i).map_or(u8::MAX, |c| rank(c.kind)));
-        let mut owner: HashMap<Tag, (usize, bool)> = HashMap::new();
-        for i in order {
-            let Some(c) = self.candidates.get(i) else {
-                continue;
-            };
-            let Some(tag) = all.intern_with_case(c.kind, &c.value, c.source, c.case_sensitive)
-            else {
-                continue;
-            };
-            for v in &c.variants {
-                all.add_variant(tag, v);
-            }
-            owner.entry(tag).or_insert((c.id, c.selected));
-        }
         Passes {
-            masked,
-            masked_owner,
-            everything: Replacer::new(&all),
-            owner,
+            // Passe 1 : ce que l'anonymisation remplacerait.
+            masked: MaskedFinder::new(self, session),
+            // Passe 2 : toutes les valeurs, pour situer les valeurs gardées.
+            everything: ValueFinder::new(self, |_| true),
+            selected: self
+                .candidates
+                .iter()
+                .filter(|c| c.selected)
+                .map(|c| c.id)
+                .collect(),
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{AnalyzeOptions, Engine, InputFile, NoProgress};
     use anon_core::EntityKind;
+    use anon_replace::{Replacer, SessionExt};
 
     /// Analyse de `text` comme un fichier texte, sans détection automatique
     /// gênante : seules les valeurs ajoutées à la main comptent.

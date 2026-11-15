@@ -164,11 +164,10 @@ fn mesure(profile: Profile) -> (usize, usize) {
         total += n;
         restantes += manquees.len();
         println!(
-            "  {:<28} {:>3} valeurs, {:>2} encore lisibles | risque {:?} | {} avertissements",
+            "  {:<28} {:>3} valeurs, {:>2} encore lisibles, {} avertissements",
             file.name,
             n,
             manquees.len(),
-            anon.report.risk.level,
             anon.report.warnings.len()
         );
         for m in &manquees {

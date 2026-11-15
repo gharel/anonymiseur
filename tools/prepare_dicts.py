@@ -503,7 +503,18 @@ et portent un palier de fréquence (1 = rare … 3 = très courant).
   prénoms ou noms (pierre, rose, marin, blanc, petit…), jours, mois, titres, mots de
   courrier, pays, régions et langues (palier 3).
 """
-    (DATA / "SOURCES.md").write_text(text, encoding="utf-8", newline="\n")
+    # La section écrite par tools/prepare_population.py (après son marqueur) est conservée.
+    path = DATA / "SOURCES.md"
+    if path.exists():
+        old = path.read_text(encoding="utf-8")
+        pos = old.find(POPULATION_MARKER)
+        if pos >= 0:
+            text += "\n" + old[pos:]
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+# Début de la section de SOURCES.md écrite par tools/prepare_population.py.
+POPULATION_MARKER = "<!-- prepare_population.py -->"
 
 
 def main() -> None:

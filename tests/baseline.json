@@ -7,7 +7,7 @@
         "rappel": 1.0
       },
       "AGE": {
-        "attendus": 5,
+        "attendus": 12,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -47,9 +47,9 @@
         "rappel": 1.0
       },
       "LIEU": {
-        "attendus": 16,
+        "attendus": 22,
         "precision": 1.0,
-        "rappel": 0.938
+        "rappel": 0.955
       },
       "MATRICULE": {
         "attendus": 1,
@@ -67,7 +67,7 @@
         "rappel": 1.0
       },
       "NOM": {
-        "attendus": 17,
+        "attendus": 41,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -112,9 +112,9 @@
         "rappel": 1.0
       },
       "_GLOBAL": {
-        "attendus": 281,
-        "precision": 0.986,
-        "rappel": 0.996
+        "attendus": 318,
+        "precision": 0.987,
+        "rappel": 0.997
       }
     },
     "standard": {
@@ -154,7 +154,7 @@
         "rappel": 1.0
       },
       "NOM": {
-        "attendus": 17,
+        "attendus": 41,
         "precision": 1.0,
         "rappel": 1.0
       },
@@ -199,7 +199,7 @@
         "rappel": 1.0
       },
       "_GLOBAL": {
-        "attendus": 188,
+        "attendus": 212,
         "precision": 1.0,
         "rappel": 1.0
       }

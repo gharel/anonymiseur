@@ -36,9 +36,13 @@ Le fichier est versionné dans `assets/faces/` avec ses empreintes (`SHA256SUMS`
 | Donnée | Licence | Source |
 |---|---|---|
 | Fichier des prénoms, fichier des noms de famille, code officiel géographique (communes), Insee | Licence Ouverte 2.0 (Etalab) | https://www.insee.fr |
-| Lexique des formes fléchies du français v7.7, Dicollecte / Grammalecte | MPL-2.0 | https://grammalecte.net |
+| Lexique des formes fléchies du français v7.7, Dicollecte / Grammalecte (dictionnaires, liste de mots des phrases de passe) | MPL-2.0 | https://grammalecte.net |
+| Populations légales des communes, bilan démographique (âges), Base Tous salariés (métiers), Insee | Licence Ouverte 2.0 (Etalab) | https://www.insee.fr |
+| Recensement de la Nouvelle-Calédonie (populations, âges), Insee et ISEE | Licence Ouverte 2.0 (Etalab) | https://www.isee.nc |
+| Communes de Nouvelle-Calédonie et provinces, Gouvernement de la Nouvelle-Calédonie | Licence Ouverte 2.0 (Etalab) | https://data.gouv.nc |
+| Effectifs des professions de santé (RPPS), DREES | Licence Ouverte 2.0 (Etalab) | https://drees.solidarites-sante.gouv.fr |
 
-Éditions et traitements exacts : `crates/anon-dict/data/SOURCES.md`.
+Éditions et traitements exacts : `crates/anon-dict/data/SOURCES.md` et `crates/anon-vault/data/SOURCES.md`.
 
 ## Interface
 

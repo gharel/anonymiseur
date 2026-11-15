@@ -1,6 +1,10 @@
 //! Construit un FST par liste de `data/` dans `OUT_DIR`. Les listes sont déjà
 //! pliées par `tools/prepare_dicts.py` ; le build ne fait que les trier,
 //! dédoublonner (palier maximal) et les compiler.
+//!
+//! Populations des communes (`tools/prepare_population.py`) : un FST dont la clé
+//! est `nom plié + 0x00 + rang de l'homonyme` et la valeur
+//! `population << 16 | rang de la zone dans population_zones.txt`.
 // Les directives `cargo:` passent par la sortie standard.
 #![allow(clippy::print_stdout)]
 
@@ -22,6 +26,57 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("cargo:rerun-if-changed={}", src.display());
         build_one(&src, &out.join(format!("{name}.fst")))?;
     }
+    let zones = manifest.join("data").join("population_zones.txt");
+    let communes = manifest.join("data").join("population_communes.txt");
+    println!("cargo:rerun-if-changed={}", zones.display());
+    println!("cargo:rerun-if-changed={}", communes.display());
+    build_population(&zones, &communes, &out.join("population.fst"))?;
+    Ok(())
+}
+
+/// Lignes utiles d'un fichier de données (ni vides ni commentaires).
+fn data_lines(text: &str) -> impl Iterator<Item = &str> {
+    text.lines()
+        .map(|l| l.trim_end_matches('\r'))
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+}
+
+fn build_population(zones: &Path, communes: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+    let zones_text = fs::read_to_string(zones)?;
+    let mut zone_index: BTreeMap<&str, u64> = BTreeMap::new();
+    for (i, line) in data_lines(&zones_text).enumerate() {
+        let code = line.split('\t').next().ok_or("zone sans code")?;
+        zone_index.insert(code, u64::try_from(i)?);
+    }
+    let text = fs::read_to_string(communes)?;
+    let mut by_name: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
+    for line in data_lines(&text) {
+        let mut f = line.split('\t');
+        let (Some(name), Some(pop), Some(zone)) = (f.next(), f.next(), f.next()) else {
+            return Err(format!("ligne de commune invalide : {line}").into());
+        };
+        let pop: u64 = pop.parse()?;
+        if pop > u64::from(u32::MAX) {
+            return Err("population hors limites".into());
+        }
+        let zone = *zone_index.get(zone).ok_or("zone inconnue")?;
+        by_name.entry(name).or_default().push(pop << 16 | zone);
+    }
+    let mut entries: BTreeMap<Vec<u8>, u64> = BTreeMap::new();
+    for (name, values) in by_name {
+        for (rank, value) in values.into_iter().enumerate() {
+            let mut key = name.as_bytes().to_vec();
+            key.push(0);
+            key.push(u8::try_from(rank)?);
+            entries.insert(key, value);
+        }
+    }
+    let writer = BufWriter::new(fs::File::create(dst)?);
+    let mut builder = MapBuilder::new(writer)?;
+    for (key, value) in &entries {
+        builder.insert(key, *value)?;
+    }
+    builder.finish()?;
     Ok(())
 }
 

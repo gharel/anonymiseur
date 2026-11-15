@@ -10,7 +10,8 @@
 //!   remplacements sur les runs ;
 //! - `rules` : listes blanches de ce qui passe par `tr` ou est neutralisé ;
 //! - `part`, `ooxml`, `xlsx` : spécificités OOXML ;
-//! - `textfile` : texte brut.
+//! - `textfile` : texte brut ;
+//! - `tables` : lecture des feuilles de calcul en tableaux (`Handler::tables`).
 #![cfg_attr(not(test), deny(clippy::indexing_slicing))]
 
 mod limits;
@@ -19,6 +20,7 @@ mod package;
 mod para;
 mod part;
 pub mod rules;
+mod tables;
 mod textfile;
 mod xlsx;
 mod xml;
@@ -26,8 +28,8 @@ mod xml;
 use anon_core::Handler;
 
 pub use limits::{
-    DEEP_SCAN_CHUNK, MAX_EMBED_DEPTH, MAX_ENTRIES, MAX_ENTRY_UNCOMPRESSED, MAX_TOTAL_UNCOMPRESSED,
-    MAX_XML_DEPTH,
+    DEEP_SCAN_CHUNK, MAX_EMBED_DEPTH, MAX_ENTRIES, MAX_ENTRY_UNCOMPRESSED, MAX_TABLE_CELLS,
+    MAX_TOTAL_UNCOMPRESSED, MAX_XML_DEPTH,
 };
 pub use ooxml::{DocxHandler, OdfHandler, PptxHandler, XlsxHandler};
 pub use textfile::{CsvHandler, TextHandler};

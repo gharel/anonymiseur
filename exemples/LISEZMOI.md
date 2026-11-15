@@ -12,6 +12,7 @@ La vérité terrain lisible par les tests est dans `attendu.json` : toute valeur
 |---|---|
 | `contrat-prestation.docx` | nom coupé entre deux mises en forme, en-tête, pied de page, commentaire, révision suivie, lien `mailto:`, propriétés |
 | `fichier-clients.xlsx` | tableau Excel, téléphones et montants saisis en nombres, formule, commentaire de cellule, graphique, 2e feuille |
+| `patients.xlsx` | évaluation des trois critères : tableau de patients où un groupe partage le même diagnostic et où trois lignes sont uniques |
 | `presentation-projet.pptx` | diapositives, notes du présentateur, graphique, image contenant du texte |
 | `facture.pdf` | PDF avec texte, métadonnées |
 | `courrier-scanne.pdf`, `carte-visite.png` | images seules : aucun texte extractible, OCR nécessaire |

@@ -231,6 +231,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "anon-assess"
+version = "0.1.1"
+dependencies = [
+ "anon-core",
+ "anon-dict",
+ "proptest",
+]
+
+[[package]]
 name = "anon-core"
 version = "0.1.1"
 dependencies = [

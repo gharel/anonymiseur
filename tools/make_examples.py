@@ -549,6 +549,68 @@ def construire_xlsx(d: Fiche, chemin: Path) -> None:
     normaliser_zip(chemin)
 
 
+# Tableau de patients (évaluation des trois critères, V2)
+# Âge, commune, code postal, sexe : indices ; diagnostic : donnée de santé.
+# Un groupe partage le même diagnostic (déduction, exemple 12 des lignes
+# directrices du CEPD) ; trois lignes sont uniques (isolement). Les âges évitent
+# les petits nombres de la structure du classeur (numéros de ligne, largeurs) :
+# le contrôle de fuite les y trouverait.
+PATIENTS_GROUPES = [
+    # (âge, commune, code postal, sexe, diagnostics : un par ligne)
+    (54, "Nouméa", "98800", "M", ["Diabète de type 2"] * 5),
+    (41, "Dumbéa", "98835", "F", ["Asthme", "Migraine", "Hypertension", "Asthme", "Eczéma", "Anémie"]),
+    (62, "Païta", "98890", "M", ["Arthrose", "Hypertension", "Diabète de type 2", "Lombalgie", "Asthme"]),
+    (35, "Nouméa", "98800", "F", ["Migraine", "Anémie", "Hypothyroïdie", "Eczéma", "Lombalgie"]),
+]
+# Noms fictifs des patients (identifiant direct, à masquer dans tous les cas).
+PATIENTS_NOMS = [
+    "Durand", "Lefebvre", "Moreau", "Fournier", "Morel", "Girard", "Mercier", "Guerin",
+    "Boyer", "Chevalier", "Legrand", "Gauthier", "Perrin", "Roussel", "Lambert", "Barbier",
+    "Dupuis", "Leroy", "Faure", "Rousseau", "Lemaire", "Masson", "Brunet", "Duval",
+]
+PATIENTS_UNIQUES = [
+    (88, "Farino", "98881", "F", "Insuffisance cardiaque"),
+    (47, "Lifou", "98820", "M", "Asthme"),
+    (73, "Bourail", "98870", "F", "Arthrose"),
+]
+
+
+def construire_patients(d: Fiche, chemin: Path) -> None:
+    from openpyxl import Workbook
+
+    E = d.e
+    wb = Workbook()
+    wb.properties.creator = "Exemple"
+    wb.properties.title = "Patients fictifs"
+    wb.properties.created = wb.properties.modified = DATE0
+    ws = wb.active
+    ws.title = "Patients"
+    ws.append(["Nom", "Âge", "Commune", "Code postal", "Sexe", "Diagnostic"])
+    lignes = [
+        (age, commune, cp, sexe, diag)
+        for age, commune, cp, sexe, diags in PATIENTS_GROUPES
+        for diag in diags
+    ]
+    # Les lignes uniques sont intercalées, comme dans un vrai registre.
+    for i, unique in enumerate(PATIENTS_UNIQUES):
+        lignes.insert(4 + 7 * i, unique)
+    if len(lignes) != len(PATIENTS_NOMS):
+        raise RuntimeError("un nom par patient")
+    for nom, (age, commune, cp, sexe, diag) in zip(PATIENTS_NOMS, lignes):
+        E("NOM", nom, "cellule")
+        E("AGE", str(age), "cellule")
+        E("LIEU", commune, "cellule")
+        ws.append([nom, age, commune, cp, sexe, diag])
+    for col, w in zip("ABCDEF", (14, 8, 14, 12, 8, 26)):
+        ws.column_dimensions[col].width = w
+    # La mention reste hors du tableau évalué : feuille à part.
+    ws2 = wb.create_sheet("À lire")
+    ws2["A1"] = MENTION
+    ws2.column_dimensions["A"].width = 60
+    wb.save(chemin)
+    normaliser_zip(chemin)
+
+
 # ---------------------------------------------------------------------------
 # PPTX
 # ---------------------------------------------------------------------------
@@ -1043,6 +1105,7 @@ La vérité terrain lisible par les tests est dans `attendu.json` : toute valeur
 |---|---|
 | `contrat-prestation.docx` | nom coupé entre deux mises en forme, en-tête, pied de page, commentaire, révision suivie, lien `mailto:`, propriétés |
 | `fichier-clients.xlsx` | tableau Excel, téléphones et montants saisis en nombres, formule, commentaire de cellule, graphique, 2e feuille |
+| `patients.xlsx` | évaluation des trois critères : tableau de patients où un groupe partage le même diagnostic et où trois lignes sont uniques |
 | `presentation-projet.pptx` | diapositives, notes du présentateur, graphique, image contenant du texte |
 | `facture.pdf` | PDF avec texte, métadonnées |
 | `courrier-scanne.pdf`, `carte-visite.png` | images seules : aucun texte extractible, OCR nécessaire |
@@ -1313,6 +1376,8 @@ def main() -> int:
          "Nom coupé entre deux runs, en-tête, pied, commentaire, révision suivie, lien mailto, propriétés, RIDET, IBAN, SIRET, BP."),
         ("fichier-clients.xlsx", "fr", construire_xlsx,
          "Objet Table, téléphones et montants numériques, formule avec littéral nominatif, commentaire de cellule, graphique, feuille libre ; pas de TCD."),
+        ("patients.xlsx", "fr", construire_patients,
+         "Tableau de patients fictifs (nom, âge, commune, code postal, sexe, diagnostic) : un groupe au diagnostic commun, trois lignes uniques ; mention sur une feuille à part."),
         ("presentation-projet.pptx", "fr", construire_pptx,
          "Noms d'équipe, notes du présentateur, graphique avec noms en catégories (emplacement corps), image contenant du texte (OCR)."),
         ("facture.pdf", "fr", construire_facture,

@@ -19,3 +19,7 @@ pub const MAX_XML_DEPTH: usize = 1024;
 
 /// Taille visée d'un bloc renvoyé par `deep_scan` (octets).
 pub const DEEP_SCAN_CHUNK: usize = 64 * 1024;
+
+/// Nombre maximal de cellules (lignes × colonnes) d'un tableau lu par
+/// `Handler::tables`, contre les feuilles piégées (cellule isolée très loin).
+pub const MAX_TABLE_CELLS: usize = 10_000_000;

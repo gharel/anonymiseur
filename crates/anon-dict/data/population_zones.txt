@@ -1,0 +1,108 @@
+# Zones (département, province, collectivité). Généré par tools/prepare_population.py.
+# code<TAB>territoire<TAB>zone<TAB>région
+01	FR	Ain	Auvergne-Rhône-Alpes
+02	FR	Aisne	Hauts-de-France
+03	FR	Allier	Auvergne-Rhône-Alpes
+04	FR	Alpes-de-Haute-Provence	Provence-Alpes-Côte d'Azur
+05	FR	Hautes-Alpes	Provence-Alpes-Côte d'Azur
+06	FR	Alpes-Maritimes	Provence-Alpes-Côte d'Azur
+07	FR	Ardèche	Auvergne-Rhône-Alpes
+08	FR	Ardennes	Grand Est
+09	FR	Ariège	Occitanie
+10	FR	Aube	Grand Est
+11	FR	Aude	Occitanie
+12	FR	Aveyron	Occitanie
+13	FR	Bouches-du-Rhône	Provence-Alpes-Côte d'Azur
+14	FR	Calvados	Normandie
+15	FR	Cantal	Auvergne-Rhône-Alpes
+16	FR	Charente	Nouvelle-Aquitaine
+17	FR	Charente-Maritime	Nouvelle-Aquitaine
+18	FR	Cher	Centre-Val de Loire
+19	FR	Corrèze	Nouvelle-Aquitaine
+21	FR	Côte-d'Or	Bourgogne-Franche-Comté
+22	FR	Côtes-d'Armor	Bretagne
+23	FR	Creuse	Nouvelle-Aquitaine
+24	FR	Dordogne	Nouvelle-Aquitaine
+25	FR	Doubs	Bourgogne-Franche-Comté
+26	FR	Drôme	Auvergne-Rhône-Alpes
+27	FR	Eure	Normandie
+28	FR	Eure-et-Loir	Centre-Val de Loire
+29	FR	Finistère	Bretagne
+2A	FR	Corse-du-Sud	Corse
+2B	FR	Haute-Corse	Corse
+30	FR	Gard	Occitanie
+31	FR	Haute-Garonne	Occitanie
+32	FR	Gers	Occitanie
+33	FR	Gironde	Nouvelle-Aquitaine
+34	FR	Hérault	Occitanie
+35	FR	Ille-et-Vilaine	Bretagne
+36	FR	Indre	Centre-Val de Loire
+37	FR	Indre-et-Loire	Centre-Val de Loire
+38	FR	Isère	Auvergne-Rhône-Alpes
+39	FR	Jura	Bourgogne-Franche-Comté
+40	FR	Landes	Nouvelle-Aquitaine
+41	FR	Loir-et-Cher	Centre-Val de Loire
+42	FR	Loire	Auvergne-Rhône-Alpes
+43	FR	Haute-Loire	Auvergne-Rhône-Alpes
+44	FR	Loire-Atlantique	Pays de la Loire
+45	FR	Loiret	Centre-Val de Loire
+46	FR	Lot	Occitanie
+47	FR	Lot-et-Garonne	Nouvelle-Aquitaine
+48	FR	Lozère	Occitanie
+49	FR	Maine-et-Loire	Pays de la Loire
+50	FR	Manche	Normandie
+51	FR	Marne	Grand Est
+52	FR	Haute-Marne	Grand Est
+53	FR	Mayenne	Pays de la Loire
+54	FR	Meurthe-et-Moselle	Grand Est
+55	FR	Meuse	Grand Est
+56	FR	Morbihan	Bretagne
+57	FR	Moselle	Grand Est
+58	FR	Nièvre	Bourgogne-Franche-Comté
+59	FR	Nord	Hauts-de-France
+60	FR	Oise	Hauts-de-France
+61	FR	Orne	Normandie
+62	FR	Pas-de-Calais	Hauts-de-France
+63	FR	Puy-de-Dôme	Auvergne-Rhône-Alpes
+64	FR	Pyrénées-Atlantiques	Nouvelle-Aquitaine
+65	FR	Hautes-Pyrénées	Occitanie
+66	FR	Pyrénées-Orientales	Occitanie
+67	FR	Bas-Rhin	Grand Est
+68	FR	Haut-Rhin	Grand Est
+69	FR	Rhône	Auvergne-Rhône-Alpes
+70	FR	Haute-Saône	Bourgogne-Franche-Comté
+71	FR	Saône-et-Loire	Bourgogne-Franche-Comté
+72	FR	Sarthe	Pays de la Loire
+73	FR	Savoie	Auvergne-Rhône-Alpes
+74	FR	Haute-Savoie	Auvergne-Rhône-Alpes
+75	FR	Paris	Île-de-France
+76	FR	Seine-Maritime	Normandie
+77	FR	Seine-et-Marne	Île-de-France
+78	FR	Yvelines	Île-de-France
+79	FR	Deux-Sèvres	Nouvelle-Aquitaine
+80	FR	Somme	Hauts-de-France
+81	FR	Tarn	Occitanie
+82	FR	Tarn-et-Garonne	Occitanie
+83	FR	Var	Provence-Alpes-Côte d'Azur
+84	FR	Vaucluse	Provence-Alpes-Côte d'Azur
+85	FR	Vendée	Pays de la Loire
+86	FR	Vienne	Nouvelle-Aquitaine
+87	FR	Haute-Vienne	Nouvelle-Aquitaine
+88	FR	Vosges	Grand Est
+89	FR	Yonne	Bourgogne-Franche-Comté
+90	FR	Territoire de Belfort	Bourgogne-Franche-Comté
+91	FR	Essonne	Île-de-France
+92	FR	Hauts-de-Seine	Île-de-France
+93	FR	Seine-Saint-Denis	Île-de-France
+94	FR	Val-de-Marne	Île-de-France
+95	FR	Val-d'Oise	Île-de-France
+971	FR	Guadeloupe	Guadeloupe
+972	FR	Martinique	Martinique
+973	FR	Guyane	Guyane
+974	FR	La Réunion	La Réunion
+975	FR	Saint-Pierre-et-Miquelon	Saint-Pierre-et-Miquelon
+977	FR	Saint-Barthélemy	Saint-Barthélemy
+978	FR	Saint-Martin	Saint-Martin
+NC-ILES	NC	province des îles Loyauté	Nouvelle-Calédonie
+NC-NORD	NC	province Nord	Nouvelle-Calédonie
+NC-SUD	NC	province Sud	Nouvelle-Calédonie

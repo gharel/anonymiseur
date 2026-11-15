@@ -52,7 +52,7 @@ Espace de travail Cargo. Les dépendances ne vont que vers le bas de cette liste
 | `crates/anon-office` | Gestionnaires Word/Excel/PowerPoint (OOXML), ODF, texte brut. Pur Rust. |
 | `crates/anon-pdf` | PDF, images, OCR (MuPDF + Tesseract). Seul crate autorisé à utiliser `unsafe` (FFI). |
 | `crates/anon-ner` | Détection de noms par modèle ONNX. Optionnel (fonctionnalité `ia`). |
-| `crates/anon-assess` | (À venir.) Évaluation des trois critères du CEPD : tableaux, textes, images. |
+| `crates/anon-assess` | Évaluation des trois critères du CEPD : tableaux, textes, images. |
 | `crates/anon-detect` | Règles à clé, colonnes de tableur, quasi-identifiants, listes, fusion des détections. |
 | `crates/anon-dict` | Dictionnaires embarqués (prénoms, noms, communes) et leur détecteur. |
 | `crates/anon-replace` | Normalisation, `Replacer`, `Restorer`, enregistrement des valeurs dans la session. |

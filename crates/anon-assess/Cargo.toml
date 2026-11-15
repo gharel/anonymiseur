@@ -1,0 +1,17 @@
+[package]
+name = "anon-assess"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anon-core = { version = "0.1.1", path = "../anon-core" }
+anon-dict = { version = "0.1.1", path = "../anon-dict" }
+
+[dev-dependencies]
+proptest = "1.12.0"

@@ -1,0 +1,426 @@
+# Effectifs par métier (150 métiers). Généré par tools/prepare_population.py.
+# intitulé plié<TAB>effectif France entière<TAB>catégorie plus large
+accompagnant educatif et social	165835	professionnel de santé
+accompagnante educative et sociale	165835	professionnelle de santé
+acheteur	103095	professionnel du commerce
+acheteuse	103095	professionnelle du commerce
+adjoint administratif	366698	professionnel de l'administration
+adjointe administrative	366698	professionnelle de l'administration
+administrateur reseau	99056	professionnel de l'informatique
+administrateur systemes	99056	professionnel de l'informatique
+administratrice reseau	99056	professionnelle de l'informatique
+administratrice systemes	99056	professionnelle de l'informatique
+agent administratif	255410	professionnel de l'administration
+agent d'accueil	93281	professionnel de l'administration
+agent d'entretien	494276	professionnel de la propreté
+agent d'entretien des batiments	123137	professionnel du bâtiment
+agent de maintenance des batiments	123137	professionnel du bâtiment
+agent de nettoyage	371139	professionnel de la propreté
+agent de proprete	371139	professionnel de la propreté
+agent de securite	183916	professionnel de la sécurité
+agent de service hospitalier	266599	professionnel de santé
+agent de voyages	37593	professionnel du commerce
+agent territorial specialise des ecoles maternelles	128709	professionnel de l'enseignement
+agente administrative	255410	professionnelle de l'administration
+agente d'accueil	93281	professionnelle de l'administration
+agente d'entretien	494276	professionnelle de la propreté
+agente d'entretien des batiments	123137	professionnelle du bâtiment
+agente de maintenance des batiments	123137	professionnelle du bâtiment
+agente de nettoyage	371139	professionnelle de la propreté
+agente de proprete	371139	professionnelle de la propreté
+agente de securite	183916	professionnelle de la sécurité
+agente de service hospitalier	266599	professionnelle de santé
+agente de voyages	37593	professionnelle du commerce
+agente territoriale specialisee des ecoles maternelles	128709	professionnelle de l'enseignement
+aide a domicile	238068	professionnel du social
+aide comptable	40774	professionnel de la gestion
+aide de cuisine	299515	professionnel de l'hôtellerie-restauration
+aide medico psychologique	165835	professionnel de santé
+aide soignant	397675	professionnel de santé
+aide soignante	397675	professionnelle de santé
+ambulancier	59046	professionnel de santé
+ambulanciere	59046	professionnelle de santé
+animateur	114066	professionnel du social
+animateur socioculturel	114066	professionnel du social
+animatrice	114066	professionnelle du social
+animatrice socioculturelle	114066	professionnelle du social
+archiviste	23529	professionnel de la communication
+ash	266599	professionnel de santé
+assistant commercial	173875	professionnel du commerce
+assistant d'education	72866	professionnel de l'enseignement
+assistant de direction	83174	professionnel de l'administration
+assistant de service social	42750	professionnel du social
+assistant dentaire	56761	professionnel de santé
+assistant medical	56761	professionnel de santé
+assistant social	42750	professionnel du social
+assistante commerciale	173875	professionnelle du commerce
+assistante d'education	72866	professionnelle de l'enseignement
+assistante de direction	83174	professionnelle de l'administration
+assistante de service social	42750	professionnelle du social
+assistante dentaire	56761	professionnelle de santé
+assistante medicale	56761	professionnelle de santé
+assistante sociale	42750	professionnelle du social
+atsem	128709	professionnel de l'enseignement
+auxiliaire de puericulture	89472	professionnel de santé
+auxiliaire de vie	238068	professionnel du social
+bibliothecaire	23529	professionnel de la communication
+boucher	34231	artisan de l'alimentation
+bouchere	34231	artisane de l'alimentation
+boulanger	77748	artisan de l'alimentation
+boulangere	77748	artisane de l'alimentation
+cadre de sante	44007	professionnel de santé
+cadre infirmier	44007	professionnel de santé
+cadre infirmiere	44007	professionnelle de santé
+caissier	124764	professionnel du commerce
+caissiere	124764	professionnelle du commerce
+cariste	156912	professionnel du transport et de la logistique
+carrossier	34677	professionnel de l'industrie
+carrossiere	34677	professionnelle de l'industrie
+charcutier	5545	artisan de l'alimentation
+charcutiere	5545	artisane de l'alimentation
+charge d'etudes	113520	professionnel de la gestion
+charge d'etudes economiques	113520	professionnel de la gestion
+charge de clientele bancaire	109173	professionnel de la banque et de l'assurance
+charge de communication	57324	professionnel de la communication
+charge de recherche	17100	professionnel de l'enseignement
+charge de recrutement	105910	professionnel de la gestion
+chargee d'etudes	113520	professionnelle de la gestion
+chargee d'etudes economiques	113520	professionnelle de la gestion
+chargee de clientele bancaire	109173	professionnelle de la banque et de l'assurance
+chargee de communication	57324	professionnelle de la communication
+chargee de recherche	17100	professionnelle de l'enseignement
+chargee de recrutement	105910	professionnelle de la gestion
+charpentier	21289	professionnel du bâtiment
+charpentiere	21289	professionnelle du bâtiment
+chaudronnier	31190	professionnel de l'industrie
+chaudronniere	31190	professionnelle de l'industrie
+chauffagiste	77739	professionnel du bâtiment
+chauffeur de bus	116962	professionnel du transport et de la logistique
+chauffeur livreur	234625	professionnel du transport et de la logistique
+chauffeur routier	361191	professionnel du transport et de la logistique
+chauffeuse de bus	116962	professionnelle du transport et de la logistique
+chauffeuse livreuse	234625	professionnelle du transport et de la logistique
+chauffeuse routiere	361191	professionnelle du transport et de la logistique
+chef cuisinier	39913	professionnel de l'hôtellerie-restauration
+chef d'entreprise	330636	dirigeant d'entreprise
+chef d'etablissement	19001	professionnel de l'enseignement
+chef de chantier	67203	professionnel du bâtiment
+chef de cuisine	39913	professionnel de l'hôtellerie-restauration
+chef de produit	103095	professionnel du commerce
+chef de projet informatique	196110	professionnel de l'informatique
+chef de rayon	94198	professionnel du commerce
+cheffe cuisiniere	39913	professionnelle de l'hôtellerie-restauration
+cheffe d'entreprise	330636	dirigeante d'entreprise
+cheffe d'etablissement	19001	professionnelle de l'enseignement
+cheffe de chantier	67203	professionnelle du bâtiment
+cheffe de cuisine	39913	professionnelle de l'hôtellerie-restauration
+cheffe de produit	103095	professionnelle du commerce
+cheffe de projet informatique	196110	professionnelle de l'informatique
+cheffe de rayon	94198	professionnelle du commerce
+chercheur	17100	professionnel de l'enseignement
+chercheuse	17100	professionnelle de l'enseignement
+chirurgien dentiste	48690	professionnel de santé
+chirurgienne dentiste	48690	professionnelle de santé
+coiffeur	79694	professionnel des services à la personne
+coiffeuse	79694	professionnelle des services à la personne
+commercial	182362	professionnel du commerce
+commerciale	182362	professionnelle du commerce
+commis de cuisine	190082	professionnel de l'hôtellerie-restauration
+comptable	361790	professionnel de la gestion
+concierge	47189	professionnel des services à la personne
+conducteur d'engins	53682	professionnel du bâtiment
+conducteur de bus	116962	professionnel du transport et de la logistique
+conducteur de car	116962	professionnel du transport et de la logistique
+conducteur de metro	23213	professionnel du transport et de la logistique
+conducteur de train	23213	professionnel du transport et de la logistique
+conducteur de tramway	23213	professionnel du transport et de la logistique
+conducteur de travaux	128529	professionnel du bâtiment
+conducteur routier	361191	professionnel du transport et de la logistique
+conductrice d'engins	53682	professionnelle du bâtiment
+conductrice de bus	116962	professionnelle du transport et de la logistique
+conductrice de car	116962	professionnelle du transport et de la logistique
+conductrice de metro	23213	professionnelle du transport et de la logistique
+conductrice de train	23213	professionnelle du transport et de la logistique
+conductrice de tramway	23213	professionnelle du transport et de la logistique
+conductrice de travaux	128529	professionnelle du bâtiment
+conductrice routiere	361191	professionnelle du transport et de la logistique
+conseiller bancaire	109173	professionnel de la banque et de l'assurance
+conseiller en assurance	53041	professionnel de la banque et de l'assurance
+conseiller en economie sociale familiale	19868	professionnel du social
+conseiller principal d'education	12147	professionnel de l'enseignement
+conseillere bancaire	109173	professionnelle de la banque et de l'assurance
+conseillere en assurance	53041	professionnelle de la banque et de l'assurance
+conseillere en economie sociale familiale	19868	professionnelle du social
+conseillere principale d'education	12147	professionnelle de l'enseignement
+controleur de gestion	150748	professionnel de la gestion
+controleur de train	9917	professionnel du transport et de la logistique
+controleur des transports	9917	professionnel du transport et de la logistique
+controleuse de gestion	150748	professionnelle de la gestion
+controleuse de train	9917	professionnelle du transport et de la logistique
+controleuse des transports	9917	professionnelle du transport et de la logistique
+coursier	234625	professionnel du transport et de la logistique
+coursiere	234625	professionnelle du transport et de la logistique
+couvreur	31047	professionnel du bâtiment
+couvreuse	31047	professionnelle du bâtiment
+cpe	12147	professionnel de l'enseignement
+cuisinier	190082	professionnel de l'hôtellerie-restauration
+cuisiniere	190082	professionnelle de l'hôtellerie-restauration
+dentiste	48690	professionnel de santé
+dessinateur	56261	professionnel du bâtiment
+dessinateur projeteur	56261	professionnel du bâtiment
+dessinatrice	56261	professionnelle du bâtiment
+dessinatrice projeteuse	56261	professionnelle du bâtiment
+developpeur	452092	professionnel de l'informatique
+developpeur informatique	452092	professionnel de l'informatique
+developpeuse	452092	professionnelle de l'informatique
+developpeuse informatique	452092	professionnelle de l'informatique
+directeur commercial	296333	professionnel du commerce
+directeur d'agence bancaire	31321	professionnel de la banque et de l'assurance
+directeur de centre socioculturel	9779	professionnel du social
+directeur de magasin	93288	professionnel du commerce
+directeur de recherche	17100	professionnel de l'enseignement
+directeur financier	177568	professionnel de la gestion
+directeur general	26710	dirigeant d'entreprise
+directeur technique	24101	professionnel de l'ingénierie
+directrice commerciale	296333	professionnelle du commerce
+directrice d'agence bancaire	31321	professionnelle de la banque et de l'assurance
+directrice de centre socioculturel	9779	professionnelle du social
+directrice de magasin	93288	professionnelle du commerce
+directrice de recherche	17100	professionnelle de l'enseignement
+directrice financiere	177568	professionnelle de la gestion
+directrice generale	26710	dirigeante d'entreprise
+directrice technique	24101	professionnelle de l'ingénierie
+docker	6312	professionnel du transport et de la logistique
+doctorant	27184	professionnel de l'enseignement
+doctorante	27184	professionnelle de l'enseignement
+educateur de jeunes enfants	29221	professionnel du social
+educateur specialise	127695	professionnel du social
+educateur technique specialise	22270	professionnel du social
+educatrice de jeunes enfants	29221	professionnelle du social
+educatrice specialisee	127695	professionnelle du social
+educatrice technique specialisee	22270	professionnelle du social
+electricien	69199	professionnel du bâtiment
+electricienne	69199	professionnelle du bâtiment
+electromecanicien	37149	professionnel de l'industrie
+electromecanicienne	37149	professionnelle de l'industrie
+employe administratif	504607	professionnel de l'administration
+employe d'etage	66266	professionnel de l'hôtellerie-restauration
+employe de commerce	418872	professionnel du commerce
+employe de libre service	418872	professionnel du commerce
+employe de rayon	418872	professionnel du commerce
+employe polyvalent de restauration	299515	professionnel de l'hôtellerie-restauration
+employee administrative	504607	professionnelle de l'administration
+employee d'etage	66266	professionnelle de l'hôtellerie-restauration
+employee de commerce	418872	professionnelle du commerce
+employee de libre service	418872	professionnelle du commerce
+employee de rayon	418872	professionnelle du commerce
+employee polyvalente de restauration	299515	professionnelle de l'hôtellerie-restauration
+enseignant	956641	professionnel de l'enseignement
+enseignant chercheur	62919	professionnel de l'enseignement
+enseignante	956641	professionnelle de l'enseignement
+enseignante chercheuse	62919	professionnelle de l'enseignement
+estheticien	40078	professionnel des services à la personne
+estheticienne	40078	professionnelle des services à la personne
+femme de chambre	66266	professionnelle de l'hôtellerie-restauration
+fleuriste	23307	professionnel du commerce
+formateur	86125	professionnel de l'enseignement
+formatrice	86125	professionnelle de l'enseignement
+gardien d'immeuble	47189	professionnel des services à la personne
+gardien de la paix	146820	professionnel de la sécurité
+gardienne d'immeuble	47189	professionnelle des services à la personne
+gardienne de la paix	146820	professionnelle de la sécurité
+geometre	11990	professionnel du bâtiment
+gerant	330636	dirigeant d'entreprise
+gerante	330636	dirigeante d'entreprise
+gestionnaire de paie	56918	professionnel de la gestion
+gestionnaire de sinistres	53041	professionnel de la banque et de l'assurance
+gestionnaire rh	56918	professionnel de la gestion
+graphiste	29279	professionnel de la communication
+hote d'accueil	93281	professionnel de l'administration
+hotesse d'accueil	93281	professionnelle de l'administration
+hotesse de l'air	17371	professionnelle du transport et de la logistique
+infirmier	607644	professionnel de santé
+infirmier diplome d'etat	607644	professionnel de santé
+infirmiere	607644	professionnelle de santé
+infirmiere diplomee d'etat	607644	professionnelle de santé
+informaticien	902331	professionnel de l'informatique
+informaticienne	902331	professionnelle de l'informatique
+ingenieur	1770447	professionnel de l'ingénierie
+ingenieur commercial	125447	professionnel de l'ingénierie
+ingenieur d'affaires	125447	professionnel de l'ingénierie
+ingenieur d'etudes	38123	professionnel de l'enseignement
+ingenieur de recherche	38123	professionnel de l'enseignement
+ingenieur environnement	29355	professionnel de l'ingénierie
+ingenieur qualite	63785	professionnel de l'ingénierie
+ingenieur reseau	99056	professionnel de l'informatique
+ingenieure	1770447	professionnelle de l'ingénierie
+ingenieure commerciale	125447	professionnelle de l'ingénierie
+ingenieure d'affaires	125447	professionnelle de l'ingénierie
+ingenieure d'etudes	38123	professionnelle de l'enseignement
+ingenieure de recherche	38123	professionnelle de l'enseignement
+ingenieure environnement	29355	professionnelle de l'ingénierie
+ingenieure qualite	63785	professionnelle de l'ingénierie
+ingenieure reseau	99056	professionnelle de l'informatique
+instituteur	368624	professionnel de l'enseignement
+institutrice	368624	professionnelle de l'enseignement
+jardinier	73063	professionnel des espaces verts et de l'agriculture
+jardiniere	73063	professionnelle des espaces verts et de l'agriculture
+journaliste	32287	professionnel de la communication
+juge	10918	professionnel du droit
+juriste	54470	professionnel du droit
+juriste d'entreprise	54470	professionnel du droit
+kine	111384	professionnel de santé
+kinesitherapeute	111384	professionnel de santé
+livreur	234625	professionnel du transport et de la logistique
+livreuse	234625	professionnelle du transport et de la logistique
+logisticien	58823	professionnel du transport et de la logistique
+logisticienne	58823	professionnelle du transport et de la logistique
+macon	141216	professionnel du bâtiment
+maconne	141216	professionnelle du bâtiment
+magasinier	184807	professionnel du transport et de la logistique
+magasiniere	184807	professionnelle du transport et de la logistique
+magistrat	10918	professionnel du droit
+magistrate	10918	professionnelle du droit
+maieuticien	26428	professionnel de santé
+maitre d'hotel	39756	professionnel de l'hôtellerie-restauration
+maitre de conferences	62919	professionnel de l'enseignement
+maitresse d'hotel	39756	professionnelle de l'hôtellerie-restauration
+maitresse de conferences	62919	professionnelle de l'enseignement
+manipulateur radio	90203	professionnel de santé
+manipulatrice radio	90203	professionnelle de santé
+manutentionnaire	104592	professionnel du transport et de la logistique
+masseur kinesitherapeute	111384	professionnel de santé
+masseuse kinesitherapeute	111384	professionnelle de santé
+mecanicien	136502	professionnel de l'industrie
+mecanicien automobile	136502	professionnel de l'industrie
+mecanicien de maintenance	91298	professionnel de l'industrie
+mecanicienne	136502	professionnelle de l'industrie
+mecanicienne automobile	136502	professionnelle de l'industrie
+mecanicienne de maintenance	91298	professionnelle de l'industrie
+medecin	242185	professionnel de santé
+medecin hospitalier	82687	professionnel de santé
+medecin hospitaliere	82687	professionnelle de santé
+menuisier	56471	professionnel du bâtiment
+menuisiere	56471	professionnelle du bâtiment
+metallier	29200	professionnel du bâtiment
+metalliere	29200	professionnelle du bâtiment
+moniteur d'atelier	22270	professionnel du social
+moniteur d'auto ecole	17278	professionnel de l'enseignement
+moniteur d'ecole de conduite	17278	professionnel de l'enseignement
+moniteur educateur	39153	professionnel du social
+monitrice d'atelier	22270	professionnelle du social
+monitrice d'auto ecole	17278	professionnelle de l'enseignement
+monitrice d'ecole de conduite	17278	professionnelle de l'enseignement
+monitrice educatrice	39153	professionnelle du social
+nettoyeur	371139	professionnel de la propreté
+nettoyeuse	371139	professionnelle de la propreté
+opticien	21183	professionnel de santé
+opticien lunetier	21183	professionnel de santé
+opticienne	21183	professionnelle de santé
+opticienne lunetiere	21183	professionnelle de santé
+ouvrier agricole	82767	professionnel des espaces verts et de l'agriculture
+ouvriere agricole	82767	professionnelle des espaces verts et de l'agriculture
+patissier	77748	artisan de l'alimentation
+patissiere	77748	artisane de l'alimentation
+paysagiste	73063	professionnel des espaces verts et de l'agriculture
+pdg	26710	dirigeant d'entreprise
+peintre en batiment	72299	professionnel du bâtiment
+pharmacien	75335	professionnel de santé
+pharmacienne	75335	professionnelle de santé
+pilote de ligne	11168	professionnel du transport et de la logistique
+plombier	77739	professionnel du bâtiment
+plombiere	77739	professionnelle du bâtiment
+plongeur	299515	professionnel de l'hôtellerie-restauration
+plongeuse	299515	professionnelle de l'hôtellerie-restauration
+policier	146820	professionnel de la sécurité
+policier municipal	24383	professionnel de la sécurité
+policiere	146820	professionnelle de la sécurité
+policiere municipale	24383	professionnelle de la sécurité
+pompier	34676	professionnel de la sécurité
+pompiere	34676	professionnelle de la sécurité
+praticien hospitalier	82687	professionnel de santé
+praticienne hospitaliere	82687	professionnelle de santé
+preparateur de commandes	189454	professionnel du transport et de la logistique
+preparateur en pharmacie	70776	professionnel de santé
+preparatrice de commandes	189454	professionnelle du transport et de la logistique
+preparatrice en pharmacie	70776	professionnelle de santé
+principal de college	19001	professionnel de l'enseignement
+principale de college	19001	professionnelle de l'enseignement
+professeur	492997	professionnel de l'enseignement
+professeur de college	492997	professionnel de l'enseignement
+professeur de lycee	492997	professionnel de l'enseignement
+professeur de lycee professionnel	65647	professionnel de l'enseignement
+professeur des ecoles	368624	professionnel de l'enseignement
+professeur des universites	62919	professionnel de l'enseignement
+professeure	492997	professionnelle de l'enseignement
+professeure de college	492997	professionnelle de l'enseignement
+professeure de lycee	492997	professionnelle de l'enseignement
+professeure de lycee professionnel	65647	professionnelle de l'enseignement
+professeure des ecoles	368624	professionnelle de l'enseignement
+professeure des universites	62919	professionnelle de l'enseignement
+proviseur	19001	professionnel de l'enseignement
+proviseure	19001	professionnelle de l'enseignement
+psychologue	44248	professionnel de santé
+puericulteur	17087	professionnel de santé
+puericultrice	17087	professionnelle de santé
+receptionniste	50207	professionnel de l'hôtellerie-restauration
+regisseur	46640	professionnel de la communication
+regisseuse	46640	professionnelle de la communication
+representant	182362	professionnel du commerce
+representante	182362	professionnelle du commerce
+responsable commercial	296333	professionnel du commerce
+responsable commerciale	296333	professionnelle du commerce
+responsable d'entrepot	39235	professionnel du transport et de la logistique
+responsable de formation	43117	professionnel de la gestion
+responsable de la communication	57324	professionnel de la communication
+responsable des ressources humaines	105910	professionnel de la gestion
+responsable financier	177568	professionnel de la gestion
+responsable financiere	177568	professionnelle de la gestion
+responsable informatique	196110	professionnel de l'informatique
+responsable logistique	58823	professionnel du transport et de la logistique
+responsable qualite	63785	professionnel de l'ingénierie
+responsable rh	105910	professionnel de la gestion
+routier	361191	professionnel du transport et de la logistique
+routiere	361191	professionnelle du transport et de la logistique
+sage femme	26428	professionnel de santé
+sapeur pompier	34676	professionnel de la sécurité
+sapeuse pompiere	34676	professionnelle de la sécurité
+secretaire	383425	professionnel de l'administration
+secretaire de direction	83174	professionnel de l'administration
+serrurier	29200	professionnel du bâtiment
+serruriere	29200	professionnelle du bâtiment
+serveur	315188	professionnel de l'hôtellerie-restauration
+serveuse	315188	professionnelle de l'hôtellerie-restauration
+soudeur	38085	professionnel de l'industrie
+soudeuse	38085	professionnelle de l'industrie
+sportif professionnel	68727	professionnel du sport
+sportive professionnelle	68727	professionnelle du sport
+standardiste	32816	professionnel de l'administration
+steward	17371	professionnel du transport et de la logistique
+surveillant	72866	professionnel de l'enseignement
+surveillant penitentiaire	27060	professionnel de la sécurité
+surveillante	72866	professionnelle de l'enseignement
+surveillante penitentiaire	27060	professionnelle de la sécurité
+technicien	1056030	professionnel de l'ingénierie
+technicien de maintenance	206787	professionnel de l'industrie
+technicien du spectacle	46640	professionnel de la communication
+technicien informatique	117922	professionnel de l'informatique
+technicien medical	90203	professionnel de santé
+technicien support	117922	professionnel de l'informatique
+technicienne	1056030	professionnelle de l'ingénierie
+technicienne de maintenance	206787	professionnelle de l'industrie
+technicienne du spectacle	46640	professionnelle de la communication
+technicienne informatique	117922	professionnelle de l'informatique
+technicienne medicale	90203	professionnelle de santé
+technicienne support	117922	professionnelle de l'informatique
+technico commercial	182362	professionnel du commerce
+technico commerciale	182362	professionnelle du commerce
+teleconseiller	31572	professionnel du commerce
+teleconseillere	31572	professionnelle du commerce
+televendeur	31572	professionnel du commerce
+televendeuse	31572	professionnelle du commerce
+topographe	11990	professionnel du bâtiment
+valet de chambre	66266	professionnel de l'hôtellerie-restauration
+vendeur	696511	professionnel du commerce
+vendeuse	696511	professionnelle du commerce
+vigile	183916	professionnel de la sécurité

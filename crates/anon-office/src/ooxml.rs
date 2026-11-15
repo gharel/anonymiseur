@@ -4,11 +4,13 @@
 use crate::limits::{DEEP_SCAN_CHUNK, MAX_EMBED_DEPTH, MAX_TOTAL_UNCOMPRESSED};
 use crate::package::{Action, Package, label};
 use crate::part::{Dialect, Op, PartCtx, PartOut, XlsxEnv, process};
+use crate::tables;
 use crate::xlsx::{date_styles, split_ref, workbook_date1904, x_decode};
 use crate::xml::{Item, Walker, all_strings, apply_patches};
 use anon_core::{
     BlockContext, BlockRole, Direction, Extraction, FormatError, Handler, MediaItem,
-    MediaTransform, Output, TextBlock, TextTransform, TransformOptions, Warning, WarningCode,
+    MediaTransform, Output, TableData, TextBlock, TextTransform, TransformOptions, Warning,
+    WarningCode,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -50,7 +52,7 @@ fn flavor_for(ext: &str) -> Option<Flavor> {
 }
 
 macro_rules! package_handler {
-    ($t:ty, $flavor:expr, $exts:expr) => {
+    ($t:ty, $flavor:expr, $exts:expr, $tables:path) => {
         impl Handler for $t {
             fn extensions(&self) -> &'static [&'static str] {
                 $exts
@@ -91,17 +93,37 @@ macro_rules! package_handler {
                     warnings: r.warnings,
                 })
             }
+
+            fn tables(&self, input: &[u8]) -> Result<Vec<TableData>, FormatError> {
+                $tables(input)
+            }
         }
     };
 }
 
-package_handler!(DocxHandler, Flavor::Word, &["docx", "docm", "dotx"]);
-package_handler!(XlsxHandler, Flavor::Excel, &["xlsx", "xlsm", "xltx"]);
-package_handler!(PptxHandler, Flavor::PowerPoint, &["pptx", "pptm", "potx"]);
+package_handler!(
+    DocxHandler,
+    Flavor::Word,
+    &["docx", "docm", "dotx"],
+    tables::none
+);
+package_handler!(
+    XlsxHandler,
+    Flavor::Excel,
+    &["xlsx", "xlsm", "xltx"],
+    tables::xlsx
+);
+package_handler!(
+    PptxHandler,
+    Flavor::PowerPoint,
+    &["pptx", "pptm", "potx"],
+    tables::none
+);
 package_handler!(
     OdfHandler,
     Flavor::Odf,
-    &["odt", "ods", "odp", "ott", "ots", "otp"]
+    &["odt", "ods", "odp", "ott", "ots", "otp"],
+    tables::ods
 );
 
 enum Mode<'a> {
@@ -208,7 +230,10 @@ fn has_cells(flavor: Flavor, name: &str) -> bool {
 }
 
 /// Texte UTF-8 d'une partie XML, sans BOM, et ce BOM.
-fn part_text<'b>(bytes: &'b [u8], part: &str) -> Result<(&'b str, &'b [u8]), FormatError> {
+pub(crate) fn part_text<'b>(
+    bytes: &'b [u8],
+    part: &str,
+) -> Result<(&'b str, &'b [u8]), FormatError> {
     let (bom, body) = match bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
         Some(rest) => (bytes.get(..3).unwrap_or(&[]), rest),
         None => (&[][..], bytes),
@@ -218,7 +243,7 @@ fn part_text<'b>(bytes: &'b [u8], part: &str) -> Result<(&'b str, &'b [u8]), For
     Ok((s, bom))
 }
 
-fn read_part(
+pub(crate) fn read_part(
     pkg: &mut Package<'_>,
     name: &str,
     budget: &mut u64,
@@ -290,8 +315,20 @@ fn xlsx_env(
     Ok(env)
 }
 
+/// Contexte Excel en lecture seule (styles de date, système de dates, chaînes
+/// partagées), pour la lecture des tableaux.
+pub(crate) fn xlsx_read_env(
+    pkg: &mut Package<'_>,
+    budget: &mut u64,
+) -> Result<XlsxEnv, FormatError> {
+    xlsx_env(pkg, &Mode::Extract, "", budget)
+}
+
 /// Vérifie qu'un paquet OpenDocument n'est pas chiffré.
-fn check_odf_manifest(pkg: &mut Package<'_>, budget: &mut u64) -> Result<(), FormatError> {
+pub(crate) fn check_odf_manifest(
+    pkg: &mut Package<'_>,
+    budget: &mut u64,
+) -> Result<(), FormatError> {
     let name = "META-INF/manifest.xml";
     let Some(s) = read_part(pkg, name, budget)? else {
         return Err(FormatError::corrupt(name, "partie manquante"));

@@ -11,10 +11,12 @@
 //! - `rules` : listes blanches de ce qui passe par `tr` ou est neutralisé ;
 //! - `part`, `ooxml`, `xlsx` : spécificités OOXML ;
 //! - `textfile` : texte brut ;
-//! - `tables` : lecture des feuilles de calcul en tableaux (`Handler::tables`).
+//! - `tables` : lecture des feuilles de calcul en tableaux (`Handler::tables`) ;
+//! - `newdoc` : document Word neuf, minimal (réponse restaurée en `.docx`).
 #![cfg_attr(not(test), deny(clippy::indexing_slicing))]
 
 mod limits;
+mod newdoc;
 mod ooxml;
 mod package;
 mod para;
@@ -31,6 +33,7 @@ pub use limits::{
     DEEP_SCAN_CHUNK, MAX_EMBED_DEPTH, MAX_ENTRIES, MAX_ENTRY_UNCOMPRESSED, MAX_TABLE_CELLS,
     MAX_TOTAL_UNCOMPRESSED, MAX_XML_DEPTH,
 };
+pub use newdoc::text_to_docx;
 pub use ooxml::{DocxHandler, OdfHandler, PptxHandler, XlsxHandler};
 pub use textfile::{CsvHandler, TextHandler};
 

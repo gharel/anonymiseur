@@ -1,105 +1,137 @@
-//! Navigation : onglets de l'en-tête, étapes, sélecteur segmenté, filtres.
+//! Navigation : étapes du dossier, palette de commandes, sélecteur segmenté,
+//! menus en pilule, filtres, thème.
 
-use super::Icon;
-use crate::ui::theme::{CONTROL_MD, Weight, font, palette, radius};
+use super::{Icon, keycap_size, paint_keycap};
+use crate::ui::theme::{CONTROL_MD, CONTROL_SM, Weight, font, palette, radius};
 use egui::{
-    Color32, Rect, Response, RichText, Role, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, pos2,
-    vec2,
+    Rect, Response, RichText, Role, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, pos2, vec2,
 };
 
-/// Onglets de l'en-tête : texte moyen, actif en vert foncé souligné (comme le
-/// `Header` de la charte).
-#[derive(Debug)]
-pub struct TabBar<'a> {
-    tabs: &'a [(Icon, &'a str)],
-    /// Raccourci de chaque onglet, rappelé en infobulle.
-    hints: &'a [String],
+/// Une étape de l'indicateur : libellé, état, raison si elle est inaccessible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StepItem<'a> {
+    pub label: &'a str,
+    pub done: bool,
+    pub current: bool,
+    /// Étape inaccessible : la raison, en infobulle.
+    pub blocked: Option<&'a str>,
+    /// Raccourci rappelé en infobulle.
+    pub shortcut: Option<&'a str>,
 }
 
-impl<'a> TabBar<'a> {
-    pub fn new(tabs: &'a [(Icon, &'a str)]) -> Self {
-        Self { tabs, hints: &[] }
+/// Écart entre deux étapes (chevron compris).
+const STEP_GAP: f32 = 24.0;
+/// Marge horizontale d'une étape.
+const STEP_PAD: f32 = 14.0;
+/// Coche d'une étape faite et son écart avec le libellé.
+const STEP_CHECK: f32 = 16.0 + 6.0;
+
+/// Indicateur d'étapes du dossier, en pilules reliées par des chevrons :
+/// étape courante pleine, étapes faites cochées, étapes à venir en gris.
+/// Chaque étape est un onglet cliquable ; renvoie l'index cliqué.
+#[derive(Debug)]
+pub struct StepBar<'a> {
+    steps: &'a [StepItem<'a>],
+}
+
+impl<'a> StepBar<'a> {
+    pub fn new(steps: &'a [StepItem<'a>]) -> Self {
+        Self { steps }
     }
 
-    pub fn hints(mut self, hints: &'a [String]) -> Self {
-        self.hints = hints;
-        self
+    fn item_width(ui: &Ui, s: &StepItem<'_>) -> f32 {
+        let p = palette();
+        let g = ui.painter().layout_no_wrap(
+            s.label.to_owned(),
+            font(Weight::Semibold, p.text_sm),
+            p.text,
+        );
+        let check = if s.done { STEP_CHECK } else { 0.0 };
+        g.size().x + check + 2.0 * STEP_PAD
     }
 
-    /// Affiche les onglets ; renvoie l'index cliqué.
-    pub fn show(self, ui: &mut Ui, active: usize) -> Option<usize> {
+    /// Largeur totale, pour centrer la barre.
+    pub fn width(&self, ui: &Ui) -> f32 {
+        let items: f32 = self.steps.iter().map(|s| Self::item_width(ui, s)).sum();
+        items + STEP_GAP * self.steps.len().saturating_sub(1) as f32
+    }
+
+    pub fn show(self, ui: &mut Ui) -> Option<usize> {
         let p = palette();
         let mut clicked = None;
-        // La rangée est placée à sa hauteur finale : centrée sur la ligne parente.
-        ui.spacing_mut().interact_size.y = CONTROL_MD;
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = p.space(2);
-            for (i, (icon, label)) in self.tabs.iter().enumerate() {
-                let is_active = i == active;
-                let galley = egui::WidgetText::from(
-                    RichText::new(*label).font(font(Weight::Semibold, p.text_sm)),
-                )
-                .into_galley(
-                    ui,
-                    Some(egui::TextWrapMode::Extend),
-                    f32::INFINITY,
-                    egui::TextStyle::Button,
-                );
-                let icon_size = 18.0;
-                let pad_x = p.space(3);
-                let size = vec2(pad_x * 2.0 + icon_size + 8.0 + galley.size().x, CONTROL_MD);
-                let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-                let label_owned = (*label).to_owned();
-                response
-                    .widget_info(|| WidgetInfo::selected(Role::Tab, true, is_active, &label_owned));
-                let hovered = response.hovered();
-                let ink = if is_active || hovered {
-                    p.accent
+            ui.spacing_mut().item_spacing.x = 0.0;
+            let count = self.steps.len();
+            for (i, s) in self.steps.iter().enumerate() {
+                let size = vec2(Self::item_width(ui, s), CONTROL_SM);
+                let enabled = s.blocked.is_none();
+                let sense = if enabled {
+                    Sense::click()
                 } else {
-                    p.text
+                    Sense::hover()
                 };
-                let painter = ui.painter();
-                if is_active {
-                    painter.rect_filled(rect, radius(p.radius_full), p.primary_subtle);
-                } else if response.is_pointer_button_down_on() {
-                    painter.rect_filled(rect, radius(p.radius_full), p.hover_strong);
+                let (rect, response) = ui.allocate_exact_size(size, sense);
+                let label = s.label.to_owned();
+                let current = s.current;
+                response.widget_info(|| WidgetInfo::selected(Role::Tab, enabled, current, &label));
+                let hovered = enabled && response.hovered();
+                let (fill, ink) = if s.current {
+                    (Some(p.primary_dark), p.on_primary)
                 } else if hovered {
-                    painter.rect_filled(rect, radius(p.radius_full), p.muted);
+                    (Some(p.muted), p.accent)
+                } else if s.done {
+                    (None, p.accent)
+                } else {
+                    (None, p.text_secondary)
+                };
+                if let Some(f) = fill {
+                    ui.painter().rect_filled(rect, radius(p.radius_full), f);
                 }
-                let icon_rect = Rect::from_center_size(
-                    pos2(rect.min.x + pad_x + icon_size / 2.0, rect.center().y),
-                    Vec2::splat(icon_size),
-                );
-                icon.paint(ui, icon_rect, ink);
-                let text_pos = pos2(
-                    icon_rect.max.x + 8.0,
-                    rect.center().y - galley.size().y / 2.0,
-                );
-                let text_rect = Rect::from_min_size(text_pos, galley.size());
-                painter.galley(text_pos, galley, ink);
-                if is_active || hovered {
-                    // Lien actif souligné (WCAG 1.4.1 : la couleur seule ne suffit pas).
-                    let y = text_rect.max.y + 1.0;
-                    painter.line_segment(
-                        [pos2(text_rect.min.x, y), pos2(text_rect.max.x, y)],
-                        Stroke::new(1.5, ink),
+                let mut x = rect.min.x + STEP_PAD;
+                if s.done {
+                    Icon::Check.paint(
+                        ui,
+                        Rect::from_center_size(pos2(x + 8.0, rect.center().y), Vec2::splat(16.0)),
+                        ink,
                     );
+                    x += STEP_CHECK;
                 }
+                let galley = ui.painter().layout_no_wrap(
+                    s.label.to_owned(),
+                    font(Weight::Semibold, p.text_sm),
+                    ink,
+                );
+                let gy = rect.center().y - galley.size().y / 2.0;
+                ui.painter().galley(pos2(x, gy), galley, ink);
                 if response.has_focus() {
-                    painter.rect_stroke(
-                        rect.expand(1.0),
+                    ui.painter().rect_stroke(
+                        rect.expand(2.0),
                         radius(p.radius_full),
                         Stroke::new(2.0, p.border_focus),
                         StrokeKind::Outside,
                     );
                 }
-                let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
-                let response = match self.hints.get(i) {
-                    Some(h) => response.on_hover_text(format!("{label} ({h})")),
-                    None => response,
+                let tip = match (s.blocked, s.shortcut) {
+                    (Some(why), _) => why.to_owned(),
+                    (None, Some(k)) => format!("Aller à l'étape {} ({k})", s.label),
+                    (None, None) => format!("Aller à l'étape {}", s.label),
                 };
-                if response.clicked() {
+                let response = if enabled {
+                    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+                } else {
+                    response
+                };
+                if response.on_hover_text(tip).clicked() && enabled {
                     clicked = Some(i);
+                }
+                if i + 1 < count {
+                    let (sep, _) =
+                        ui.allocate_exact_size(vec2(STEP_GAP, CONTROL_SM), Sense::hover());
+                    Icon::ChevronRight.paint(
+                        ui,
+                        Rect::from_center_size(sep.center(), Vec2::splat(16.0)),
+                        p.line_strong,
+                    );
                 }
             }
         });
@@ -107,115 +139,175 @@ impl<'a> TabBar<'a> {
     }
 }
 
-/// Indicateur d'étapes : pastilles numérotées reliées par un trait.
-#[derive(Debug)]
-pub struct Stepper<'a> {
-    steps: &'a [&'a str],
-    current: usize,
+/// Largeur minimale du bouton de la palette, avec son libellé.
+const COMMAND_MIN_W: f32 = 220.0;
+
+/// Bouton de l'en-tête qui ouvre la palette de commandes : loupe,
+/// « Commandes » et la touche. `compact` : sans le mot, pour les fenêtres étroites.
+pub fn command_button(ui: &mut Ui, shortcut: &str, compact: bool) -> Response {
+    let p = palette();
+    let galley = ui.painter().layout_no_wrap(
+        "Commandes".to_owned(),
+        font(Weight::Regular, p.text_sm),
+        p.text_secondary,
+    );
+    let kbd = keycap_size(ui, shortcut);
+    let pad = 12.0;
+    let icon = 18.0;
+    let width = if compact {
+        pad + icon + 8.0 + kbd.x + 8.0
+    } else {
+        (pad + icon + 8.0 + galley.size().x + 16.0 + kbd.x + 8.0).max(COMMAND_MIN_W)
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(width, CONTROL_MD), Sense::click());
+    let name = format!("Palette de commandes ({shortcut})");
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &name));
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        ui.painter().rect(
+            rect,
+            radius(p.radius_md),
+            if hovered { p.hover } else { p.surface },
+            Stroke::new(1.0, if hovered { p.accent } else { p.border_input }),
+            StrokeKind::Inside,
+        );
+        let mut x = rect.min.x + pad;
+        Icon::Search.paint(
+            ui,
+            Rect::from_center_size(pos2(x + icon / 2.0, rect.center().y), Vec2::splat(icon)),
+            p.text_secondary,
+        );
+        x += icon + 8.0;
+        if !compact {
+            let gy = rect.center().y - galley.size().y / 2.0;
+            ui.painter().galley(pos2(x, gy), galley, p.text_secondary);
+        }
+        let k = Rect::from_center_size(pos2(rect.max.x - 8.0 - kbd.x / 2.0, rect.center().y), kbd);
+        paint_keycap(ui, k, shortcut, false, true);
+        if response.has_focus() {
+            ui.painter().rect_stroke(
+                rect.expand(2.0),
+                radius(p.radius_md + 2.0),
+                Stroke::new(2.0, p.border_focus),
+                StrokeKind::Outside,
+            );
+        }
+    }
+    response
+        .on_hover_text(format!("Toutes les actions, par recherche ({shortcut})"))
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-impl<'a> Stepper<'a> {
-    pub fn new(steps: &'a [&'a str], current: usize) -> Self {
-        Self { steps, current }
-    }
-
-    pub fn show(self, ui: &mut Ui) -> Response {
-        let p = palette();
-        let disc = 28.0;
-        let gap = 8.0;
-        let line = 32.0;
-        let galleys: Vec<_> = self
-            .steps
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                let weight = if i == self.current {
-                    Weight::Semibold
-                } else {
-                    Weight::Medium
-                };
-                let color = if i <= self.current {
-                    p.heading
-                } else {
-                    p.text_secondary
-                };
-                egui::WidgetText::from(RichText::new(*s).font(font(weight, p.text_sm)).color(color))
-                    .into_galley(
-                        ui,
-                        Some(egui::TextWrapMode::Extend),
-                        f32::INFINITY,
-                        egui::TextStyle::Body,
-                    )
-            })
-            .collect();
-        let width: f32 = galleys.iter().map(|g| disc + gap + g.size().x).sum::<f32>()
-            + line * (self.steps.len().saturating_sub(1)) as f32
-            + 2.0 * gap * (self.steps.len().saturating_sub(1)) as f32;
-        let (rect, response) = ui.allocate_exact_size(vec2(width, disc), Sense::hover());
-        let label = format!(
-            "Étape {} sur {} : {}",
-            self.current + 1,
-            self.steps.len(),
-            self.steps.get(self.current).copied().unwrap_or_default()
+/// Pilule « Libellé : valeur ▾ » qui ouvre un menu de choix exclusifs.
+/// Renvoie le choix fait dans le menu.
+pub fn pill_menu<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    prefix: &str,
+    value: T,
+    options: &[(T, &str)],
+) -> Option<T> {
+    let p = palette();
+    let current = options
+        .iter()
+        .find(|(v, _)| *v == value)
+        .map(|(_, l)| *l)
+        .unwrap_or_default();
+    let pre = ui.painter().layout_no_wrap(
+        format!("{prefix} : "),
+        font(Weight::Regular, p.text_sm),
+        p.text,
+    );
+    let val = ui.painter().layout_no_wrap(
+        current.to_owned(),
+        font(Weight::Semibold, p.text_sm),
+        p.heading,
+    );
+    let pad = 14.0;
+    let width = pad + pre.size().x + val.size().x + 6.0 + 16.0 + pad;
+    let (rect, response) = ui.allocate_exact_size(vec2(width, CONTROL_SM), Sense::click());
+    let name = format!("{prefix} : {current}");
+    response.widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &name));
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        ui.painter().rect(
+            rect,
+            radius(p.radius_full),
+            if hovered { p.hover } else { p.surface },
+            Stroke::new(1.0, if hovered { p.accent } else { p.border_input }),
+            StrokeKind::Inside,
         );
-        response.widget_info(|| WidgetInfo::labeled(Role::Label, true, &label));
-        let painter = ui.painter();
-        let mut x = rect.min.x;
         let cy = rect.center().y;
-        let count = galleys.len();
-        for (i, g) in galleys.into_iter().enumerate() {
-            let c = pos2(x + disc / 2.0, cy);
-            let done = i < self.current;
-            let current = i == self.current;
-            if done || current {
-                painter.circle_filled(c, disc / 2.0, p.primary_dark);
-            } else {
-                painter.circle(
-                    c,
-                    disc / 2.0 - 0.75,
-                    p.surface,
-                    Stroke::new(1.5, p.line_strong),
-                );
+        let mut x = rect.min.x + pad;
+        let pre_w = pre.size().x;
+        ui.painter()
+            .galley(pos2(x, cy - pre.size().y / 2.0), pre, p.text);
+        x += pre_w;
+        let val_w = val.size().x;
+        ui.painter()
+            .galley(pos2(x, cy - val.size().y / 2.0), val, p.heading);
+        x += val_w + 6.0;
+        Icon::ChevronDown.paint(
+            ui,
+            Rect::from_center_size(pos2(x + 8.0, cy), Vec2::splat(16.0)),
+            p.text_secondary,
+        );
+        if response.has_focus() {
+            ui.painter().rect_stroke(
+                rect.expand(2.0),
+                radius(p.radius_full),
+                Stroke::new(2.0, p.border_focus),
+                StrokeKind::Outside,
+            );
+        }
+    }
+    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let mut chosen = None;
+    egui::Popup::menu(&response).gap(4.0).show(|ui| {
+        ui.set_min_width(rect.width().max(260.0));
+        ui.spacing_mut().item_spacing.y = 0.0;
+        for (v, label) in options {
+            let selected = *v == value;
+            let (row_rect, row) =
+                ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
+            let name = (*label).to_owned();
+            row.widget_info(|| WidgetInfo::selected(Role::MenuItemRadio, true, selected, &name));
+            if row.hovered() || row.has_focus() {
+                ui.painter()
+                    .rect_filled(row_rect, radius(p.radius_sm), p.hover);
             }
-            if done {
+            let ink = if selected { p.accent } else { p.text };
+            let weight = if selected {
+                Weight::Semibold
+            } else {
+                Weight::Regular
+            };
+            ui.painter().text(
+                pos2(row_rect.min.x + 12.0, row_rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                *label,
+                font(weight, p.text_sm),
+                ink,
+            );
+            if selected {
                 Icon::Check.paint(
                     ui,
-                    Rect::from_center_size(c, Vec2::splat(16.0)),
-                    p.on_primary,
-                );
-            } else {
-                let num = format!("{}", i + 1);
-                let color = if current {
-                    p.on_primary
-                } else {
-                    p.text_secondary
-                };
-                painter.text(
-                    c,
-                    egui::Align2::CENTER_CENTER,
-                    num,
-                    font(Weight::Bold, p.text_sm),
-                    color,
+                    Rect::from_center_size(
+                        pos2(row_rect.max.x - 16.0, row_rect.center().y),
+                        Vec2::splat(16.0),
+                    ),
+                    p.accent,
                 );
             }
-            x += disc + gap;
-            let gy = cy - g.size().y / 2.0;
-            let gw = g.size().x;
-            painter.galley(pos2(x, gy), g, Color32::PLACEHOLDER);
-            x += gw;
-            if i + 1 < count {
-                x += gap;
-                let color = if i < self.current {
-                    p.primary_dark
-                } else {
-                    p.line
-                };
-                painter.line_segment([pos2(x, cy), pos2(x + line, cy)], Stroke::new(2.0, color));
-                x += line + gap;
+            if row
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .clicked()
+                && !selected
+            {
+                chosen = Some(*v);
             }
         }
-        response
-    }
+    });
+    chosen
 }
 
 /// Sélecteur segmenté (deux à quatre choix exclusifs) en pilule.

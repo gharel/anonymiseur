@@ -392,32 +392,205 @@ pub fn mono_job_marked(
     marks: &[std::ops::Range<usize>],
     wrap_width: f32,
 ) -> egui::text::LayoutJob {
+    let marks: Vec<(std::ops::Range<usize>, Mark)> =
+        marks.iter().map(|r| (r.clone(), Mark::Unknown)).collect();
+    mono_job_marks(text, &marks, wrap_width)
+}
+
+/// Nature d'une plage surlignée dans un texte affiché (réponse restaurée,
+/// vérification du presse-papiers, extrait autour de la valeur à décider).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mark {
+    /// Valeur remise à la place de sa balise : couleur « masqué » neutre.
+    Restored,
+    /// Balise inconnue de la clé : couleur d'avertissement.
+    Unknown,
+    /// Valeur qui sera masquée : couleur « masqué » neutre.
+    Masked,
+    /// Valeur à décider : jaune.
+    Pending,
+    /// Valeur à décider en cours : jaune, soulignement épais.
+    Current,
+}
+
+/// Espace entre le texte et le bord de son surlignage, en haut et en bas.
+pub const MARK_PAD_Y: f32 = 2.0;
+
+/// Couleurs d'une plage : fond, texte, soulignement.
+pub fn mark_style(mark: Mark) -> (egui::Color32, egui::Color32, Stroke) {
     let p = palette();
+    match mark {
+        Mark::Restored | Mark::Masked => {
+            (p.masked.fill, p.masked.ink, Stroke::new(1.5, p.masked.edge))
+        }
+        Mark::Unknown => (p.data.fill, p.data.ink, Stroke::new(1.5, p.warning)),
+        Mark::Pending => (
+            p.pending.fill,
+            p.pending.ink,
+            Stroke::new(1.5, p.pending.edge),
+        ),
+        Mark::Current => (
+            p.pending.fill,
+            p.pending.ink,
+            Stroke::new(3.0, p.pending.edge),
+        ),
+    }
+}
+
+/// Texte et plages surlignées (octets, triées, sans chevauchement). Seule la
+/// couleur du texte change dans la mise en page : le fond et le soulignement
+/// sont peints à part ([`marked_label`]). Avec un interligne plus grand que la
+/// police, epaint peint le fond d'une section sur toute la hauteur de ligne à
+/// partir du haut du texte : il déborde sur la ligne suivante, et le
+/// soulignement tombe dans la ligne suivante, sous son fond.
+pub fn marks_job(
+    text: &str,
+    marks: &[(std::ops::Range<usize>, Mark)],
+    base: &egui::TextFormat,
+    wrap_width: f32,
+) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
-    let normal = egui::TextFormat {
-        font_id: mono_font(),
-        color: p.text,
-        line_height: Some(area_line_height()),
-        ..Default::default()
-    };
-    let marked = egui::TextFormat {
-        background: p.data.fill,
-        color: p.data.ink,
-        underline: egui::Stroke::new(1.5, p.warning),
-        ..normal.clone()
-    };
     let mut at = 0;
-    for m in marks {
-        let (Some(before), Some(tag)) = (text.get(at..m.start), text.get(m.clone())) else {
+    for (m, kind) in marks {
+        let (Some(before), Some(part)) = (text.get(at..m.start), text.get(m.clone())) else {
             continue;
         };
-        job.append(before, 0.0, normal.clone());
-        job.append(tag, 0.0, marked.clone());
+        job.append(before, 0.0, base.clone());
+        let format = egui::TextFormat {
+            color: mark_style(*kind).1,
+            ..base.clone()
+        };
+        job.append(part, 0.0, format);
         at = m.end;
     }
-    job.append(text.get(at..).unwrap_or_default(), 0.0, normal);
+    job.append(text.get(at..).unwrap_or_default(), 0.0, base.clone());
     job.wrap.max_width = wrap_width;
     job
+}
+
+/// Format de base d'un texte à balises : police à chasse fixe, interligne des
+/// zones multilignes.
+pub fn mono_format() -> egui::TextFormat {
+    egui::TextFormat {
+        font_id: mono_font(),
+        color: palette().text,
+        line_height: Some(area_line_height()),
+        ..Default::default()
+    }
+}
+
+/// Comme [`mono_job`], avec des plages surlignées (octets, triées, sans
+/// chevauchement) : valeurs restaurées et balises inconnues.
+pub fn mono_job_marks(
+    text: &str,
+    marks: &[(std::ops::Range<usize>, Mark)],
+    wrap_width: f32,
+) -> egui::text::LayoutJob {
+    marks_job(text, marks, &mono_format(), wrap_width)
+}
+
+/// Indice de caractère d'un octet du texte.
+pub fn char_index(text: &str, byte: usize) -> usize {
+    text.get(..byte).map_or(0, |t| t.chars().count())
+}
+
+/// Rectangles d'un passage `a..b` (caractères) d'une galée, un par ligne, sur
+/// toute la hauteur de la ligne (zone cliquable, passage à montrer).
+pub fn range_rects(galley: &egui::Galley, a: usize, b: usize) -> Vec<Rect> {
+    let mut out = Vec::new();
+    let mut idx = 0usize;
+    for row in &galley.rows {
+        let n = row.char_count_excluding_newline().0;
+        let (lo, hi) = (a.max(idx), b.min(idx + n));
+        if lo < hi {
+            let x0 = row.pos.x + row.x_offset((lo - idx).into());
+            let x1 = row.pos.x + row.x_offset((hi - idx).into());
+            out.push(Rect::from_min_max(
+                pos2(x0, row.min_y()),
+                pos2(x1, row.max_y()),
+            ));
+        }
+        idx += row.char_count_including_newline().0;
+    }
+    out
+}
+
+/// Bande d'une ligne `line` (toute sa hauteur) à la hauteur du texte, centrée
+/// dans la ligne, plus [`MARK_PAD_Y`] en haut et en bas, jamais au-delà.
+pub fn text_band(line: Rect, font_height: f32) -> Rect {
+    let inset = ((line.height() - font_height) / 2.0 - MARK_PAD_Y).max(0.0);
+    line.shrink2(vec2(0.0, inset))
+}
+
+/// Rectangles du fond d'un passage `a..b` (caractères) d'une galée, un par
+/// ligne : la largeur du passage, la hauteur du texte centrée dans la ligne
+/// plus [`MARK_PAD_Y`], jamais au-delà de la ligne.
+pub fn mark_rects(galley: &egui::Galley, a: usize, b: usize, font_height: f32) -> Vec<Rect> {
+    range_rects(galley, a, b)
+        .into_iter()
+        .map(|r| text_band(r, font_height))
+        .collect()
+}
+
+/// Peint un surlignage sous le texte : fond `fill` dans le rectangle `r` (de
+/// [`mark_rects`], en coordonnées de l'écran), soulignement `line` à son pied.
+pub fn paint_mark(painter: &egui::Painter, r: Rect, fill: egui::Color32, line: Stroke) {
+    painter.rect_filled(r, radius(2.0), fill);
+    painter.hline(r.x_range(), r.max.y - line.width / 2.0, line);
+}
+
+/// Rectangles du fond de chaque plage d'un texte mis en page par [`marks_job`],
+/// relatifs à la galée.
+pub fn marks_rects(
+    galley: &egui::Galley,
+    text: &str,
+    marks: &[(std::ops::Range<usize>, Mark)],
+    font_height: f32,
+) -> Vec<(Rect, Mark)> {
+    marks
+        .iter()
+        .flat_map(|(m, kind)| {
+            let (a, b) = (char_index(text, m.start), char_index(text, m.end));
+            mark_rects(galley, a, b, font_height)
+                .into_iter()
+                .map(move |r| (r, *kind))
+        })
+        .collect()
+}
+
+/// Texte surligné, sélectionnable, coupé à la largeur disponible : fonds et
+/// soulignements peints sous le texte, dans la hauteur de chaque ligne.
+pub fn marked_label(
+    ui: &mut Ui,
+    text: &str,
+    marks: &[(std::ops::Range<usize>, Mark)],
+    base: &egui::TextFormat,
+) -> Response {
+    let job = marks_job(text, marks, base, ui.available_width());
+    let (pos, galley, response) = egui::Label::new(job)
+        .wrap()
+        .selectable(true)
+        .layout_in_ui(ui);
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Label, ui.is_enabled(), galley.text())
+    });
+    if ui.is_rect_visible(response.rect) {
+        let font_height = ui.fonts_mut(|f| f.row_height(&base.font_id));
+        let painter = ui.painter();
+        for (r, kind) in marks_rects(&galley, text, marks, font_height) {
+            let (fill, _, line) = mark_style(kind);
+            paint_mark(painter, r.translate(pos.to_vec2()), fill, line);
+        }
+        egui::text_selection::LabelSelectionState::label_text_selection(
+            ui,
+            &response,
+            pos,
+            galley,
+            base.color,
+            Stroke::NONE,
+        );
+    }
+    response
 }
 
 /// Police à chasse fixe d'une balise isolée dans un tableau (taille du texte courant).
@@ -433,4 +606,105 @@ pub fn mono_font() -> egui::FontId {
 /// Identifiant du champ, pour donner le focus depuis l'extérieur.
 pub fn field_id(salt: &str) -> Id {
     Id::unique(("champ", salt)).with("edit")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ops::Range;
+
+    /// Réponse restaurée de l'instantané `dossier_4b_reponse` : valeurs voisines
+    /// séparées par « . », passage à la ligne explicite.
+    const TEXT: &str = "Le contrat lie Nautilus Pacifique SARL et Atelier Bougainville SAS. \
+        Jean Dupont représente le premier prestataire et Martin Lefèvre la\nseconde société.";
+
+    fn marks() -> Vec<(Range<usize>, Mark)> {
+        [
+            "Nautilus Pacifique SARL",
+            "Atelier Bougainville SAS",
+            "Jean Dupont",
+            "Martin Lefèvre",
+        ]
+        .iter()
+        .filter_map(|v| TEXT.find(v).map(|i| (i..i + v.len(), Mark::Restored)))
+        .collect()
+    }
+
+    /// Met en page `job` avec les polices d'egui ; rend aussi la hauteur de la police.
+    fn layout(job: egui::text::LayoutJob) -> (std::sync::Arc<egui::Galley>, f32) {
+        let ctx = egui::Context::default();
+        let font = mono_font();
+        let mut got = None;
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            got = Some(ui.fonts_mut(|f| (f.layout_job(job.clone()), f.row_height(&font))));
+        });
+        // En debug, epaint refuse qu'on abandonne des textures non appliquées.
+        out.textures_delta.clear();
+        got.unwrap_or_else(|| panic!("aucune mise en page"))
+    }
+
+    #[test]
+    fn sections_follow_the_marks_without_painted_backgrounds() {
+        let marks = marks();
+        assert_eq!(marks.len(), 4);
+        let job = mono_job_marks(TEXT, &marks, 400.0);
+        assert_eq!(job.text, TEXT, "le texte est repris en entier");
+        // Chaque plage tombe sur des sections entières, à sa couleur (deux
+        // sections voisines de même format peuvent être fusionnées).
+        let (_, ink, _) = mark_style(Mark::Restored);
+        for (m, _) in &marks {
+            let covering: Vec<_> = job
+                .sections
+                .iter()
+                .filter(|s| s.byte_range.start.0 < m.end && m.start < s.byte_range.end.0)
+                .collect();
+            assert!(!covering.is_empty(), "aucune section pour une plage");
+            for s in covering {
+                assert!(s.byte_range.start.0 <= m.start && m.end <= s.byte_range.end.0);
+                assert_eq!(s.format.color, ink);
+            }
+        }
+        // Fond et soulignement ne sont jamais confiés à epaint (débordement sur
+        // la ligne suivante avec un interligne).
+        for s in &job.sections {
+            assert_eq!(s.format.background, egui::Color32::TRANSPARENT);
+            assert_eq!(s.format.underline, Stroke::NONE);
+        }
+    }
+
+    #[test]
+    fn highlights_stay_inside_their_line() {
+        let marks = marks();
+        let (galley, font_height) = layout(mono_job_marks(TEXT, &marks, 400.0));
+        assert!(galley.rows.len() >= 4, "le texte passe à la ligne");
+        assert!(
+            area_line_height() > font_height + 2.0 * MARK_PAD_Y,
+            "l'interligne laisse de la place"
+        );
+        let rects = marks_rects(&galley, TEXT, &marks, font_height);
+        // « Atelier Bougainville SAS » est coupé en fin de ligne : deux rectangles.
+        assert!(rects.len() > marks.len());
+        for (r, _) in &rects {
+            let row = galley
+                .rows
+                .iter()
+                .find(|row| row.min_y() <= r.center().y && r.center().y <= row.max_y())
+                .unwrap_or_else(|| panic!("surlignage hors de toute ligne"));
+            // Dans la ligne, jamais sur la suivante ni la précédente.
+            assert!(r.min.y >= row.min_y() && r.max.y <= row.max_y());
+            // Centré sur le texte : la hauteur du texte plus la marge.
+            let glyph = row.glyphs.first().unwrap_or_else(|| panic!("ligne vide"));
+            let text_top = row.pos.y + glyph.pos.y - glyph.font_ascent;
+            assert!((r.min.y - (text_top - MARK_PAD_Y)).abs() <= 1.0);
+            assert!((r.height() - (font_height + 2.0 * MARK_PAD_Y)).abs() <= 1.0);
+            assert!(r.width() > 0.0);
+        }
+        // Le « . » entre deux valeurs voisines n'est couvert par aucun fond.
+        let dot = TEXT.find("SAS. ").map(|i| i + 3).unwrap_or_default();
+        let (a, b) = (char_index(TEXT, dot), char_index(TEXT, dot + 2));
+        let dot_rects = mark_rects(&galley, a, b, font_height);
+        for d in dot_rects {
+            assert!(rects.iter().all(|(r, _)| !r.intersects(d.shrink(0.5))));
+        }
+    }
 }

@@ -1,14 +1,18 @@
-//! Préférences retenues d'une session à l'autre : thème, dernier niveau de
-//! protection, taille de la fenêtre, bandeau d'accueil vu.
+//! Préférences retenues d'une session à l'autre : thème, destinataire choisi,
+//! taille de la fenêtre, raccourcis globaux du presse-papiers.
 //!
 //! Petit fichier JSON dans le dossier de configuration du système
 //! (`%APPDATA%\Anonymiseur\preferences.json` sous Windows). Il ne contient
 //! aucun chemin de fichier ni aucun contenu de l'utilisateur : seulement les
 //! champs de [`Preferences`]. Un fichier absent ou abîmé donne les réglages
-//! par défaut, sans erreur.
+//! par défaut, sans erreur. Les champs de la version 0.1 (niveau de
+//! protection, bandeau d'accueil) sont ignorés à la lecture.
+//!
+//! L'objectif n'est pas retenu : chaque session repart de « Masquer pour
+//! l'IA », réversible, pour qu'un choix irréversible soit toujours délibéré.
 
 use crate::ui::theme::ThemeChoice;
-use anon_core::Profile;
+use anon_core::Recipient;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -20,41 +24,28 @@ const FILE_NAME: &str = "preferences.json";
 pub const WINDOW_MIN: [f32; 2] = [900.0, 650.0];
 const WINDOW_MAX: f32 = 8192.0;
 
-/// Niveau de protection enregistré.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum SavedProfile {
-    #[default]
-    Standard,
-    Renforce,
-}
-
-impl From<Profile> for SavedProfile {
-    fn from(p: Profile) -> Self {
-        match p {
-            Profile::Standard => SavedProfile::Standard,
-            Profile::Renforce => SavedProfile::Renforce,
-        }
-    }
-}
-
-impl From<SavedProfile> for Profile {
-    fn from(p: SavedProfile) -> Self {
-        match p {
-            SavedProfile::Standard => Profile::Standard,
-            SavedProfile::Renforce => Profile::Renforce,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Preferences {
     pub theme: ThemeChoice,
-    pub profile: SavedProfile,
+    /// Destinataire choisi la dernière fois (exigence R2 : retenu, sans contenu).
+    pub recipient: Recipient,
     /// Taille intérieure de la fenêtre, en points.
     pub window: Option<[f32; 2]>,
-    /// Bandeau d'accueil refermé.
-    pub welcome_seen: bool,
+    /// Raccourcis globaux du presse-papiers (Ctrl+Alt+M, Ctrl+Alt+R) : activés
+    /// par défaut, désactivables dans la palette de commandes.
+    pub clipboard_hotkeys: bool,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            theme: ThemeChoice::default(),
+            recipient: Recipient::default(),
+            window: None,
+            clipboard_hotkeys: true,
+        }
+    }
 }
 
 impl Preferences {
@@ -117,9 +108,9 @@ mod tests {
         let path = temp("aller-retour");
         let p = Preferences {
             theme: ThemeChoice::Dark,
-            profile: SavedProfile::Renforce,
+            recipient: Recipient::Publication,
             window: Some([1400.0, 900.0]),
-            welcome_seen: true,
+            clipboard_hotkeys: false,
         };
         assert!(p.save(&path));
         assert_eq!(Preferences::load(&path), p);
@@ -141,7 +132,27 @@ mod tests {
         let _ = std::fs::write(&path, r#"{"theme":"Light","inconnu":3}"#);
         let p = Preferences::load(&path);
         assert_eq!(p.theme, ThemeChoice::Light);
-        assert_eq!(p.profile, SavedProfile::Standard);
+        assert_eq!(p.recipient, Recipient::PublicAi);
+        assert!(p.clipboard_hotkeys, "absent : activés par défaut");
+        if let Some(d) = path.parent().and_then(Path::parent) {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
+
+    #[test]
+    fn version_0_1_file_is_read() {
+        let path = temp("v01");
+        if let Some(d) = path.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        let _ = std::fs::write(
+            &path,
+            r#"{"theme":"Dark","profile":"Renforce","window":[1300.0,820.0],"welcome_seen":true}"#,
+        );
+        let p = Preferences::load(&path);
+        assert_eq!(p.theme, ThemeChoice::Dark);
+        assert_eq!(p.window, Some([1300.0, 820.0]));
+        assert_eq!(p.recipient, Recipient::PublicAi);
         if let Some(d) = path.parent().and_then(Path::parent) {
             let _ = std::fs::remove_dir_all(d);
         }
@@ -154,7 +165,7 @@ mod tests {
             ..Default::default()
         };
         let json = serde_json::to_string(&p).unwrap_or_default();
-        let keys: Vec<&str> = ["theme", "profile", "window", "welcome_seen"].to_vec();
+        let keys: Vec<&str> = ["theme", "recipient", "window", "clipboard_hotkeys"].to_vec();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
         let found: Vec<String> = value
             .as_object()
@@ -177,15 +188,6 @@ mod tests {
         assert_eq!(
             p(Some([1300.0, 820.0])).window_size(),
             Some([1300.0, 820.0])
-        );
-    }
-
-    #[test]
-    fn profile_conversion() {
-        assert_eq!(Profile::from(SavedProfile::Renforce), Profile::Renforce);
-        assert_eq!(
-            SavedProfile::from(Profile::Standard),
-            SavedProfile::Standard
         );
     }
 }

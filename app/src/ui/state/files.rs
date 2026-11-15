@@ -94,12 +94,21 @@ impl FileEntry {
 /// ne se mélangent pas aux sources.
 pub const OUTPUT_DIR_NAME: &str = "Anonymisés";
 
-/// Suffixes des fichiers produits par l'outil (voir `anon-engine`).
-const OUTPUT_SUFFIXES: [&str; 2] = ["_anonymise", "_restaure"];
+/// Suffixes des fichiers produits par l'outil (voir `anon_engine::output_file_name`) :
+/// ceux de la V2 (`_masque`, `_masque_sans_cle`, `_anonyme`), ceux de la V1
+/// (`_anonymise`) et les fichiers restaurés (`_restaure`).
+const OUTPUT_SUFFIXES: [&str; 5] = [
+    "_masque_sans_cle",
+    "_masque",
+    "_anonyme",
+    "_anonymise",
+    "_restaure",
+];
 
-/// Vrai pour un fichier produit par l'outil : `nom_anonymise.ext`,
-/// `nom_anonymise_2.ext`, `nom_restaure.ext`, `nom_restaure_3.ext` ou une
-/// table `.anonmap`. Ces fichiers ne sont jamais anonymisés une seconde fois.
+/// Vrai pour un fichier produit par l'outil : `nom_masque.ext`,
+/// `nom_masque_2.ext`, `nom_masque_sans_cle.ext`, `nom_anonyme.ext`,
+/// `nom_anonymise.ext` (V1), `nom_restaure_3.ext`, ou une clé `.anonmap` de
+/// tout nom. Ces fichiers ne sont jamais masqués une seconde fois.
 pub fn is_tool_output(path: &Path) -> bool {
     let ext = path
         .extension()
@@ -183,6 +192,28 @@ mod tests {
         assert!(!out("restaurer_2.txt"));
         assert!(!out("rapport_2.docx"));
         assert!(!out("reponse-ia-exemple.md"));
+    }
+
+    #[test]
+    fn v2_outputs_and_keys_are_recognised() {
+        let out = |s: &str| is_tool_output(Path::new(s));
+        // Noms produits par `anon_engine::output_file_name`.
+        for goal in anon_core::Goal::ALL {
+            for verdict in [None, Some(anon_core::Verdict::Anonymous)] {
+                let name = anon_engine::output_file_name("contrat.docx", *goal, verdict);
+                assert!(out(&name), "{name}");
+            }
+        }
+        assert!(out("notes_masque.txt"));
+        assert!(out("notes_masque_2.txt"));
+        assert!(out("clients_masque_sans_cle.xlsx"));
+        assert!(out("clients_masque_sans_cle_3.xlsx"));
+        assert!(out("clients_anonyme.xlsx"));
+        assert!(out("dossier-16-11-2026-14h30.anonmap"), "clé de la V2");
+        assert!(out("cle quelconque.ANONMAP"));
+        assert!(!out("masque.txt"), "nom sans préfixe : pas une sortie");
+        assert!(!out("anonyme.txt"));
+        assert!(!out("masques_venitiens.docx"));
     }
 
     #[test]

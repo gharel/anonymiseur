@@ -231,6 +231,11 @@ pub struct Palette {
     pub ia: Tinted,
     pub gestion: Tinted,
     pub data: Tinted,
+    /// Surlignage d'une valeur masquée dans le texte (couleur neutre) :
+    /// fond, texte, soulignement.
+    pub masked: Tinted,
+    /// Surlignage d'une valeur « à décider » (jaune de la catégorie data).
+    pub pending: Tinted,
     /// Rayons en px.
     pub radius_sm: f32,
     pub radius_md: f32,
@@ -356,6 +361,7 @@ impl Palette {
         let gray_300 = t.c("gray-300");
         let gray_400 = t.c("gray-400");
         let gray_500 = t.c("gray-500");
+        let gray_600 = t.c("gray-600");
         let gray_700 = t.c("gray-700");
         let text_primary = t.c("text-primary");
         let text_secondary = t.c("text-secondary");
@@ -430,6 +436,37 @@ impl Palette {
                 ink,
                 edge: base,
             })
+        };
+
+        // Surlignages du texte à vérifier : « masqué » neutre, « à décider » jaune.
+        let (masked, pending) = if is_dark {
+            let surface = mix(dark_3, white, DARK_SURFACE);
+            let heading = mix(white, dark_3, 0.04);
+            (
+                Tinted {
+                    fill: mix(surface, white, 0.16),
+                    ink: heading,
+                    edge: gray_500,
+                },
+                Tinted {
+                    fill: data.fill,
+                    ink: data.ink,
+                    edge: data.edge,
+                },
+            )
+        } else {
+            (
+                Tinted {
+                    fill: gray_200,
+                    ink: dark,
+                    edge: gray_600,
+                },
+                Tinted {
+                    fill: data.fill,
+                    ink: dark,
+                    edge: data.ink,
+                },
+            )
         };
 
         let colors = if is_dark {
@@ -568,6 +605,8 @@ impl Palette {
             ia,
             gestion,
             data,
+            masked,
+            pending,
             radius_sm,
             radius_md,
             radius_lg,
@@ -745,6 +784,8 @@ impl Palette {
             ia: t,
             gestion: t,
             data: t,
+            masked: t,
+            pending: t,
             radius_sm: 4.0,
             radius_md: 8.0,
             radius_lg: 12.0,
@@ -953,6 +994,17 @@ pub fn text_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
             p.primary_subtle,
         ),
         ("vert sur ligne à confirmer", p.accent, p.attention_row),
+        ("étape survolée", p.accent, p.muted),
+        (
+            "titre sur fond de marque (objectif choisi)",
+            p.heading,
+            p.primary_subtle,
+        ),
+        (
+            "raison sur fond de marque (palette)",
+            p.text_secondary,
+            p.primary_subtle,
+        ),
         ("blanc sur bouton primaire", p.on_primary, p.primary_dark),
         (
             "blanc sur bouton primaire survolé",
@@ -973,12 +1025,24 @@ pub fn text_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
         ("titre sur bandeau info", p.heading, p.dev.fill),
         ("texte sur bandeau succès", p.text, p.primary_subtle),
         ("texte sur bandeau avertissement", p.text, p.data.fill),
-        ("valeur généralisée sur surface", p.data.ink, p.surface),
+        ("valeur moins précise sur surface", p.data.ink, p.surface),
         (
-            "valeur généralisée sur ligne à confirmer",
+            "valeur moins précise sur ligne à confirmer",
             p.data.ink,
             p.attention_row,
         ),
+        ("surlignage « masqué »", p.masked.ink, p.masked.fill),
+        ("surlignage « à décider »", p.pending.ink, p.pending.fill),
+        ("texte « à décider » de la file", p.data.ink, p.pending.fill),
+        // Lot 8 : bilan, envoi, réponse.
+        ("critère en échec (badge du bilan)", p.error, p.error_tint),
+        ("phrase de passe sur surface", p.heading, p.surface),
+        (
+            "valeur restaurée dans la réponse",
+            p.masked.ink,
+            p.masked.fill,
+        ),
+        ("balise inconnue dans la réponse", p.data.ink, p.data.fill),
     ];
     for (name, t) in [
         ("badge marque", p.brand),
@@ -1011,8 +1075,43 @@ pub fn ui_pairs(p: &Palette) -> Vec<(&'static str, Color32, Color32)> {
         ("icône d'information sur bandeau", p.dev.ink, p.dev.fill),
         ("icône de succès sur bandeau", p.accent, p.primary_subtle),
         ("case cochée sur surface", p.primary_dark, p.surface),
+        (
+            "bouton radio choisi sur fond de marque",
+            p.accent,
+            p.primary_subtle,
+        ),
+        ("focus sur fond de marque", p.border_focus, p.primary_subtle),
         ("étape courante sur page", p.primary_dark, p.page),
         ("jauge de progression sur piste", p.meter, p.track),
+        // Le soulignement distingue la valeur du texte qui l'entoure.
+        (
+            "soulignement « masqué » sur surface",
+            p.masked.edge,
+            p.surface,
+        ),
+        (
+            "soulignement « à décider » sur surface",
+            p.pending.edge,
+            p.surface,
+        ),
+        (
+            "contour de la valeur courante",
+            p.border_focus,
+            p.pending.fill,
+        ),
+        (
+            "contour de la valeur courante (masquée)",
+            p.border_focus,
+            p.masked.fill,
+        ),
+        // Lot 8 : bilan et réponse.
+        ("icône de critère en échec sur surface", p.error, p.surface),
+        ("icône de critère réussi sur surface", p.accent, p.surface),
+        (
+            "soulignement d'une valeur restaurée sur creux",
+            p.masked.edge,
+            p.sunken,
+        ),
     ]
 }
 

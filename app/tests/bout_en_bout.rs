@@ -1,5 +1,5 @@
 //! Parcours de l'interface de bout en bout sur les vrais exemples, sans egui :
-//! état des onglets + opérations du fil de travail + moteur livré.
+//! état du dossier de travail + opérations du fil de travail + moteur livré.
 //!
 //! analyser `exemples/` → sélection par défaut → anonymiser dans un dossier
 //! temporaire → fichiers écrits et `.anonmap` → réouverture avec le mot de passe
@@ -8,15 +8,16 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use anon_core::{
-    BlockContext, BlockRole, Extraction, FormatError, Handler, Output, Session, TextBlock,
-    TextTransform, TransformOptions,
+    AssessSettings, BlockContext, BlockRole, Extraction, FormatError, Goal, Handler, Output,
+    Session, TextBlock, TextTransform, TransformOptions, Verdict,
 };
 use anon_engine::{Engine, NoProgress, Progress};
 use anonymiseur::ui::platform::file_entry;
 use anonymiseur::ui::service::{
-    MAP_BASENAME, Outcome, Protection, anonymize_batch, read_inputs, restore_batch,
+    KeyPlan, Outcome, Protection, SendPlan, anonymize_batch, assess_folder, fix_all_folder,
+    read_documents, read_inputs, restore_batch,
 };
-use anonymiseur::ui::state::anonymize::{AnonymizeState, ProtectMode, Step};
+use anonymiseur::ui::state::anonymize::{AnonymizeState, CONFIRM_NEEDED, ProtectMode};
 use anonymiseur::ui::state::deanonymize::DeanonymizeState;
 use anonymiseur::ui::state::files::OUTPUT_DIR_NAME;
 use std::path::{Path, PathBuf};
@@ -76,20 +77,28 @@ fn copy_examples(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Analyse par l'état de l'onglet, comme le fait `AnonApp`.
+/// Dossier des clés d'un dossier de travail (distinct de `Anonymisés`).
+fn keys_of(work: &Path) -> PathBuf {
+    work.join("Clés")
+}
+
+/// Analyse par l'état du dossier, comme le fait `AnonApp`. Les clés vont dans
+/// le dossier « Clés » à côté des documents (`Documents/Anonymiseur/Clés` dans
+/// l'application).
 fn analyzed(paths: Vec<PathBuf>, session: &Session, progress: &dyn Progress) -> AnonymizeState {
     let mut st = AnonymizeState::default();
+    st.key_dir = paths.first().and_then(|p| p.parent()).map(keys_of);
     let supported = engine().supported_extensions();
     st.add_files(paths.into_iter().map(file_entry), &supported);
-    let to_read = st.begin_analysis().unwrap();
-    let (inputs, rejected) = read_inputs(&to_read);
+    let job = st.begin_analysis().unwrap();
+    let (inputs, rejected) = read_documents(&job);
     let analysis = engine().analyze(&inputs, &st.analyze_options(), session, progress);
     st.analysis_done(inputs, rejected, analysis, session);
     st
 }
 
 fn anonymize(st: &mut AnonymizeState, session: &mut Session, progress: &dyn Progress) {
-    st.confirm_review().unwrap();
+    assert_eq!(st.review_blocker(), None);
     let job = st.begin_anonymize().unwrap();
     if let Some(s) = job.session.clone() {
         *session = s;
@@ -101,8 +110,8 @@ fn anonymize(st: &mut AnonymizeState, session: &mut Session, progress: &dyn Prog
         &job.never,
         &job.masks,
         session,
-        &job.protection,
-        &job.out_dir,
+        &job.plan,
+        None,
         progress,
     );
     st.anonymize_done(report, job.inputs, job.analysis);
@@ -115,7 +124,7 @@ fn parcours_complet_sur_les_exemples() {
     assert!(paths.len() >= 8, "exemples gérés : {}", paths.len());
     let mut session = Session::new();
     let mut st = analyzed(paths.clone(), &session, &NoProgress);
-    assert_eq!(st.step, Step::Review);
+    assert!(st.analysis.is_some());
     assert!(st.rejected.is_empty(), "{:?}", st.rejected);
     assert!(st.selected_count() > 10);
     assert!(!st.tag_preview.is_empty());
@@ -127,12 +136,19 @@ fn parcours_complet_sur_les_exemples() {
     st.protect.password = PASSWORD.into();
     st.protect.confirm = PASSWORD.into();
     anonymize(&mut st, &mut session, &NoProgress);
-    assert_eq!(st.step, Step::Done);
+    assert!(st.report.is_some());
     assert!(st.protect.password.is_empty(), "mot de passe effacé");
     let report = st.report.clone().unwrap();
     assert!(report.fatal.is_none());
     let map = report.map_path.clone().unwrap();
-    assert_eq!(map, out.join(MAP_BASENAME));
+    // La clé : dans son propre dossier, nommée `dossier-JJ-MM-AAAA-HHhMM.anonmap`.
+    assert_eq!(map.parent(), Some(keys_of(&work).as_path()));
+    let key_name = map.file_name().unwrap().to_string_lossy().to_string();
+    assert!(
+        key_name.starts_with("dossier-") && key_name.ends_with(".anonmap"),
+        "{key_name}"
+    );
+    assert!(report.keep_until.is_some(), "durée de conservation");
 
     // Fichiers écrits : suffixe, aucun original modifié, aucune valeur cochée lisible.
     let mut written = Vec::new();
@@ -146,7 +162,7 @@ fn parcours_complet_sur_les_exemples() {
                     path.file_name()
                         .unwrap()
                         .to_string_lossy()
-                        .starts_with(&format!("{stem}_anonymise")),
+                        .starts_with(&format!("{stem}_masque.")),
                     "{}",
                     path.display()
                 );
@@ -160,7 +176,7 @@ fn parcours_complet_sur_les_exemples() {
                     e.unwrap()
                         .file_name()
                         .to_string_lossy()
-                        .starts_with(&format!("{stem}_anonymise"))
+                        .starts_with(&format!("{stem}_masque"))
                 }));
             }
             other => panic!("{} : {other:?}", f.name),
@@ -229,7 +245,6 @@ fn parcours_complet_sur_les_exemples() {
     assert!(!notes.contains("[PERSONNE_"), "balise non restaurée");
 
     // Texte collé.
-    d.mode = anonymiseur::ui::state::deanonymize::InputMode::Paste;
     d.pasted = std::fs::read_to_string(exemples().join("reponse-ia-exemple.md")).unwrap();
     d.restore_text(|t, s| engine().restore_text(t, s)).unwrap();
     let (text, rep) = d.text_result.clone().unwrap();
@@ -329,6 +344,11 @@ fn fuite_simulee_bloque_le_fichier() {
         &NoProgress,
     );
     let mut session = Session::new();
+    let plan = SendPlan::new(
+        Protection::Password(PASSWORD.into()),
+        &work,
+        KeyPlan::new(keys_of(&work)),
+    );
     let report = anonymize_batch(
         &engine,
         &inputs,
@@ -336,8 +356,8 @@ fn fuite_simulee_bloque_le_fichier() {
         &[],
         &[],
         &mut session,
-        &Protection::Password(PASSWORD.into()),
-        &work,
+        &plan,
+        None,
         &NoProgress,
     );
     assert!(
@@ -345,10 +365,10 @@ fn fuite_simulee_bloque_le_fichier() {
     );
     assert!(matches!(report.files[1].outcome, Outcome::Written { .. }));
     assert!(
-        !work.join("piege_anonymise.fuite").exists(),
+        !work.join("piege_masque.fuite").exists(),
         "fichier bloqué non écrit"
     );
-    assert!(work.join("ok_anonymise.txt").exists());
+    assert!(work.join("ok_masque.txt").exists());
     // Repli : le texte anonymisé reste exportable.
     let text = engine.export_text(&inputs[0], &session).unwrap();
     assert!(text.contains("[EMAIL_1]") && !text.contains("helene"));
@@ -368,7 +388,7 @@ fn fichiers_refuses_sans_bloquer_les_autres() {
     std::fs::write(&broken, b"PK pas vraiment un docx").unwrap();
     let session = Session::new();
     let st = analyzed(vec![good, old, google, broken], &session, &NoProgress);
-    assert_eq!(st.step, Step::Review);
+    assert!(st.analysis.is_some());
     assert_eq!(st.files.len(), 1);
     let reasons: Vec<(&str, &str)> = st
         .rejected
@@ -397,27 +417,33 @@ fn aucun_fichier_ecrase() {
     std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
     let mut session = Session::new();
     let out = work.join(OUTPUT_DIR_NAME);
+    let keys = keys_of(&work);
     for round in 1..=2 {
         let mut st = analyzed(vec![file.clone()], &session, &NoProgress);
         st.protect.password = PASSWORD.into();
         st.protect.confirm = PASSWORD.into();
+        // Même minute : même nom de clé, le second reçoit « _2 ».
+        st.key_name = Some("dossier-16-11-2026-14h05.anonmap".into());
         anonymize(&mut st, &mut session, &NoProgress);
         let report = st.report.unwrap();
         let (expected_file, expected_map) = if round == 1 {
-            ("notes_anonymise.txt", MAP_BASENAME.to_owned())
+            ("notes_masque.txt", "dossier-16-11-2026-14h05.anonmap")
         } else {
-            (
-                "notes_anonymise_2.txt",
-                "table_anonymiseur_2.anonmap".to_owned(),
-            )
+            ("notes_masque_2.txt", "dossier-16-11-2026-14h05_2.anonmap")
         };
         assert!(
             matches!(&report.files[0].outcome, Outcome::Written { path, .. } if path == &out.join(expected_file))
         );
-        assert_eq!(report.map_path, Some(out.join(expected_map)));
+        assert_eq!(report.map_path, Some(keys.join(expected_map)));
     }
-    // La première table reste lisible : elle n'a pas été remplacée.
-    assert!(anon_vault::open(&std::fs::read(out.join(MAP_BASENAME)).unwrap(), PASSWORD).is_ok());
+    // La première clé reste lisible : elle n'a pas été remplacée.
+    assert!(
+        anon_vault::open(
+            &std::fs::read(keys.join("dossier-16-11-2026-14h05.anonmap")).unwrap(),
+            PASSWORD
+        )
+        .is_ok()
+    );
     let _ = std::fs::remove_dir_all(&work);
 }
 
@@ -436,7 +462,7 @@ fn reprise_d_une_table_existante_garde_les_balises() {
     // Nouvelle session vide, table reprise à l'étape Protéger.
     let mut session = Session::new();
     let mut st = analyzed(vec![file], &session, &NoProgress);
-    st.confirm_review().unwrap();
+    assert_eq!(st.review_blocker(), None);
     st.protect.mode = ProtectMode::ExistingTable;
     st.protect.existing_path = Some(map.clone());
     st.protect.password = PASSWORD.into();
@@ -453,13 +479,13 @@ fn reprise_d_une_table_existante_garde_les_balises() {
         &job.never,
         &job.masks,
         &mut session,
-        &job.protection,
-        &job.out_dir,
+        &job.plan,
+        None,
         &NoProgress,
     );
     let out = work.join(OUTPUT_DIR_NAME);
-    let first = std::fs::read(out.join("notes_anonymise.txt")).unwrap();
-    let second = std::fs::read(out.join("notes_anonymise_2.txt")).unwrap();
+    let first = std::fs::read(out.join("notes_masque.txt")).unwrap();
+    let second = std::fs::read(out.join("notes_masque_2.txt")).unwrap();
     assert_eq!(first, second, "mêmes balises");
     let new_map = report.map_path.unwrap();
     assert!(anon_vault::open(&std::fs::read(new_map).unwrap(), PASSWORD).is_ok());
@@ -495,15 +521,14 @@ fn annulation() {
         })
         .collect();
 
-    // Analyse annulée dès le départ : retour à « Déposer », rien de chargé.
+    // Analyse annulée dès le départ : rien de chargé.
     let cancel_now = CancelAfter {
         after: 0,
         seen: AtomicUsize::new(0),
     };
     let session = Session::new();
     let st = analyzed(paths.clone(), &session, &cancel_now);
-    assert_eq!(st.step, Step::Drop);
-    assert!(st.analysis.is_none());
+    assert!(st.analysis.is_none(), "rien à vérifier");
 
     // Anonymisation annulée après le premier fichier : il est livré avec sa table.
     let mut session = Session::new();
@@ -527,12 +552,13 @@ fn annulation() {
 
 #[test]
 fn exemples_reutilises_sans_ecrasement() {
-    use anonymiseur::ui::service::{EXAMPLES, prepare_examples};
-    // Tous les fichiers de `exemples/` sont embarqués, sauf la vérité terrain.
+    use anonymiseur::ui::service::{EXAMPLES, TEST_ONLY_EXAMPLES, prepare_examples};
+    // Tous les fichiers de `exemples/` sont embarqués, sauf la vérité terrain
+    // des tests (`attendu.json`, `evaluation.json`).
     let mut on_disk: Vec<String> = std::fs::read_dir(exemples())
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
-        .filter(|n| n != "attendu.json")
+        .filter(|n| !TEST_ONLY_EXAMPLES.contains(&n.as_str()))
         .collect();
     on_disk.sort();
     let mut embedded: Vec<String> = EXAMPLES.iter().map(|e| e.name.to_owned()).collect();
@@ -581,7 +607,7 @@ fn exemples_reutilises_sans_ecrasement() {
 
     // Second passage, après une anonymisation : rien n'est recréé, et les
     // fichiers produits par l'outil ne sont jamais proposés.
-    std::fs::write(dir.join("notes_anonymise.txt"), "sortie").unwrap();
+    std::fs::write(dir.join("notes_masque.txt"), "sortie").unwrap();
     let second = prepare_examples(&dir).unwrap();
     assert_eq!(second.created, 0);
     assert_eq!(second.documents, first.documents);
@@ -605,10 +631,12 @@ fn fichiers_produits_jamais_reanonymises() {
     anonymize(&mut st, &mut session, &NoProgress);
     let out = work.join(OUTPUT_DIR_NAME);
     assert_eq!(st.report.unwrap().delivered(), 2);
-    // Les sorties, recopiées à côté des sources (cas d'un ancien dossier).
-    for e in std::fs::read_dir(&out).unwrap() {
-        let p = e.unwrap().path();
-        std::fs::copy(&p, work.join(p.file_name().unwrap())).unwrap();
+    // Les sorties et la clé, recopiées à côté des sources (cas d'un ancien dossier).
+    for dir in [&out, &keys_of(&work)] {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            std::fs::copy(&p, work.join(p.file_name().unwrap())).unwrap();
+        }
     }
     let all: Vec<PathBuf> = std::fs::read_dir(&work)
         .unwrap()
@@ -622,7 +650,7 @@ fn fichiers_produits_jamais_reanonymises() {
         &engine().supported_extensions(),
     );
     assert_eq!(report.added, 2);
-    assert_eq!(report.outputs, 2, "deux fichiers anonymisés");
+    assert_eq!(report.outputs, 2, "deux fichiers masqués");
     assert!(report.map.is_some(), "la table est proposée à la reprise");
     let mut names: Vec<&str> = st.files.iter().map(|f| f.name.as_str()).collect();
     names.sort();
@@ -643,10 +671,11 @@ fn terme_toujours_retrouve_et_remplace() {
             .unwrap()
             .candidates
             .iter()
-            .find(|c| c.value == "Martinique")
+            .find(|c| c.value == "antenne")
             .map(|c| (c.selected, c.occurrences))
     };
-    // Piège à faux positif : au plus proposé décoché.
+    // Mot courant, que la détection ne propose pas (même en profil Renforcé,
+    // qui trouve désormais « Martinique », l'ancien terme témoin).
     assert!(
         matches!(found(&st), None | Some((false, _))),
         "{:?}",
@@ -654,10 +683,10 @@ fn terme_toujours_retrouve_et_remplace() {
     );
 
     // Ajout à l'écran de vérification : l'analyse est relancée.
-    st.always_term = "Martinique".into();
+    st.always_term = "antenne".into();
     st.always_kind = anon_core::EntityKind::Autre;
-    let paths = st.add_always().unwrap().expect("analyse relancée");
-    let (inputs, rejected) = read_inputs(&paths);
+    let job = st.add_always().unwrap().expect("analyse relancée");
+    let (inputs, rejected) = read_documents(&job);
     let analysis = engine().analyze(&inputs, &st.analyze_options(), &session, &NoProgress);
     st.analysis_done(inputs, rejected, analysis, &session);
     assert_eq!(found(&st), Some((true, 1)));
@@ -670,7 +699,7 @@ fn terme_toujours_retrouve_et_remplace() {
         panic!("{:?}", report.files[0].outcome);
     };
     let out = std::fs::read_to_string(path).unwrap();
-    assert!(!out.contains("Martinique"), "{out}");
+    assert!(!out.contains("antenne"), "{out}");
     assert!(out.contains("[AUTRE_1]"));
     let _ = std::fs::remove_dir_all(&work);
 }
@@ -681,13 +710,12 @@ fn ligne_generalisee_non_restauree() {
     let file = work.join("notes.txt");
     std::fs::copy(exemples().join("notes.txt"), &file).unwrap();
     let mut session = Session::new();
-    let mut st = AnonymizeState {
-        profile: anon_core::Profile::Renforce,
-        ..Default::default()
-    };
+    // L'analyse est toujours en profil Renforcé : l'âge est un indice cherché.
+    let mut st = AnonymizeState::default();
     st.add_files([file_entry(file)], &engine().supported_extensions());
-    let to_read = st.begin_analysis().unwrap();
-    let (inputs, rejected) = read_inputs(&to_read);
+    st.key_dir = Some(keys_of(&work));
+    let job = st.begin_analysis().unwrap();
+    let (inputs, rejected) = read_documents(&job);
     let analysis = engine().analyze(&inputs, &st.analyze_options(), &session, &NoProgress);
     st.analysis_done(inputs, rejected, analysis, &session);
     let age = st
@@ -731,8 +759,21 @@ fn zone_manuelle_masquee_sur_la_carte_de_visite() {
     let file = work.join("carte-visite.png");
     std::fs::copy(exemples().join("carte-visite.png"), &file).unwrap();
     let mut session = Session::new();
-    // Profil Standard : la fonction (« responsable commerciale ») n'est pas détectée.
+    // La V2 analyse toujours en profil Renforcé : la fonction (« responsable
+    // commerciale ») est trouvée. On la garde visible, comme le ferait
+    // l'utilisateur, pour la masquer ensuite à la main sur l'image.
     let mut st = analyzed(vec![file], &session, &NoProgress);
+    let fonction: Vec<usize> = st
+        .visible()
+        .into_iter()
+        .filter(|id| {
+            st.candidate(*id)
+                .is_some_and(|c| c.value.to_lowercase().contains("commerciale"))
+        })
+        .collect();
+    for id in fonction {
+        st.set_selected(id, false, &session);
+    }
     let images = st.images();
     assert_eq!(images.len(), 1, "{images:?}");
     let info = images[0].clone();
@@ -763,7 +804,7 @@ fn zone_manuelle_masquee_sur_la_carte_de_visite() {
     );
     // Zone tracée à la main, un peu plus large que le mot.
     let pad = 6;
-    st.masks.add(
+    st.add_mask(
         &info.file,
         &info.name,
         PixelRect {
@@ -787,5 +828,94 @@ fn zone_manuelle_masquee_sur_la_carte_de_visite() {
     let text = page.text_with_spans().0.to_lowercase();
     assert!(!text.contains("commerciale"), "{text}");
     assert!(!text.contains("vaitiare"));
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+// --- Objectif « Anonymiser définitivement » : noms selon le verdict -----------
+
+/// Évalue le dossier comme le fait le bilan.
+fn assess(st: &mut AnonymizeState, settings: AssessSettings) -> Verdict {
+    if let Some(job) = st.begin_assessment(settings) {
+        let mut copy = job.analysis;
+        let result = assess_folder(engine(), &mut copy, &job.masks, &job.settings);
+        st.assessment_done(job.revision, job.settings, result);
+    }
+    st.assessment(&settings).unwrap().assessment.verdict
+}
+
+/// Nom du fichier écrit pour le premier document du lot.
+fn written_name(st: &AnonymizeState) -> String {
+    let report = st.report.as_ref().unwrap();
+    match &report.files[0].outcome {
+        Outcome::Written { path, .. } => path.file_name().unwrap().to_string_lossy().to_string(),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Sans conclusion d'anonymat, l'envoi se confirme et les fichiers prennent le
+/// suffixe `_masque_sans_cle` ; après « Tout corriger » sur un exemple qui
+/// devient anonyme (`exemples/evaluation.json` : `patients.xlsx`), le suffixe
+/// `_anonyme`. Aucune clé dans les deux cas.
+#[test]
+fn objectif_anonymiser_noms_selon_le_verdict() {
+    let work = temp_dir("anonymiser");
+    let file = work.join("patients.xlsx");
+    std::fs::copy(exemples().join("patients.xlsx"), &file).unwrap();
+    let mut session = Session::new();
+    let mut st = analyzed(vec![file], &session, &NoProgress);
+    st.apply_goal(Goal::Anonymize);
+    let settings = AssessSettings {
+        goal: Goal::Anonymize,
+        ..AssessSettings::default()
+    };
+    let verdict = assess(&mut st, settings);
+    assert!(!matches!(verdict, Verdict::Anonymous), "{verdict:?}");
+
+    // Envoi sans correction : confirmation exigée, puis `_masque_sans_cle`.
+    assert_eq!(st.verdict_blocker(&settings), Some(CONFIRM_NEEDED));
+    st.protect.confirmed = true;
+    assert_eq!(st.verdict_blocker(&settings), None);
+    anonymize(&mut st, &mut session, &NoProgress);
+    assert_eq!(written_name(&st), "patients_masque_sans_cle.xlsx");
+    assert!(st.report.as_ref().unwrap().map_path.is_none(), "aucune clé");
+    assert!(!keys_of(&work).exists(), "aucun dossier de clés créé");
+
+    // « Tout corriger » (une seule annulation), puis nouvel envoi : `_anonyme`.
+    let job = st.begin_fix_all(settings).unwrap();
+    let mut fixed = job.analysis;
+    let (token, result) = fix_all_folder(engine(), &mut fixed, &job.masks, &job.settings);
+    assert!(st.fix_all_done(fixed, token, job.settings, result, &session));
+    assert_eq!(assess(&mut st, settings), Verdict::Anonymous);
+    assert_eq!(st.verdict_blocker(&settings), None, "rien à confirmer");
+    anonymize(&mut st, &mut session, &NoProgress);
+    assert_eq!(written_name(&st), "patients_anonyme.xlsx");
+    let out = work.join(OUTPUT_DIR_NAME);
+    let mut names: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        ["patients_anonyme.xlsx", "patients_masque_sans_cle.xlsx"]
+    );
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+/// Objectif « Masquer pour l'IA » : `_masque` quel que soit le verdict, et le
+/// mot « anonyme » n'apparaît dans aucun nom de fichier produit.
+#[test]
+fn objectif_masquer_nomme_masque() {
+    let work = temp_dir("masquer");
+    let file = work.join("patients.xlsx");
+    std::fs::copy(exemples().join("patients.xlsx"), &file).unwrap();
+    let mut session = Session::new();
+    let mut st = analyzed(vec![file], &session, &NoProgress);
+    st.protect.password = PASSWORD.into();
+    st.protect.confirm = PASSWORD.into();
+    anonymize(&mut st, &mut session, &NoProgress);
+    assert_eq!(written_name(&st), "patients_masque.xlsx");
+    let key = st.report.as_ref().unwrap().map_path.clone().unwrap();
+    assert!(!key.to_string_lossy().contains("anonyme"));
     let _ = std::fs::remove_dir_all(&work);
 }

@@ -4,13 +4,13 @@
 use super::theme::palette;
 use super::widgets::badge::FAMILIES;
 use super::widgets::field::field_id;
-use super::widgets::nav::{filter_chip, segmented};
+use super::widgets::nav::{command_button, filter_chip, pill_menu, segmented};
 use super::widgets::{
-    Badge, Banner, ButtonSize, ButtonVariant, Card, CheckState, Checkbox, Column, DataTable,
-    DropZone, Icon, PillButton, ProgressBar, RowTone, Select, Stepper, StrengthMeter, TabBar,
-    TextField, family_tint, overline,
+    Badge, Banner, ButtonSize, ButtonVariant, Card, CheckState, Checkbox, ChoiceCard, Column,
+    DataTable, DropZone, Icon, PillButton, ProgressBar, RowTone, Select, StepBar, StepItem,
+    StrengthMeter, TextField, family_tint, overline,
 };
-use anon_core::{EntityKind, Profile};
+use anon_core::{EntityKind, Goal, Recipient};
 use egui::Ui;
 
 /// Valeurs modifiables de la galerie.
@@ -21,7 +21,7 @@ pub struct GalleryState {
     pub focused: String,
     pub with_error: String,
     pub password: String,
-    pub profile: Profile,
+    pub goal: Goal,
     pub kind: EntityKind,
     /// Donne le focus au champ « focus » à la prochaine image.
     pub focus_once: bool,
@@ -35,7 +35,7 @@ impl Default for GalleryState {
             focused: "claire.martin@example.com".into(),
             with_error: "claire.martin@".into(),
             password: "Cheval-Agrafe".into(),
-            profile: Profile::Standard,
+            goal: Goal::Mask,
             kind: EntityKind::Societe,
             focus_once: true,
         }
@@ -81,6 +81,11 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
                         .preview_hover(true),
                 );
                 ui.add(PillButton::new("Désactivé").variant(variant).enabled(false));
+                ui.add(
+                    PillButton::new("Raccourci")
+                        .variant(variant)
+                        .kbd("Ctrl+Entrée"),
+                );
             });
         }
     });
@@ -108,7 +113,7 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
         });
     });
 
-    section(ui, "Filtres, sélecteur, onglets, étapes", |ui| {
+    section(ui, "Filtres, sélecteurs, étapes, palette", |ui| {
         ui.horizontal_wrapped(|ui| {
             for (i, fam) in FAMILIES.iter().enumerate() {
                 filter_chip(
@@ -124,21 +129,70 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
             ui.spacing_mut().item_spacing.x = p.space(6);
             segmented(
                 ui,
-                "Profil",
-                &mut st.profile,
-                &[
-                    (Profile::Standard, "Standard"),
-                    (Profile::Renforce, "Renforcé"),
-                ],
+                "Objectif",
+                &mut st.goal,
+                &[(Goal::Mask, "Masquer"), (Goal::Anonymize, "Sans retour")],
             );
-            let tabs = [
-                (Icon::Lock, "Anonymiser"),
-                (Icon::LockOpen, "Désanonymiser"),
-                (Icon::FileText, "Texte libre"),
-            ];
-            TabBar::new(&tabs).show(ui, 0);
+            command_button(ui, "Ctrl+K", false);
+            command_button(ui, "Ctrl+K", true);
+            let recipients: Vec<(Recipient, &str)> =
+                Recipient::ALL.iter().map(|r| (*r, r.label())).collect();
+            pill_menu(ui, "Pour", Recipient::PublicAi, &recipients);
         });
-        Stepper::new(&["Déposer", "Vérifier", "Protéger", "Terminé"], 1).show(ui);
+        let steps = [
+            StepItem {
+                label: "Vérifier",
+                done: true,
+                current: false,
+                blocked: None,
+                shortcut: None,
+            },
+            StepItem {
+                label: "Bilan",
+                done: false,
+                current: true,
+                blocked: None,
+                shortcut: None,
+            },
+            StepItem {
+                label: "Envoyer",
+                done: false,
+                current: false,
+                blocked: None,
+                shortcut: None,
+            },
+            StepItem {
+                label: "Réponse",
+                done: false,
+                current: false,
+                blocked: Some("Étape inaccessible"),
+                shortcut: None,
+            },
+        ];
+        StepBar::new(&steps).show(ui);
+    });
+
+    section(ui, "Choix de l'objectif", |ui| {
+        ui.columns(2, |cols| {
+            if let [a, b] = cols {
+                a.add(
+                    ChoiceCard::new(
+                        "Choix retenu",
+                        "Conséquence du choix, écrite en une phrase sous le titre.",
+                        true,
+                    )
+                    .note(Icon::KeyRound, "Note en vert"),
+                );
+                b.add(
+                    ChoiceCard::new(
+                        "Autre choix",
+                        "Conséquence de l'autre choix, sur une ou deux lignes.",
+                        false,
+                    )
+                    .note(Icon::Lock, "Note en vert"),
+                );
+            }
+        });
     });
 
     section(ui, "Cases à cocher", |ui| {

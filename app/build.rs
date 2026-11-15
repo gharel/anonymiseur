@@ -10,6 +10,12 @@ const LANGUE_FR_FR: u16 = 0x040C;
 fn main() -> std::io::Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=../assets/charte/icon.ico");
+    // Niveau d'optimisation, lu par le test de performance de la vérification
+    // dans le document : 16 ms par image ne s'exige que d'un code optimisé.
+    println!(
+        "cargo:rustc-env=ANON_OPT_LEVEL={}",
+        env::var("OPT_LEVEL").unwrap_or_default()
+    );
 
     // Le script s'exécute sur l'hôte : on regarde la cible, pas `cfg!(windows)`.
     let cible_windows = env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "windows");

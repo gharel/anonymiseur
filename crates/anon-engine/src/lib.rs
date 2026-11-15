@@ -15,18 +15,20 @@
 
 mod analysis;
 mod csv;
+mod document;
 mod engine;
 mod error;
 mod evaluation;
 pub mod fiche;
 mod media;
-mod risk;
+mod mentions;
 mod structure;
 
 pub use analysis::{
     Analysis, AnalyzeOptions, AnalyzedImage, CONTEXT_CHARS, Candidate, FileAnalysis, ImageMask,
     SELECT_MIN_CONFIDENCE, is_ambiguous,
 };
+pub use document::{DocBlock, DocumentView, Span};
 pub use engine::{
     AnonymizeOptions, Anonymized, Engine, EngineBuilder, FaceFinder, FileReport, HandlerLookup,
     InputFile, NoProgress, Progress, Restored, output_file_name,
@@ -38,10 +40,6 @@ pub use evaluation::{
 };
 pub use fiche::{FICHE_MAX_SUBJECTS, FicheDocument, FicheMeta, render_markdown};
 pub use media::{LOW_OCR_CONFIDENCE, MASK_MARGIN_PX, ManualMask, sha256_hex};
-pub use risk::{
-    RISK_COMBINED_RENFORCE, RISK_COMBINED_STANDARD, RISK_HIGH_KINDS, RISK_HIGH_TOTAL,
-    RISK_MODERATE_TOTAL, RISK_REMINDER, RiskLevel, RiskReport,
-};
 
 pub use anon_replace::RestoreReport;
 

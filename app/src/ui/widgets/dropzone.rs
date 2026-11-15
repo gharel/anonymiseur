@@ -14,6 +14,8 @@ pub struct DropZone<'a> {
     title: &'a str,
     subtitle: &'a str,
     height: f32,
+    /// Hauteur réservée en bas pour des boutons posés par l'appelant.
+    footer: f32,
     /// Force l'état survolé (galerie, tests).
     hovered: Option<bool>,
 }
@@ -24,8 +26,21 @@ impl<'a> DropZone<'a> {
             title,
             subtitle,
             height: 168.0,
+            footer: 0.0,
             hovered: None,
         }
+    }
+
+    /// Réserve `h` points en bas de la zone : l'appelant y pose ses boutons
+    /// (rectangle donné par [`DropZone::footer_rect`]).
+    pub fn footer(mut self, h: f32) -> Self {
+        self.footer = h;
+        self
+    }
+
+    /// Bande du bas réservée par [`DropZone::footer`], dans la zone `rect`.
+    pub fn footer_rect(rect: Rect, h: f32) -> Rect {
+        Rect::from_min_max(pos2(rect.min.x, rect.max.y - h), rect.max)
     }
 
     pub fn height(mut self, h: f32) -> Self {
@@ -122,7 +137,8 @@ impl Widget for DropZone<'_> {
             );
             let disc = 48.0;
             let total = disc + 12.0 + title.size().y + 4.0 + sub.size().y;
-            let mut y = rect.center().y - total / 2.0;
+            let content = Rect::from_min_max(rect.min, pos2(rect.max.x, rect.max.y - self.footer));
+            let mut y = content.center().y - total / 2.0;
             let disc_rect =
                 Rect::from_center_size(pos2(rect.center().x, y + disc / 2.0), vec2(disc, disc));
             painter.circle_filled(

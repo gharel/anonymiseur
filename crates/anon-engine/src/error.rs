@@ -59,6 +59,37 @@ fn unsupported_message(extension: &str) -> String {
 /// Longueur maximale d'une extension reprise dans un message.
 const MAX_EXTENSION_CHARS: usize = 10;
 
+/// Copie d'une erreur (une analyse se copie avec le bilan de ses fichiers).
+/// Une erreur d'entrée/sortie garde sa nature et son message, pas sa source.
+impl Clone for EngineError {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Unsupported { extension } => Self::Unsupported {
+                extension: extension.clone(),
+            },
+            Self::Empty => Self::Empty,
+            Self::Format(e) => Self::Format(clone_format(e)),
+            Self::Leak { leaks } => Self::Leak {
+                leaks: leaks.clone(),
+            },
+            Self::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
+fn clone_format(e: &FormatError) -> FormatError {
+    match e {
+        FormatError::Unsupported(s) => FormatError::Unsupported(s.clone()),
+        FormatError::Corrupt { part, reason } => FormatError::Corrupt {
+            part: part.clone(),
+            reason: reason.clone(),
+        },
+        FormatError::Encrypted => FormatError::Encrypted,
+        FormatError::Io(io) => FormatError::Io(std::io::Error::new(io.kind(), io.to_string())),
+        FormatError::Other(s) => FormatError::Other(s.clone()),
+    }
+}
+
 /// Extension d'un nom de fichier, en minuscules ASCII, sans point. Vide si
 /// absente ou suspecte (elle est reprise dans les messages d'erreur).
 pub(crate) fn extension_of(name: &str) -> String {
@@ -96,6 +127,21 @@ mod tests {
         }
         .to_string();
         assert_eq!(other, "format non pris en charge (.zzz)");
+    }
+
+    #[test]
+    fn errors_copy_with_their_message() {
+        let io = EngineError::Format(FormatError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "absent",
+        )));
+        assert_eq!(io.clone().to_string(), io.to_string());
+        let corrupt = EngineError::Format(FormatError::corrupt("word/document.xml", "tronqué"));
+        assert_eq!(corrupt.clone().to_string(), corrupt.to_string());
+        assert!(matches!(
+            EngineError::Cancelled.clone(),
+            EngineError::Cancelled
+        ));
     }
 
     #[test]

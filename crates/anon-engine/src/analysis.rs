@@ -4,6 +4,7 @@
 
 use crate::error::EngineError;
 use crate::media::{LOW_OCR_CONFIDENCE, regions_for};
+use crate::mentions::ValueFinder;
 use anon_core::{
     DetectOptions, EntityKind, Goal, OcrPage, PixelRect, Profile, Session, Source, TableData, Tag,
     TextBlock, Treatment, Warning,
@@ -12,6 +13,7 @@ use anon_replace::session_ext::match_key;
 use anon_replace::{CASE_SENSITIVE_MAX_CHARS, Replacer, SessionExt, key};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
+use std::sync::Arc;
 
 /// Confiance à partir de laquelle une ligne est cochée par défaut.
 pub const SELECT_MIN_CONFIDENCE: f32 = 0.6;
@@ -40,7 +42,7 @@ impl fmt::Debug for AnalyzeOptions {
 }
 
 /// Bilan de lecture d'un fichier. Un fichier illisible n'interrompt pas les autres.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileAnalysis {
     pub name: String,
     /// Nombre de blocs de texte extraits (hors OCR).
@@ -204,15 +206,19 @@ impl FileData {
     }
 }
 
-/// Résultat d'une analyse.
+/// Résultat d'une analyse. `Clone` est bon marché : les données gardées en
+/// mémoire (blocs, images, tableaux) sont partagées ; seules les décisions
+/// (valeurs, zones, lignes supprimées) sont copiées, par exemple pour évaluer
+/// le dossier sur un fil de travail pendant que l'interface continue.
+#[derive(Clone)]
 pub struct Analysis {
     pub files: Vec<FileAnalysis>,
     pub candidates: Vec<Candidate>,
     /// Vrai si l'analyse a été interrompue par l'utilisateur.
     pub cancelled: bool,
     pub(crate) never: Vec<String>,
-    pub(crate) store: Vec<FileData>,
-    /// Profil de l'analyse : il oriente les conseils du bilan de risque.
+    pub(crate) store: Arc<Vec<FileData>>,
+    /// Profil de l'analyse (types cherchés).
     pub(crate) profile: Profile,
     /// Session de départ, sans images : balises prévisionnelles de l'évaluation.
     /// Vide (liste « jamais » exceptée) pour l'objectif « Anonymiser
@@ -377,7 +383,7 @@ impl Analysis {
             candidates: Vec::new(),
             cancelled,
             never,
-            store,
+            store: Arc::new(store),
             profile,
             base: Session::new(),
             masks: Vec::new(),
@@ -598,33 +604,22 @@ impl Analysis {
         None
     }
 
-    /// Recalcule `occurrences` et `files` avec un `Replacer` construit sur
-    /// tous les candidats, dans l'ordre d'enregistrement de `apply_selection`.
+    /// Recalcule `occurrences` et `files` avec tous les candidats, enregistrés
+    /// dans l'ordre de `apply_selection` (module `mentions`).
     pub(crate) fn recount(&mut self) {
-        let mut s = Session::new();
-        for n in &self.never {
-            s.add_never(n);
-        }
-        let mut owner: HashMap<Tag, usize> = HashMap::new();
-        for i in self.ordered_indices() {
-            let Some(c) = self.candidates.get(i) else {
-                continue;
-            };
-            let Some(tag) = s.intern_with_case(c.kind, &c.value, c.source, c.case_sensitive) else {
-                continue;
-            };
-            for v in &c.variants {
-                s.add_variant(tag, v);
-            }
-            owner.entry(tag).or_insert(i);
-        }
-        let replacer = Replacer::new(&s);
+        let finder = ValueFinder::new(self, |_| true);
+        let position: HashMap<usize, usize> = self
+            .candidates
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.id, i))
+            .collect();
         let mut counts = vec![0usize; self.candidates.len()];
         let mut files: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); self.candidates.len()];
         for (fi, fd) in self.store.iter().enumerate() {
             for text in fd.texts() {
-                for m in replacer.matches(&text) {
-                    if let Some(&i) = owner.get(&m.tag) {
+                for found in finder.find(&text) {
+                    if let Some(&i) = position.get(&found.id) {
                         if let Some(n) = counts.get_mut(i) {
                             *n = n.saturating_add(1);
                         }
@@ -931,9 +926,23 @@ impl Analysis {
 
     /// Retire une zone masquée.
     pub fn remove_mask(&mut self, id: usize) -> bool {
-        let before = self.masks.len();
-        self.masks.retain(|m| m.id != id);
-        self.masks.len() != before
+        self.take_mask(id).is_some()
+    }
+
+    /// Retire une zone masquée et la rend (annulation d'une correction).
+    pub(crate) fn take_mask(&mut self, id: usize) -> Option<ImageMask> {
+        let pos = self.masks.iter().position(|m| m.id == id)?;
+        Some(self.masks.remove(pos))
+    }
+
+    /// Remet une zone retirée par [`Analysis::take_mask`], à sa place (les
+    /// zones sont rangées par identifiant croissant).
+    pub(crate) fn put_mask(&mut self, m: ImageMask) {
+        if self.masks.iter().any(|x| x.id == m.id) {
+            return;
+        }
+        let pos = self.masks.partition_point(|x| x.id < m.id);
+        self.masks.insert(pos, m);
     }
 
     /// Nouvel identifiant de lignes supprimées.

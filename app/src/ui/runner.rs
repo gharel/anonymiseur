@@ -1,12 +1,13 @@
 //! Fil de travail : les traitements longs (chargement du moteur, analyse,
-//! anonymisation, ouverture et scellement de la table, restauration) tournent
-//! hors du fil de l'interface. Résultats par canal, avancement et annulation
-//! par un état partagé.
+//! évaluation et corrections du bilan, anonymisation, ouverture et scellement
+//! de la clé, restauration, analyse du texte copié) tournent hors du fil de
+//! l'interface. Résultats
+//! par canal, avancement et annulation par un état partagé.
 
 use crate::moteur::IaStatus;
-use crate::ui::service::{BatchReport, Rejected, RestoreOutcome};
-use anon_core::Session;
-use anon_engine::{Analysis, Engine, InputFile, Progress};
+use crate::ui::service::{BatchReport, FolderAssessment, Rejected, RestoreOutcome};
+use anon_core::{AssessSettings, Session};
+use anon_engine::{Analysis, Engine, FixUndo, InputFile, Progress};
 use anon_vault::VaultError;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -148,6 +149,19 @@ pub enum Msg {
         rejected: Vec<Rejected>,
         analysis: Analysis,
     },
+    /// Évaluation du dossier pour une révision des décisions et des réglages.
+    Assessed {
+        revision: u64,
+        settings: AssessSettings,
+        result: FolderAssessment,
+    },
+    /// « Tout corriger » : l'analyse corrigée, de quoi l'annuler, l'évaluation.
+    FixedAll {
+        analysis: Analysis,
+        token: FixUndo,
+        settings: AssessSettings,
+        result: FolderAssessment,
+    },
     Anonymized {
         report: BatchReport,
         /// En boîte : la session est la plus grosse charge du message.
@@ -155,11 +169,19 @@ pub enum Msg {
         inputs: Vec<InputFile>,
         analysis: Analysis,
     },
-    /// Table ouverte pour l'onglet Désanonymiser.
-    MapOpened(Result<Session, VaultError>),
+    /// Clé ouverte pour l'étape Réponse : identifiant pour le trousseau, et
+    /// mot de passe retenu (`Some(Ok)`) ou non (`Some(Err(raison))`) s'il était
+    /// demandé.
+    MapOpened {
+        result: Result<Session, VaultError>,
+        key_id: Option<String>,
+        remembered: Option<Result<(), String>>,
+    },
     /// Table existante reprise à l'étape Protéger (mot de passe gardé pour resceller).
     ExistingOpened(Result<Session, VaultError>),
     Restored(Vec<RestoreOutcome>),
+    /// Presse-papiers express : texte copié analysé, décisions reprises.
+    ExpressPrepared(Box<crate::ui::state::express::Prepared>),
 }
 
 impl std::fmt::Debug for Msg {
@@ -167,10 +189,13 @@ impl std::fmt::Debug for Msg {
         let name = match self {
             Msg::EngineReady(..) => "EngineReady",
             Msg::Analyzed { .. } => "Analyzed",
+            Msg::Assessed { .. } => "Assessed",
+            Msg::FixedAll { .. } => "FixedAll",
             Msg::Anonymized { .. } => "Anonymized",
-            Msg::MapOpened(_) => "MapOpened",
+            Msg::MapOpened { .. } => "MapOpened",
             Msg::ExistingOpened(_) => "ExistingOpened",
             Msg::Restored(_) => "Restored",
+            Msg::ExpressPrepared(_) => "ExpressPrepared",
         };
         f.write_str(name)
     }
@@ -305,7 +330,14 @@ mod tests {
     #[test]
     fn synchronous_job_is_ready_at_once() {
         let mut r = Runner::synchronous();
-        r.spawn(|_| Msg::MapOpened(Err(VaultError::NotAVault)));
-        assert!(matches!(r.poll().first(), Some(Msg::MapOpened(Err(_)))));
+        r.spawn(|_| Msg::MapOpened {
+            result: Err(VaultError::NotAVault),
+            key_id: None,
+            remembered: None,
+        });
+        assert!(matches!(
+            r.poll().first(),
+            Some(Msg::MapOpened { result: Err(_), .. })
+        ));
     }
 }

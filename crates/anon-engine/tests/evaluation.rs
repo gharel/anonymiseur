@@ -218,6 +218,51 @@ fn tout_corriger_patients() {
     assert_eq!(engine.assess(&analysis, &s), before);
 }
 
+/// Rétablir « Tout corriger » (Ctrl+Maj+Z) : le jeton rendu par l'annulation
+/// redonne l'état corrigé, lignes supprimées comprises, sans réévaluer.
+#[test]
+fn tout_corriger_annule_puis_retabli() {
+    let engine = engine();
+    let file = common::input("patients.xlsx");
+    let mut analysis = common::analyze(&engine, std::slice::from_ref(&file), Profile::Standard);
+    let s = settings(Goal::Anonymize);
+    let before = engine.assess(&analysis, &s);
+    let undo = engine.fix_all(&mut analysis, &s);
+    let fixed = analysis.candidates.clone();
+    let fixed_techniques = analysis.techniques();
+    assert!(fixed_techniques.suppressed_rows > 0, "{fixed_techniques:?}");
+    let after = engine.assess(&analysis, &s);
+    assert!(after.is_anonymous());
+    let redo = engine.undo_fix(&mut analysis, undo);
+    assert_eq!(engine.assess(&analysis, &s), before);
+    assert_eq!(analysis.techniques().suppressed_rows, 0);
+    let undo = engine.undo_fix(&mut analysis, redo);
+    assert!(analysis.candidates == fixed);
+    assert_eq!(analysis.techniques(), fixed_techniques);
+    assert_eq!(engine.assess(&analysis, &s), after);
+    engine.undo_fix(&mut analysis, undo);
+    assert_eq!(engine.assess(&analysis, &s), before);
+}
+
+/// La réponse restaurée donne la place de chaque valeur remise ; le texte est
+/// celui de `restore_text`.
+#[test]
+fn reponse_restauree_avec_ses_valeurs_reperees() {
+    let engine = engine();
+    let mut session = Session::new();
+    session.intern(EntityKind::Personne, "Hélène Kaloï", Source::Manual);
+    session.intern(EntityKind::Lieu, "Dumbéa", Source::Manual);
+    let reponse = "Bonjour [PERSONNE_1], à [LIEU_1]. Voir [PERSONNE_9].";
+    let (text, marks, report) = engine.restore_text_marked(reponse, &session);
+    assert_eq!(
+        (text.clone(), report.clone()),
+        engine.restore_text(reponse, &session)
+    );
+    let shown: Vec<&str> = marks.iter().map(|r| &text[r.clone()]).collect();
+    assert_eq!(shown, ["Hélène Kaloï", "Dumbéa"]);
+    assert_eq!(report.unknown, ["[PERSONNE_9]"]);
+}
+
 /// Chaque cellule non vide d'une colonne évaluée porte une valeur de
 /// l'analyse ; les valeurs ajoutées pour l'évaluation sont décochées.
 #[test]
@@ -330,8 +375,12 @@ fn visage_masque_par_une_correction() {
     );
     // La zone est appliquée à l'anonymisation.
     assert_eq!(anonymize(&analysis), without + 1);
-    engine.undo_fix(&mut analysis, undo);
+    let masked = analysis.masks().to_vec();
+    let redo = engine.undo_fix(&mut analysis, undo);
     assert!(analysis.masks().is_empty());
+    // Rétablie : la même zone revient.
+    engine.undo_fix(&mut analysis, redo);
+    assert_eq!(analysis.masks(), masked.as_slice());
 }
 
 /// Objectif « Anonymiser définitivement » (R7) : aucune balise reprise d'une

@@ -1,4 +1,5 @@
-//! Détecteur à règles : expressions régulières et contrôles de clé.
+//! Détecteur à règles : expressions régulières et contrôles de clé ; données
+//! sensibles des articles 9 et 10 du RGPD (module `sensitive`).
 //!
 //! Un reconnaisseur par type, chacun dans sa fonction. Les offsets sont en
 //! octets, sur des frontières de caractères. Une règle dont la clé est validée
@@ -385,6 +386,8 @@ impl Detector for RuleDetector {
                 recognize(text, &mut out);
             }
         }
+        // Catégories particulières (art. 9 et 10) : lexiques et règles de contexte.
+        crate::sensitive::detect(text, |k| k.is_sensitive() && opts.wants(k), &mut out);
         out
     }
 }

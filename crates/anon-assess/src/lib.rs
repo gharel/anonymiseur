@@ -7,7 +7,11 @@
 //!   l-diversité ; correction par généralisation de type Datafly et suppression
 //!   bornée par [`MAX_SUPPRESSION_RATE`].
 //! - Images (`image`) : visages visibles ou non vérifiés.
-//! - Textes (`text`) : à venir (lot 4), sans effet sur le verdict pour l'instant.
+//! - Textes (`text`) : un sujet par personne mentionnée ; identifiants directs,
+//!   estimation de la taille du groupe à partir des indices (lieu, âge, métier,
+//!   fonction dans une organisation nommée), identifiants stables, données
+//!   sensibles liées à une personne isolable. Approche simplifiée en V2.0,
+//!   quelles que soient les réponses de `AssessSettings::answers`.
 //!
 //! Exigence envers le moteur qui construit l'[`AssessInput`] : chaque cellule
 //! non vide d'une colonne de tableau évaluée (rôle autre que `Other`) porte un

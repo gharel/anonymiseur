@@ -5,6 +5,15 @@
 //! Populations des communes (`tools/prepare_population.py`) : un FST dont la clé
 //! est `nom plié + 0x00 + rang de l'homonyme` et la valeur
 //! `population << 16 | rang de la zone dans population_zones.txt`.
+//!
+//! Population de chaque zone (`population_zone_totaux.txt`) : somme des
+//! communes de la zone, une seule fois chacune. Le fichier des communes répète
+//! une commune sous plusieurs noms (avec et sans article, graphies
+//! calédoniennes : « le mont dore » et « mont dore », « bouloupari » et
+//! « boulouparis ») et donne Paris, Lyon et Marseille avec leurs
+//! arrondissements : les arrondissements sont écartés, et deux lignes de même
+//! zone et de même population dont l'un des noms (sans article) commence
+//! l'autre comptent pour une.
 // Les directives `cargo:` passent par la sortie standard.
 #![allow(clippy::print_stdout)]
 
@@ -31,6 +40,63 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed={}", zones.display());
     println!("cargo:rerun-if-changed={}", communes.display());
     build_population(&zones, &communes, &out.join("population.fst"))?;
+    build_zone_totals(&zones, &communes, &out.join("population_zone_totaux.txt"))?;
+    Ok(())
+}
+
+/// Nom sans article initial.
+fn without_article(name: &str) -> &str {
+    ["le ", "la ", "les ", "l'"]
+        .iter()
+        .find_map(|a| name.strip_prefix(a))
+        .unwrap_or(name)
+}
+
+/// Vrai pour un arrondissement municipal (« lyon 3e arrondissement »).
+fn is_arrondissement(name: &str) -> bool {
+    name.strip_suffix(" arrondissement")
+        .and_then(|head| head.rsplit(' ').next())
+        .is_some_and(|rank| {
+            let digits = rank.trim_end_matches("er").trim_end_matches('e');
+            !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
+        })
+}
+
+fn build_zone_totals(zones: &Path, communes: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+    let zones_text = fs::read_to_string(zones)?;
+    let codes: Vec<&str> = data_lines(&zones_text)
+        .map(|l| l.split('\t').next().ok_or("zone sans code"))
+        .collect::<Result<_, _>>()?;
+    let text = fs::read_to_string(communes)?;
+    // (zone, population) -> noms sans article déjà comptés.
+    let mut seen: BTreeMap<(&str, u64), Vec<&str>> = BTreeMap::new();
+    let mut totals: BTreeMap<&str, u64> = BTreeMap::new();
+    for line in data_lines(&text) {
+        let mut f = line.split('\t');
+        let (Some(name), Some(pop), Some(zone)) = (f.next(), f.next(), f.next()) else {
+            return Err(format!("ligne de commune invalide : {line}").into());
+        };
+        if is_arrondissement(name) {
+            continue;
+        }
+        let pop: u64 = pop.parse()?;
+        let bare = without_article(name);
+        let names = seen.entry((zone, pop)).or_default();
+        if names
+            .iter()
+            .any(|n| n.starts_with(bare) || bare.starts_with(n))
+        {
+            continue;
+        }
+        names.push(bare);
+        *totals.entry(zone).or_insert(0) += pop;
+    }
+    let mut out = String::new();
+    for code in codes {
+        let total = totals.get(code).copied().unwrap_or(0);
+        out.push_str(&format!("{code}\t{total}\n"));
+    }
+    fs::write(dst, out)?;
     Ok(())
 }
 

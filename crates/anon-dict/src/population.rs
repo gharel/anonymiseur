@@ -6,6 +6,9 @@
 //!
 //! Ces chiffres servent à estimer la taille du groupe auquel une personne
 //! appartient (critère d'isolement) : un ordre de grandeur, pas un décompte.
+//! La population d'un département, d'une province, d'une région ou d'un
+//! territoire ([`area`], [`postal_area`]) est la somme de ses communes,
+//! calculée par `build.rs`.
 
 use crate::fold::fold;
 use fst::{IntoStreamer, Map, Streamer};
@@ -71,9 +74,13 @@ static TERRITORIES_TEXT: &str = include_str!("../data/population_territoires.txt
 static AGES_TEXT: &str = include_str!("../data/population_ages.txt");
 static OCCUPATIONS_TEXT: &str = include_str!("../data/metiers.txt");
 static COMMUNES_FST: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/population.fst"));
+/// Population de chaque zone, calculée par `build.rs` (code<TAB>population).
+static ZONE_TOTALS_TEXT: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/population_zone_totaux.txt"));
 
 /// Taille des données de population embarquées, en octets (contrôlée par un test).
 pub const EMBEDDED_BYTES: usize = COMMUNES_FST.len()
+    + ZONE_TOTALS_TEXT.len()
     + ZONES_TEXT.len()
     + TERRITORIES_TEXT.len()
     + AGES_TEXT.len()
@@ -99,6 +106,9 @@ fn records(text: &'static str) -> impl Iterator<Item = Vec<&'static str>> {
 
 #[derive(Debug)]
 struct Zone {
+    /// Code Insee du département ou de la collectivité (« 54 », « 2A », « 974 »),
+    /// ou code de province calédonienne (« NC-SUD »).
+    code: &'static str,
     territory: Territory,
     area: &'static str,
     region: &'static str,
@@ -110,7 +120,8 @@ fn zones() -> &'static [Option<Zone>] {
     CELL.get_or_init(|| {
         records(ZONES_TEXT)
             .map(|f| match f.as_slice() {
-                [_, territory, area, region, ..] => Some(Zone {
+                [code, territory, area, region, ..] => Some(Zone {
+                    code,
                     territory: Territory::from_code(territory)?,
                     area,
                     region,
@@ -155,6 +166,88 @@ pub fn places(name: &str) -> Vec<Place> {
         }
     }
     out
+}
+
+/// Population de chaque zone, dans l'ordre de `zones()`.
+fn zone_totals() -> &'static [u64] {
+    static CELL: OnceLock<Vec<u64>> = OnceLock::new();
+    CELL.get_or_init(|| {
+        let by_code: std::collections::HashMap<&str, u64> = records(ZONE_TOTALS_TEXT)
+            .filter_map(|f| match f.as_slice() {
+                [code, total, ..] => Some((*code, total.parse().ok()?)),
+                _ => None,
+            })
+            .collect();
+        zones()
+            .iter()
+            .map(|z| {
+                z.as_ref()
+                    .and_then(|z| by_code.get(z.code).copied())
+                    .unwrap_or(0)
+            })
+            .collect()
+    })
+}
+
+/// Population d'un ensemble de zones et son territoire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Area {
+    /// Population municipale cumulée.
+    pub population: u64,
+    pub territory: Territory,
+}
+
+/// Zones retenues par `keep` : population cumulée et territoire de la
+/// première ; `None` si aucune.
+fn sum_zones(keep: impl Fn(&Zone) -> bool) -> Option<Area> {
+    let mut out: Option<Area> = None;
+    for (zone, pop) in zones().iter().zip(zone_totals()) {
+        if let Some(z) = zone.as_ref().filter(|z| keep(z)) {
+            let a = out.get_or_insert(Area {
+                population: 0,
+                territory: z.territory,
+            });
+            a.population = a.population.saturating_add(*pop);
+        }
+    }
+    out
+}
+
+/// Département, province ou collectivité, région ou territoire, d'après son
+/// libellé (celui que renvoie [`hierarchy::generalize`](crate::hierarchy::generalize)
+/// pour un lieu : « Meurthe-et-Moselle », « province Sud », « Grand Est »,
+/// « France »). Comparaison pliée. `None` si le libellé est inconnu.
+pub fn area(label: &str) -> Option<Area> {
+    let key = fold(label);
+    if key.is_empty() {
+        return None;
+    }
+    sum_zones(|z| fold(z.area) == key)
+        .or_else(|| sum_zones(|z| fold(z.region) == key))
+        .or_else(|| {
+            Territory::ALL
+                .into_iter()
+                .find(|t| fold(t.label()) == key)
+                .map(|t| Area {
+                    population: territory_population(t),
+                    territory: t,
+                })
+        })
+}
+
+/// Zone désignée par les deux premiers chiffres d'un code postal (« 54 » :
+/// Meurthe-et-Moselle ; « 20 » : Corse ; « 97 » : départements et
+/// collectivités d'outre-mer en 97x ; « 98 » : Nouvelle-Calédonie, seule
+/// collectivité en 98x des données). `None` si inconnue.
+pub fn postal_area(prefix: &str) -> Option<Area> {
+    if prefix.len() != 2 || !prefix.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    sum_zones(|z| match prefix {
+        "20" => z.code == "2A" || z.code == "2B",
+        "98" => z.territory == Territory::NouvelleCaledonie,
+        p => z.code.starts_with(p),
+    })
 }
 
 /// Population municipale totale du territoire (somme des communes embarquées).
@@ -400,6 +493,75 @@ mod tests {
         })
         .sum();
         assert_eq!(total, territory_population(Territory::NouvelleCaledonie));
+    }
+
+    #[test]
+    fn area_populations() {
+        let pop = |label: &str| area(label).map(|a| a.population);
+        // Province Sud : somme de ses communes, chacune une seule fois (« Le
+        // Mont-Dore » et « Mont-Dore », « Bouloupari » et « Boulouparis »).
+        let sud = pop("province Sud").unwrap();
+        let nord = pop("Province Nord").unwrap();
+        let iles = pop("province des îles Loyauté").unwrap();
+        let nc = territory_population(Territory::NouvelleCaledonie);
+        assert_eq!(sud + nord + iles, nc);
+        assert!(sud > nord && nord > iles, "{sud} {nord} {iles}");
+        assert_eq!(
+            area("province Sud").map(|a| a.territory),
+            Some(Territory::NouvelleCaledonie)
+        );
+        assert_eq!(pop("Nouvelle-Calédonie"), Some(nc));
+        // France : la somme des zones redonne la population totale, à quelques
+        // homonymes près (deux communes d'une même zone de même population).
+        let fr = territory_population(Territory::France);
+        let sum: u64 = zones()
+            .iter()
+            .zip(zone_totals())
+            .filter(|(z, _)| z.as_ref().is_some_and(|z| z.territory == Territory::France))
+            .map(|(_, p)| *p)
+            .sum();
+        assert!(sum <= fr && fr - sum < fr / 10_000, "{sum} / {fr}");
+        assert_eq!(pop("France"), Some(fr));
+        let mm = pop("Meurthe-et-Moselle").unwrap();
+        let ge = pop("Grand Est").unwrap();
+        assert!(mm > 500_000 && mm < 1_000_000, "{mm}");
+        assert!(ge > mm && ge < fr, "{ge}");
+        assert_eq!(
+            area("Grand Est").map(|a| a.territory),
+            Some(Territory::France)
+        );
+        // Paris compté une fois (pas ses arrondissements en plus).
+        let paris = pop("Paris").unwrap();
+        assert!(paris > 2_000_000 && paris < 2_300_000, "{paris}");
+        // Chaque niveau englobe la commune.
+        for name in ["Farino", "Nancy", "Bourail", "Metz"] {
+            let p = u64::from(places(name)[0].population);
+            for level in 1..=3 {
+                let label =
+                    crate::hierarchy::generalize(anon_core::EntityKind::Lieu, name, level).unwrap();
+                assert!(pop(&label).unwrap() >= p, "{name} {label}");
+            }
+        }
+        assert_eq!(area("Atlantide"), None);
+        assert_eq!(area(""), None);
+    }
+
+    #[test]
+    fn postal_areas() {
+        assert_eq!(postal_area("54"), area("Meurthe-et-Moselle"));
+        assert_eq!(
+            postal_area("98"),
+            Some(Area {
+                population: territory_population(Territory::NouvelleCaledonie),
+                territory: Territory::NouvelleCaledonie,
+            })
+        );
+        let corse = postal_area("20").unwrap().population;
+        assert!(corse > 300_000 && corse < 400_000, "{corse}");
+        assert!(postal_area("97").unwrap().population > 1_000_000);
+        assert_eq!(postal_area("5"), None);
+        assert_eq!(postal_area("5a"), None);
+        assert_eq!(postal_area("00"), None);
     }
 
     #[test]

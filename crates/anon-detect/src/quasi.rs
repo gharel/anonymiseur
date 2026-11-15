@@ -1,4 +1,5 @@
-//! Quasi-identifiants : dates, âges, montants, fonctions, matricules.
+//! Quasi-identifiants : dates, âges, montants, fonctions, matricules,
+//! événements personnels (module `sensitive`).
 //!
 //! Ils n'identifient pas seuls mais leur combinaison le peut : ils ne sont
 //! détectés qu'en profil « Renforcé » (voir `DetectOptions::wants`).
@@ -105,6 +106,14 @@ const TITLES_SOLO: &[&str] = &[
     r"conseill(?:er|[èe]re)",
     r"chief<S>+(?:\p{L}+<S>+){1,3}officer",
     r"managing<S>+director",
+    // Professions de santé et d'enseignement courantes.
+    r"infirmi(?:er|[èe]re)",
+    r"aide-soignant(?:e)?",
+    r"sage-femme",
+    r"pharmacien(?:ne)?",
+    r"kin[ée]sith[ée]rapeute",
+    r"enseignant(?:e)?",
+    r"institut(?:eur|rice)",
 ];
 
 /// Intitulés qui exigent un complément (« directeur financier », « chef de projet »).
@@ -290,6 +299,12 @@ impl Detector for QuasiDetector {
                 recognize(text, &mut out);
             }
         }
+        // Événements personnels (licenciement, divorce, décès d'un proche…).
+        crate::sensitive::detect(
+            text,
+            |k| k == EntityKind::Evenement && opts.wants(k),
+            &mut out,
+        );
         out
     }
 }
@@ -882,6 +897,17 @@ mod tests {
         assert_found("associée gérante", k, "gérante");
         assert_found("associé de l'étude", k, "associé de l'étude");
         assert_found("développeur senior", k, "développeur senior");
+        assert_found("Hélène, infirmière, 62 ans", k, "infirmière");
+        assert_found(
+            "infirmière du dispensaire de Farino",
+            k,
+            "infirmière du dispensaire",
+        );
+        assert_found("aide-soignante", k, "aide-soignante");
+        assert_found("pharmacien", k, "pharmacien");
+        assert_found("institutrice", k, "institutrice");
+        assert_none("infirmières", k);
+        assert_none("l'infirmerie", k);
         assert_none("chargé", k);
         assert_none("chargé.", k);
         assert_none("agent", k);

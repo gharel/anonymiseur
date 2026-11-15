@@ -1,5 +1,9 @@
 //! Détection par en-tête de colonne : l'en-tête décide du type, la cellule
 //! entière est la détection.
+//!
+//! Les mots de numéro (« N° », « Numéro », « No », « Réf. », « Code », « ID »…)
+//! sont ramenés à « n », sans le « de » qui les suit : « N° de dossier »,
+//! « Numéro dossier » et « Réf. dossier » donnent tous « n dossier ».
 
 use anon_core::{BlockRole, DetectOptions, Detection, Detector, EntityKind, Source, TextBlock};
 
@@ -115,18 +119,182 @@ const HEADERS: &[(&str, EntityKind)] = &[
     ("job title", EntityKind::Fonction),
     ("cargo", EntityKind::Fonction),
     ("puesto", EntityKind::Fonction),
+    // Code postal : un lieu (indice), comme la commune.
+    ("code postal", EntityKind::Lieu),
+    ("postal code", EntityKind::Lieu),
+    ("zip code", EntityKind::Lieu),
+    ("postcode", EntityKind::Lieu),
+    ("codigo postal", EntityKind::Lieu),
+    // Identifiants stables (risque de recoupement)
+    ("n client", EntityKind::Identifiant),
+    ("client n", EntityKind::Identifiant),
+    ("customer n", EntityKind::Identifiant),
+    ("n dossier", EntityKind::Identifiant),
+    ("dossier n", EntityKind::Identifiant),
+    ("case n", EntityKind::Identifiant),
+    ("n contrat", EntityKind::Identifiant),
+    ("contract n", EntityKind::Identifiant),
+    ("n adherent", EntityKind::Identifiant),
+    ("n patient", EntityKind::Identifiant),
+    ("patient n", EntityKind::Identifiant),
+    ("ipp", EntityKind::Identifiant),
+    ("n allocataire", EntityKind::Identifiant),
+    ("n cafat", EntityKind::Identifiant),
+    ("n compte", EntityKind::Identifiant),
+    ("account n", EntityKind::Identifiant),
+    ("identifiant", EntityKind::Identifiant),
+    ("login", EntityKind::Identifiant),
+    ("pseudo", EntityKind::Identifiant),
+    ("pseudonyme", EntityKind::Identifiant),
+    ("username", EntityKind::Identifiant),
+    ("nom d'utilisateur", EntityKind::Identifiant),
+    ("user n", EntityKind::Identifiant),
+    ("n agent", EntityKind::Matricule),
+    ("n salarie", EntityKind::Matricule),
+    ("n employe", EntityKind::Matricule),
+    ("employee n", EntityKind::Matricule),
+    ("staff n", EntityKind::Matricule),
+    ("n badge", EntityKind::Matricule),
+    // Santé (art. 9)
+    ("diagnostic", EntityKind::Sante),
+    ("diagnostics", EntityKind::Sante),
+    ("pathologie", EntityKind::Sante),
+    ("pathologies", EntityKind::Sante),
+    ("antecedents medicaux", EntityKind::Sante),
+    ("allergies", EntityKind::Sante),
+    ("handicap", EntityKind::Sante),
+    ("motif de consultation", EntityKind::Sante),
+    ("motif medical", EntityKind::Sante),
+    ("arret maladie", EntityKind::Sante),
+    ("groupe sanguin", EntityKind::Sante),
+    ("diagnosis", EntityKind::Sante),
+    ("medical condition", EntityKind::Sante),
+    ("medication", EntityKind::Sante),
+    ("blood type", EntityKind::Sante),
+    ("diagnostico", EntityKind::Sante),
+    // Opinions, religion, syndicat, orientation, origine (art. 9)
+    ("parti politique", EntityKind::Opinion),
+    ("affiliation politique", EntityKind::Opinion),
+    ("opinion politique", EntityKind::Opinion),
+    ("political party", EntityKind::Opinion),
+    ("religion", EntityKind::Religion),
+    ("confession", EntityKind::Religion),
+    ("syndicat", EntityKind::Syndicat),
+    ("appartenance syndicale", EntityKind::Syndicat),
+    ("adhesion syndicale", EntityKind::Syndicat),
+    ("trade union", EntityKind::Syndicat),
+    ("union membership", EntityKind::Syndicat),
+    ("orientation sexuelle", EntityKind::Orientation),
+    ("sexual orientation", EntityKind::Orientation),
+    ("origine ethnique", EntityKind::Origine),
+    ("ethnie", EntityKind::Origine),
+    ("ethnicite", EntityKind::Origine),
+    ("ethnicity", EntityKind::Origine),
+    ("communaute d'appartenance", EntityKind::Origine),
+    // Génétique, biométrie (art. 9)
+    ("genotype", EntityKind::Genetique),
+    ("test genetique", EntityKind::Genetique),
+    ("donnees genetiques", EntityKind::Genetique),
+    ("empreinte digitale", EntityKind::Biometrie),
+    ("empreintes digitales", EntityKind::Biometrie),
+    ("donnees biometriques", EntityKind::Biometrie),
+    ("gabarit biometrique", EntityKind::Biometrie),
+    ("fingerprint", EntityKind::Biometrie),
+    // Condamnations et infractions (art. 10)
+    ("casier judiciaire", EntityKind::Judiciaire),
+    ("condamnation", EntityKind::Judiciaire),
+    ("condamnations", EntityKind::Judiciaire),
+    ("infraction", EntityKind::Judiciaire),
+    ("infractions", EntityKind::Judiciaire),
+    ("antecedents judiciaires", EntityKind::Judiciaire),
+    ("criminal record", EntityKind::Judiciaire),
+    // Événements personnels
+    ("motif de depart", EntityKind::Evenement),
+    ("motif du depart", EntityKind::Evenement),
+    ("motif de sortie", EntityKind::Evenement),
+    ("motif de fin de contrat", EntityKind::Evenement),
+    ("reason for leaving", EntityKind::Evenement),
 ];
+
+/// En-têtes reconnus seulement quand ils sont l'en-tête entier, jamais contenus
+/// dans un en-tête plus long : trop ambigus (« Date de traitement », « Assurance
+/// maladie », « Origine du contact », « Union européenne »).
+const EXACT_HEADERS: &[(&str, EntityKind)] = &[
+    ("traitement", EntityKind::Sante),
+    ("traitements", EntityKind::Sante),
+    ("maladie", EntityKind::Sante),
+    ("affection", EntityKind::Sante),
+    ("allergie", EntityKind::Sante),
+    ("antecedents", EntityKind::Sante),
+    ("medicaments", EntityKind::Sante),
+    ("treatment", EntityKind::Sante),
+    ("condition", EntityKind::Sante),
+    ("disease", EntityKind::Sante),
+    ("illness", EntityKind::Sante),
+    ("parti", EntityKind::Opinion),
+    ("culte", EntityKind::Religion),
+    ("union", EntityKind::Syndicat),
+    ("origine", EntityKind::Origine),
+    ("origin", EntityKind::Origine),
+    ("communaute", EntityKind::Origine),
+    ("race", EntityKind::Origine),
+    ("cp", EntityKind::Lieu),
+    ("zip", EntityKind::Lieu),
+    ("motif", EntityKind::Evenement),
+];
+
+/// Mots qui introduisent un numéro dans un en-tête, ramenés à « n ».
+const NUMBER_WORDS: &[&str] = &[
+    "n",
+    "no",
+    "nº",
+    "nr",
+    "num",
+    "numero",
+    "number",
+    "ref",
+    "reference",
+    "code",
+    "id",
+];
+/// Mots de liaison ignorés juste après un mot de numéro (« N° de dossier »).
+const NUMBER_LINKS: &[&str] = &["de", "d", "du", "des", "of"];
+
+/// Mots d'un en-tête, mots de numéro ramenés à « n » (voir l'en-tête du module).
+fn header_tokens(header: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for t in tokens(header) {
+        let after_number = out.last().is_some_and(|l| l == "n");
+        if after_number && NUMBER_LINKS.contains(&t.as_str()) {
+            continue;
+        }
+        if NUMBER_WORDS.contains(&t.as_str()) {
+            if !after_number {
+                out.push("n".to_string());
+            }
+            continue;
+        }
+        out.push(t);
+    }
+    out
+}
 
 /// Type de donnée d'une colonne d'après son en-tête (correspondance exacte,
 /// sinon la clé la plus longue contenue comme suite de mots).
 pub fn kind_for_header(header: &str) -> Option<EntityKind> {
-    let h = tokens(header);
+    let h = header_tokens(header);
     if h.is_empty() {
         return None;
     }
+    if let Some((_, kind)) = EXACT_HEADERS
+        .iter()
+        .find(|(key, _)| header_tokens(key) == h)
+    {
+        return Some(*kind);
+    }
     let mut best: Option<(usize, EntityKind)> = None;
     for (key, kind) in HEADERS {
-        let k = tokens(key);
+        let k = header_tokens(key);
         let chars: usize = k.iter().map(|t| t.chars().count()).sum();
         let hit = if k == h {
             true
@@ -314,9 +482,122 @@ mod tests {
         for (header, kind) in cases {
             assert_eq!(kind_for_header(header), Some(kind), "{header}");
         }
-        for header in ["", "Remarques", "Code postal", "Référence", "Statut", "N°"] {
+        // « Code postal » n'est plus sans type depuis la V2 : c'est un lieu (indice),
+        // voir `sensitive_and_stable_headers`.
+        for header in ["", "Remarques", "Référence", "Statut", "N°", "ID", "Code"] {
             assert_eq!(kind_for_header(header), None, "{header}");
         }
+    }
+
+    /// V2 : en-têtes de données sensibles, code postal, identifiants stables.
+    #[test]
+    fn sensitive_and_stable_headers() {
+        use EntityKind::*;
+        let cases = [
+            ("Code postal", Lieu),
+            ("CP", Lieu),
+            ("Code postal du domicile", Lieu),
+            ("Postal code", Lieu),
+            ("N° client", Identifiant),
+            ("Numéro de client", Identifiant),
+            ("No client", Identifiant),
+            ("Nº client", Identifiant),
+            ("Réf. client", Identifiant),
+            ("Code client", Identifiant),
+            ("ID client", Identifiant),
+            ("Client ID", Identifiant),
+            ("Customer number", Identifiant),
+            ("N° dossier", Identifiant),
+            ("Numéro de dossier", Identifiant),
+            ("Référence dossier", Identifiant),
+            ("N° de contrat", Identifiant),
+            ("N° d'adhérent", Identifiant),
+            ("N° patient", Identifiant),
+            ("IPP", Identifiant),
+            ("N° CAFAT", Identifiant),
+            ("Identifiant", Identifiant),
+            ("Identifiant de connexion", Identifiant),
+            ("Pseudo", Identifiant),
+            ("Nom d'utilisateur", Identifiant),
+            ("Username", Identifiant),
+            ("N° agent", Matricule),
+            ("Numéro de salarié", Matricule),
+            ("Employee ID", Matricule),
+            ("Matricule", Matricule),
+            ("Diagnostic", Sante),
+            ("Diagnostic principal", Sante),
+            ("Pathologie", Sante),
+            ("Traitement", Sante),
+            ("Maladie", Sante),
+            ("Antécédents médicaux", Sante),
+            ("Allergies", Sante),
+            ("Handicap", Sante),
+            ("Groupe sanguin", Sante),
+            ("Diagnosis", Sante),
+            ("Religion", Religion),
+            ("Confession", Religion),
+            ("Syndicat", Syndicat),
+            ("Appartenance syndicale", Syndicat),
+            ("Parti politique", Opinion),
+            ("Orientation sexuelle", Orientation),
+            ("Origine ethnique", Origine),
+            ("Origine", Origine),
+            ("Ethnicity", Origine),
+            ("Communauté d'appartenance", Origine),
+            ("Génotype", Genetique),
+            ("Empreintes digitales", Biometrie),
+            ("Casier judiciaire", Judiciaire),
+            ("Condamnations", Judiciaire),
+            ("Infraction", Judiciaire),
+            ("Motif de départ", Evenement),
+        ];
+        for (header, kind) in cases {
+            assert_eq!(kind_for_header(header), Some(kind), "{header}");
+        }
+        // Clés ambiguës : seulement l'en-tête entier.
+        for header in [
+            "Date de traitement",
+            "Assurance maladie",
+            "Origine du contact",
+            "Union européenne",
+            "Conditions générales",
+            "Parti pris",
+            "Motif de la remise",
+        ] {
+            assert_ne!(
+                kind_for_header(header).map(EntityKind::is_sensitive),
+                Some(true),
+                "{header}"
+            );
+        }
+        assert_eq!(kind_for_header("Date de traitement"), Some(Date));
+        assert_eq!(kind_for_header("Assurance maladie"), None);
+        // « contact » reste une personne (règle existante), pas une origine.
+        assert_eq!(kind_for_header("Origine du contact"), Some(Personne));
+    }
+
+    #[test]
+    fn sensitive_cells_are_detected_in_both_profiles() {
+        let b = cell("Diabète de type 2", Some("Diagnostic"), BlockRole::Cell);
+        let d = ColumnDetector.detect(&b, &DetectOptions::default());
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].kind, EntityKind::Sante);
+        assert!(d[0].confidence >= 0.6);
+        // Le code postal est un indice : profil « Renforcé » seulement.
+        let b = cell("98800", Some("Code postal"), BlockRole::Cell);
+        assert!(
+            ColumnDetector
+                .detect(&b, &DetectOptions::default())
+                .is_empty()
+        );
+        assert_eq!(
+            one("98800", "Code postal"),
+            Some((EntityKind::Lieu, "98800".to_string()))
+        );
+        assert_eq!(
+            one("C-1042", "N° client"),
+            Some((EntityKind::Identifiant, "C-1042".to_string()))
+        );
     }
 
     #[test]

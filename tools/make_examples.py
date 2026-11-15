@@ -31,7 +31,7 @@ SORTIE = RACINE / "exemples"
 MENTION = "DONNÉES FICTIVES — exemple de test"
 DATE0 = datetime(2026, 3, 2, 9, 0, 0)
 DATE_ZIP = (2026, 3, 2, 9, 0, 0)
-RENFORCE = {"DATE", "AGE", "FONCTION", "MONTANT", "LIEU", "MATRICULE"}
+RENFORCE = {"DATE", "AGE", "FONCTION", "MONTANT", "LIEU", "MATRICULE", "EVENEMENT"}
 
 # ---------------------------------------------------------------------------
 # Clés de contrôle (valides)
@@ -600,6 +600,8 @@ def construire_patients(d: Fiche, chemin: Path) -> None:
         E("NOM", nom, "cellule")
         E("AGE", str(age), "cellule")
         E("LIEU", commune, "cellule")
+        E("LIEU", cp, "cellule")
+        E("SANTE", diag, "cellule")
         ws.append([nom, age, commune, cp, sexe, diag])
     for col, w in zip("ABCDEF", (14, 8, 14, 12, 8, 26)):
         ws.column_dimensions[col].width = w
@@ -1088,6 +1090,76 @@ L'IA mentionne aussi [PERSONNE_99], qui n'existe pas dans la session : elle doit
 
 
 # ---------------------------------------------------------------------------
+# V2 : personne reconnaissable par ses indices, donnée de santé dans un courrier
+# ---------------------------------------------------------------------------
+
+
+def construire_cr_commission(d: Fiche, chemin: Path) -> None:
+    """Compte rendu où une personne reste reconnaissable par sa fonction et sa
+    commune (infirmière du dispensaire de Farino, 62 ans), même noms masqués."""
+    from docx import Document
+
+    E = d.e
+    doc = Document()
+    cp = doc.core_properties
+    cp.author = E("PERSONNE", PG, "metadonnee")
+    cp.title = "Compte rendu de la commission santé et sécurité"
+    cp.created = cp.modified = DATE0
+    cp.language = "fr-FR"
+    doc.add_heading("Compte rendu de la commission santé et sécurité", level=1)
+    doc.add_paragraph(MENTION)
+    doc.add_paragraph(
+        f"Réunion du {E('DATE', '9 octobre 2026', 'corps')} à {E('LIEU', 'Farino', 'corps')}, salle polyvalente."
+    )
+    doc.add_paragraph(
+        f"{E('PERSONNE', HK, 'corps')}, {E('FONCTION', 'infirmière', 'corps')} du dispensaire de "
+        f"{E('LIEU', 'Farino', 'corps')}, {E('AGE', '62 ans', 'corps')}, présente le bilan des accidents de l'année."
+    )
+    doc.add_paragraph(
+        f"{E('PERSONNE', PG, 'corps')}, {E('FONCTION', FONC[PG], 'corps')} de {E('SOCIETE', SOC_N, 'corps')}, "
+        f"détaille les travaux prévus pour un budget de {E('MONTANT', '450 000 XPF', 'corps')}."
+    )
+    doc.add_paragraph(
+        f"{E('PERSONNE', ML, 'corps')}, {E('SYNDICAT', 'délégué syndical USTKE', 'corps')}, demande un suivi des "
+        f"risques psychosociaux. Contact : {E('EMAIL', EM[ML], 'corps')}."
+    )
+    doc.add_paragraph(
+        f"Rappel : le {d.p('diabète')} touche près d'un adulte sur huit dans le pays. La "
+        f"{d.p('section syndicale')} sera consultée sur le plan d'action ; aucune antenne en {d.p('Martinique')}."
+    )
+    doc.save(chemin)
+    normaliser_zip(chemin)
+
+
+def construire_courrier_arret(d: Fiche, chemin: Path) -> None:
+    """Courrier qui mentionne l'arrêt maladie d'un salarié (donnée de santé)."""
+    E = d.e
+    t = f"""{MENTION}
+
+Service des ressources humaines
+{E('ADRESSE', ADR_A, 'corps')}
+
+Fait à {E('LIEU', 'Nouméa', 'corps')}, le {E('DATE', '2 novembre 2026', 'corps')}
+
+Objet : {E('SANTE', 'arrêt maladie', 'corps')} de M. {E('PERSONNE', ON, 'corps')}
+
+Madame,
+
+M. {E('PERSONNE', ON, 'corps')}, {E('FONCTION', 'chargé de mission', 'corps')} chez {E('SOCIETE', SOC_A, 'corps')}, matricule {E('MATRICULE', 'MAT-008812', 'corps')}, est en {E('SANTE', 'arrêt maladie', 'corps')} du 3 au {E('DATE', '21 novembre 2026', 'corps')}, {E('SANTE', 'suivi pour une hernie discale', 'corps')}. Son {E('EVENEMENT', 'arrêt de travail', 'corps')} fait suite à une chute sur le chantier de {E('LIEU', 'Koné', 'corps')}.
+
+Pendant son absence, ses dossiers sont confiés à {E('PERSONNE', ML, 'corps')} ({E('EMAIL', EM[ML], 'corps')}, {E('TEL', TEL_ML, 'corps')}).
+
+Rappel du règlement : en cas d'{d.p('hospitalisation')}, le service prévient l'assurance. Le {d.p('diabète')} n'est pas couvert par cette procédure.
+
+Veuillez agréer, Madame, nos salutations distinguées.
+
+{E('PERSONNE', MC, 'corps')}
+{E('FONCTION', 'Directrice des ressources humaines', 'corps')}
+"""
+    chemin.write_text(t, encoding="utf-8", newline="\n")
+
+
+# ---------------------------------------------------------------------------
 # LISEZMOI
 # ---------------------------------------------------------------------------
 
@@ -1112,6 +1184,8 @@ La vérité terrain lisible par les tests est dans `attendu.json` : toute valeur
 | `compte-rendu.odt`, `planning.ods`, `support.odp` | formats OpenDocument |
 | `notes.txt`, `export.csv`, `brief.md` | texte brut, CSV à séparateur `;`, Markdown |
 | `report-en.docx`, `informe-es.txt` | anglais et espagnol, téléphones internationaux |
+| `compte-rendu-commission.docx` | évaluation des textes : une personne reste reconnaissable par sa fonction et sa commune (infirmière du dispensaire de Farino, 62 ans), une fonction dans une société nommée, une appartenance syndicale |
+| `courrier-arret-maladie.txt` | donnée de santé liée à une personne (arrêt maladie, suivi médical), arrêt de travail, mentions générales à ne pas détecter |
 | `reponse-ia-exemple.md` | réponse d'IA avec balises correctes, altérées et inventée |
 
 Les mêmes sociétés et les mêmes sept personnes reviennent d'un fichier à l'autre : Jean Dupont (écrit aussi
@@ -1394,6 +1468,10 @@ def main() -> int:
         ("brief.md", "fr", construire_brief, "Markdown avec tableau, lien mailto, URL, IP, pièges."),
         ("report-en.docx", "en", construire_report_en, "Document anglais : noms, emails, téléphones UK et US, IBAN GB."),
         ("informe-es.txt", "es", construire_es, "Texte espagnol : noms, emails, téléphones ES et MX, IBAN ES."),
+        ("compte-rendu-commission.docx", "fr", construire_cr_commission,
+         "Compte rendu : personne reconnaissable par sa fonction et sa commune, fonction dans une société nommée, délégué syndical ; mentions générales de santé et de syndicat à ne pas détecter."),
+        ("courrier-arret-maladie.txt", "fr", construire_courrier_arret,
+         "Courrier : arrêt maladie et suivi médical d'un salarié (santé), arrêt de travail (événement), matricule ; règle générale et mention technique à ne pas détecter."),
         ("reponse-ia-exemple.md", "fr", construire_reponse_ia,
          "Aucune donnée sensible : sert à tester la restauration (balises correctes, altérées [Personne 1], [PERSONNE\\_1], **[SOCIETE_1]**, [personne_2], inventée [PERSONNE_99])."),
     ]

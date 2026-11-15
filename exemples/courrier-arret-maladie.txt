@@ -1,0 +1,21 @@
+DONNÉES FICTIVES — exemple de test
+
+Service des ressources humaines
+8 allée des Tilleuls, 69003 Lyon
+
+Fait à Nouméa, le 2 novembre 2026
+
+Objet : arrêt maladie de M. Olivier Nguyen
+
+Madame,
+
+M. Olivier Nguyen, chargé de mission chez Atelier Bougainville SAS, matricule MAT-008812, est en arrêt maladie du 3 au 21 novembre 2026, suivi pour une hernie discale. Son arrêt de travail fait suite à une chute sur le chantier de Koné.
+
+Pendant son absence, ses dossiers sont confiés à Martin Lefèvre (martin.lefevre@example.com, 07 11 22 33 44).
+
+Rappel du règlement : en cas d'hospitalisation, le service prévient l'assurance. Le diabète n'est pas couvert par cette procédure.
+
+Veuillez agréer, Madame, nos salutations distinguées.
+
+Marie-Claire de La Fontaine
+Directrice des ressources humaines

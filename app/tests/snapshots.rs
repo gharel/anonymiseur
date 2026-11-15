@@ -1173,6 +1173,16 @@ fn bouton_exemples_reutilise_le_meme_dossier() {
     assert!(!dir.with_file_name("Exemples_2").exists());
 }
 
+/// Libellé d'un raccourci tel que l'application l'affiche : « Ctrl+ » devient
+/// « Cmd+ » sous macOS.
+fn platform_label(label: &str) -> String {
+    if cfg!(target_os = "macos") {
+        label.replace("Ctrl+", "Cmd+")
+    } else {
+        label.to_owned()
+    }
+}
+
 /// Rectangles des nœuds d'accessibilité nommés `labels`.
 fn rects(harness: &Harness<'_, AnonApp>, labels: &[&str]) -> Vec<(String, egui::Rect)> {
     labels
@@ -1228,7 +1238,8 @@ fn controles_alignes_sur_chaque_ecran() {
         ),
     );
     // En-tête : palette et thème.
-    let head = rects(&h, &["Palette de commandes (Ctrl+K)", "Thème : Système"]);
+    let palette = platform_label("Palette de commandes (Ctrl+K)");
+    let head = rects(&h, &[palette.as_str(), "Thème : Système"]);
     assert_eq!(head[0].1.height(), CONTROL_MD);
     assert_aligned("En-tête", &head);
 
@@ -1486,9 +1497,9 @@ fn raccourcis_clavier() {
     h.key_press(Key::F1);
     h.run();
     assert!(h.state().show_shortcuts);
-    h.get_by_label("Ctrl+K");
-    h.get_by_label("Ctrl+Z, Ctrl+Maj+Z");
-    h.get_by_label("Ctrl+Maj+V");
+    h.get_by_label(&platform_label("Ctrl+K"));
+    h.get_by_label(&platform_label("Ctrl+Z, Ctrl+Maj+Z"));
+    h.get_by_label(&platform_label("Ctrl+Maj+V"));
     h.get_by_label("Fermer").click();
     h.run();
     assert!(!h.state().show_shortcuts);

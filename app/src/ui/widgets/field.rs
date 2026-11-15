@@ -398,7 +398,7 @@ pub fn mono_job_marked(
 }
 
 /// Nature d'une plage surlignée dans un texte affiché (réponse restaurée,
-/// vérification du presse-papiers).
+/// vérification du presse-papiers, extrait autour de la valeur à décider).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mark {
     /// Valeur remise à la place de sa balise : couleur « masqué » neutre.
@@ -490,14 +490,13 @@ pub fn mono_job_marks(
 }
 
 /// Indice de caractère d'un octet du texte.
-fn char_index(text: &str, byte: usize) -> usize {
+pub fn char_index(text: &str, byte: usize) -> usize {
     text.get(..byte).map_or(0, |t| t.chars().count())
 }
 
-/// Rectangles du fond d'un passage `a..b` (caractères) d'une galée, un par
-/// ligne : la largeur du passage, la hauteur du texte centrée dans la ligne
-/// plus [`MARK_PAD_Y`], jamais au-delà de la ligne.
-pub fn mark_rects(galley: &egui::Galley, a: usize, b: usize, font_height: f32) -> Vec<Rect> {
+/// Rectangles d'un passage `a..b` (caractères) d'une galée, un par ligne, sur
+/// toute la hauteur de la ligne (zone cliquable, passage à montrer).
+pub fn range_rects(galley: &egui::Galley, a: usize, b: usize) -> Vec<Rect> {
     let mut out = Vec::new();
     let mut idx = 0usize;
     for row in &galley.rows {
@@ -506,16 +505,38 @@ pub fn mark_rects(galley: &egui::Galley, a: usize, b: usize, font_height: f32) -
         if lo < hi {
             let x0 = row.pos.x + row.x_offset((lo - idx).into());
             let x1 = row.pos.x + row.x_offset((hi - idx).into());
-            let (top, bottom) = (row.min_y(), row.max_y());
-            let inset = ((bottom - top - font_height) / 2.0 - MARK_PAD_Y).max(0.0);
             out.push(Rect::from_min_max(
-                pos2(x0, top + inset),
-                pos2(x1, bottom - inset),
+                pos2(x0, row.min_y()),
+                pos2(x1, row.max_y()),
             ));
         }
         idx += row.char_count_including_newline().0;
     }
     out
+}
+
+/// Bande d'une ligne `line` (toute sa hauteur) à la hauteur du texte, centrée
+/// dans la ligne, plus [`MARK_PAD_Y`] en haut et en bas, jamais au-delà.
+pub fn text_band(line: Rect, font_height: f32) -> Rect {
+    let inset = ((line.height() - font_height) / 2.0 - MARK_PAD_Y).max(0.0);
+    line.shrink2(vec2(0.0, inset))
+}
+
+/// Rectangles du fond d'un passage `a..b` (caractères) d'une galée, un par
+/// ligne : la largeur du passage, la hauteur du texte centrée dans la ligne
+/// plus [`MARK_PAD_Y`], jamais au-delà de la ligne.
+pub fn mark_rects(galley: &egui::Galley, a: usize, b: usize, font_height: f32) -> Vec<Rect> {
+    range_rects(galley, a, b)
+        .into_iter()
+        .map(|r| text_band(r, font_height))
+        .collect()
+}
+
+/// Peint un surlignage sous le texte : fond `fill` dans le rectangle `r` (de
+/// [`mark_rects`], en coordonnées de l'écran), soulignement `line` à son pied.
+pub fn paint_mark(painter: &egui::Painter, r: Rect, fill: egui::Color32, line: Stroke) {
+    painter.rect_filled(r, radius(2.0), fill);
+    painter.hline(r.x_range(), r.max.y - line.width / 2.0, line);
 }
 
 /// Rectangles du fond de chaque plage d'un texte mis en page par [`marks_job`],
@@ -558,9 +579,7 @@ pub fn marked_label(
         let painter = ui.painter();
         for (r, kind) in marks_rects(&galley, text, marks, font_height) {
             let (fill, _, line) = mark_style(kind);
-            let r = r.translate(pos.to_vec2());
-            painter.rect_filled(r, radius(2.0), fill);
-            painter.hline(r.x_range(), r.max.y - line.width / 2.0, line);
+            paint_mark(painter, r.translate(pos.to_vec2()), fill, line);
         }
         egui::text_selection::LabelSelectionState::label_text_selection(
             ui,

@@ -20,7 +20,7 @@ use crate::ui::state::toasts::count_label;
 use crate::ui::theme::{CONTROL_SM, Weight, font, palette, radius};
 use crate::ui::widgets::badge::{FAMILIES, family_label, family_tint};
 use crate::ui::widgets::button::icon_button;
-use crate::ui::widgets::field::field_id;
+use crate::ui::widgets::field::{Mark, field_id, marked_label};
 use crate::ui::widgets::nav::{pill_menu, segmented};
 use crate::ui::widgets::{Badge, Icon, PillButton, TextField, caption, muted, overline};
 use anon_core::Session;
@@ -52,6 +52,8 @@ const LEGEND_H: f32 = 48.0;
 const MASKED_LIST_MAX_H: f32 = 220.0;
 /// Largeur du champ de recherche dans le document.
 const SEARCH_W: f32 = 260.0;
+/// Interligne de l'extrait autour de la valeur à décider.
+const EXCERPT_LINE_HEIGHT: f32 = 22.0;
 
 /// Vrai si l'étape Vérifier montre la vue dans le document (pleine fenêtre).
 pub fn active(st: &AnonymizeState) -> bool {
@@ -882,29 +884,20 @@ fn excerpt_box(ui: &mut Ui, st: &AnonymizeState, id: usize) {
     let base = TextFormat {
         font_id: font(Weight::Regular, p.text_sm),
         color: p.text_secondary,
-        line_height: Some(22.0),
+        line_height: Some(EXCERPT_LINE_HEIGHT),
         ..Default::default()
     };
-    let mut job = LayoutJob::default();
-    job.append(&before, 0.0, base.clone());
-    job.append(
-        &value,
-        0.0,
-        TextFormat {
-            color: p.pending.ink,
-            background: p.pending.fill,
-            underline: Stroke::new(2.0, p.pending.edge),
-            ..base.clone()
-        },
-    );
-    job.append(&after, 0.0, base);
+    // Valeur en cours de décision : fond et soulignement peints dans la
+    // hauteur du texte, pas sur la ligne suivante (interligne).
+    let text = format!("{before}{value}{after}");
+    let marks = [(before.len()..before.len() + value.len(), Mark::Current)];
     egui::Frame::new()
         .fill(p.sunken)
         .corner_radius(radius(p.radius_md))
         .inner_margin(egui::Margin::symmetric(12, 8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.add(egui::Label::new(job).wrap());
+            marked_label(ui, &text, &marks, &base);
         });
 }
 

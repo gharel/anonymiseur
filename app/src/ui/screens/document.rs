@@ -10,18 +10,23 @@
 //!   et Échap sont rendus à l'appelant sous forme d'événements.
 //! - Lecteurs d'écran : chaque surlignage visible est un nœud nommé
 //!   « Jean Dupont, personne, masqué, 10 fois ».
+//! - Surlignages : la mise en page ne porte que la couleur du texte ; fonds et
+//!   soulignements sont peints à part, dans la hauteur du texte centrée dans
+//!   sa ligne (comme [`marked_label`](crate::ui::widgets::field::marked_label)).
 
 use crate::ui::state::review::{Occurrence, TextRange};
 use crate::ui::state::toasts::count_label;
 use crate::ui::theme::{Weight, font, palette, radius, with_alpha};
+use crate::ui::widgets::field::{char_index, mark_rects, paint_mark, range_rects, text_band};
 use anon_core::{BlockRole, EntityKind};
 use anon_engine::{DocBlock, DocumentView, Span};
 use egui::text::{LayoutJob, TextFormat};
 use egui::{
-    Align, Color32, CornerRadius, EventFilter, Id, Key, Modifiers, Pos2, Rect, Sense, Stroke,
-    StrokeKind, Ui, pos2, vec2,
+    Align, Color32, CornerRadius, EventFilter, FontId, Id, Key, Modifiers, Pos2, Rect, Sense,
+    Stroke, StrokeKind, Ui, pos2, vec2,
 };
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 /// Taille du texte du document.
@@ -79,6 +84,21 @@ pub fn look(span: &Span, info: Option<&ValueInfo>) -> Look {
         Look::Masked
     } else {
         Look::Kept
+    }
+}
+
+/// Couleurs d'une occurrence : fond, texte, soulignement (`None` : valeur
+/// gardée, sans surlignage).
+pub fn look_style(look: Look) -> Option<(Color32, Color32, Stroke)> {
+    let p = palette();
+    match look {
+        Look::Masked => Some((p.masked.fill, p.masked.ink, Stroke::new(1.5, p.masked.edge))),
+        Look::Pending => Some((
+            p.pending.fill,
+            p.pending.ink,
+            Stroke::new(2.5, p.pending.edge),
+        )),
+        Look::Kept => None,
     }
 }
 
@@ -242,11 +262,6 @@ struct Placed {
     galley: Arc<egui::Galley>,
 }
 
-/// Indice de caractère d'un octet du texte.
-fn char_index(text: &str, byte: usize) -> usize {
-    text.get(..byte).map_or(0, |t| t.chars().count())
-}
-
 /// Octet d'un indice de caractère du texte.
 fn byte_index(text: &str, chars: usize) -> usize {
     text.char_indices()
@@ -254,30 +269,35 @@ fn byte_index(text: &str, chars: usize) -> usize {
         .map_or(text.len(), |(b, _)| b)
 }
 
-/// Rectangles (un par ligne) du passage `a..b` (caractères) d'une galée.
-pub fn range_rects(galley: &egui::Galley, a: usize, b: usize) -> Vec<Rect> {
+/// Police du texte du document.
+fn text_font() -> FontId {
+    font(Weight::Regular, TEXT_SIZE)
+}
+
+/// Occurrences d'un bloc (octets, triées, sans chevauchement ni plage hors du
+/// texte) et leur style, valeurs gardées comprises.
+fn block_marks(b: &DocBlock, values: &HashMap<usize, ValueInfo>) -> Vec<(Range<usize>, Look)> {
     let mut out = Vec::new();
-    let mut idx = 0usize;
-    for row in &galley.rows {
-        let n = row.char_count_excluding_newline().0;
-        let (lo, hi) = (a.max(idx), b.min(idx + n));
-        if lo < hi {
-            let x0 = row.pos.x + row.x_offset((lo - idx).into());
-            let x1 = row.pos.x + row.x_offset((hi - idx).into());
-            out.push(Rect::from_min_max(
-                pos2(x0, row.min_y()),
-                pos2(x1, row.max_y()),
-            ));
+    let mut pos = 0usize;
+    for s in &b.spans {
+        if s.start < pos || b.text.get(s.start..s.end).is_none() {
+            continue;
         }
-        idx += row.char_count_including_newline().0;
+        out.push((s.start..s.end, look(s, values.get(&s.candidate))));
+        pos = s.end;
     }
     out
 }
 
+/// Mise en page d'un bloc. Seule la couleur du texte des occurrences change :
+/// leur fond et leur soulignement sont peints à part ([`highlight_rects`]).
+/// Avec un interligne plus grand que la police, epaint peindrait le fond d'une
+/// section sur toute la hauteur de ligne à partir du haut du texte : il
+/// déborderait sur la ligne suivante, soulignement compris.
 fn job_for(b: &DocBlock, values: &HashMap<usize, ValueInfo>, width: f32) -> LayoutJob {
     let p = palette();
     let base = TextFormat {
-        font_id: font(Weight::Regular, TEXT_SIZE),
+        font_id: text_font(),
         color: p.text,
         line_height: Some(LINE_HEIGHT),
         valign: Align::Center,
@@ -286,35 +306,24 @@ fn job_for(b: &DocBlock, values: &HashMap<usize, ValueInfo>, width: f32) -> Layo
     let mut job = LayoutJob::default();
     job.wrap.max_width = width;
     let mut pos = 0usize;
-    for s in &b.spans {
-        if s.start < pos {
-            continue;
-        }
-        if let Some(t) = b.text.get(pos..s.start)
+    for (m, look) in block_marks(b, values) {
+        if let Some(t) = b.text.get(pos..m.start)
             && !t.is_empty()
         {
             job.append(t, 0.0, base.clone());
         }
-        let Some(t) = b.text.get(s.start..s.end) else {
-            continue;
-        };
-        let fmt = match look(s, values.get(&s.candidate)) {
-            Look::Masked => TextFormat {
-                background: p.masked.fill,
-                color: p.masked.ink,
-                underline: Stroke::new(1.5, p.masked.edge),
-                ..base.clone()
-            },
-            Look::Pending => TextFormat {
-                background: p.pending.fill,
-                color: p.pending.ink,
-                underline: Stroke::new(2.5, p.pending.edge),
-                ..base.clone()
-            },
-            Look::Kept => base.clone(),
-        };
-        job.append(t, 0.0, fmt);
-        pos = s.end;
+        if let Some(t) = b.text.get(m.clone()) {
+            let color = look_style(look).map_or(p.text, |(_, ink, _)| ink);
+            job.append(
+                t,
+                0.0,
+                TextFormat {
+                    color,
+                    ..base.clone()
+                },
+            );
+        }
+        pos = m.end;
     }
     if let Some(t) = b.text.get(pos..)
         && !t.is_empty()
@@ -325,6 +334,27 @@ fn job_for(b: &DocBlock, values: &HashMap<usize, ValueInfo>, width: f32) -> Layo
         job.append(" ", 0.0, base);
     }
     job
+}
+
+/// Rectangles du fond des occurrences surlignées (masquées, à décider) d'un
+/// bloc mis en page par [`job_for`], relatifs à la galée : un par ligne, dans
+/// la hauteur du texte centrée dans sa ligne, jamais sur la ligne voisine.
+pub fn highlight_rects(
+    b: &DocBlock,
+    values: &HashMap<usize, ValueInfo>,
+    galley: &egui::Galley,
+    font_height: f32,
+) -> Vec<(Rect, Look)> {
+    block_marks(b, values)
+        .into_iter()
+        .filter(|(_, look)| *look != Look::Kept)
+        .flat_map(|(m, look)| {
+            let (a, z) = (char_index(&b.text, m.start), char_index(&b.text, m.end));
+            mark_rects(galley, a, z, font_height)
+                .into_iter()
+                .map(move |r| (r, look))
+        })
+        .collect()
 }
 
 /// Identifiant du nœud d'une occurrence.
@@ -457,6 +487,18 @@ pub fn show(ui: &mut Ui, input: &DocInput<'_>) -> DocEvents {
             });
         }
 
+        // Surlignages sous le texte, dans la hauteur du texte de chaque ligne.
+        let font_height = ui.fonts_mut(|f| f.row_height(&text_font()));
+        for pl in &placed {
+            let Some(b) = view.blocks.get(pl.block) else {
+                continue;
+            };
+            for (r, look) in highlight_rects(b, input.values, &pl.galley, font_height) {
+                if let Some((fill, _, line)) = look_style(look) {
+                    paint_mark(ui.painter(), r.translate(pl.pos.to_vec2()), fill, line);
+                }
+            }
+        }
         for pl in &placed {
             ui.painter().galley(pl.pos, Arc::clone(&pl.galley), p.text);
         }
@@ -466,7 +508,7 @@ pub fn show(ui: &mut Ui, input: &DocInput<'_>) -> DocEvents {
             && let Some(b) = view.blocks.get(sel.block)
         {
             let (a, z) = (char_index(&b.text, sel.start), char_index(&b.text, sel.end));
-            for r in range_rects(&pl.galley, a, z) {
+            for r in mark_rects(&pl.galley, a, z, font_height) {
                 ui.painter().rect(
                     r.translate(pl.pos.to_vec2()),
                     radius(2.0),
@@ -512,6 +554,9 @@ pub fn show(ui: &mut Ui, input: &DocInput<'_>) -> DocEvents {
                 let Some(first_rect) = rects.first().copied() else {
                     continue;
                 };
+                // Cadres de survol et de focus autour du surlignage, pas de la
+                // ligne entière (la zone cliquable, elle, garde la ligne).
+                let bands: Vec<Rect> = rects.iter().map(|r| text_band(*r, font_height)).collect();
                 let is_cursor = input.cursor == Some(occ);
                 let sense = if tab_target == Some(occ) {
                     Sense::click()
@@ -533,7 +578,7 @@ pub fn show(ui: &mut Ui, input: &DocInput<'_>) -> DocEvents {
                 let look = look(s, Some(info));
                 if hovered {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    for rr in &rects {
+                    for rr in &bands {
                         ui.painter().rect_stroke(
                             rr.expand(2.0),
                             radius(4.0),
@@ -543,7 +588,7 @@ pub fn show(ui: &mut Ui, input: &DocInput<'_>) -> DocEvents {
                     }
                 }
                 if look == Look::Kept && hovered {
-                    for rr in &rects {
+                    for rr in &bands {
                         ui.painter().rect_filled(
                             *rr,
                             CornerRadius::same(3),
@@ -554,7 +599,7 @@ pub fn show(ui: &mut Ui, input: &DocInput<'_>) -> DocEvents {
                 let has_focus = r.has_focus();
                 if is_cursor || has_focus {
                     let w = if has_focus { 2.5 } else { 1.5 };
-                    for rr in &rects {
+                    for rr in &bands {
                         ui.painter().rect_stroke(
                             rr.expand(3.0),
                             radius(5.0),
@@ -1127,6 +1172,139 @@ planning et l'envoi du devis numéro {k} avant la fin du mois, comme convenu ave
         assert_eq!(block_label(&h, Some(&c)).as_deref(), Some("En-tête"));
         let body = block("u", BlockRole::Body, "word/document.xml");
         assert_eq!(block_label(&body, Some(&h)), None);
+    }
+
+    /// Paragraphe de l'instantané `dossier_1_verifier` : valeurs voisines
+    /// séparées par « , », une valeur à décider, une valeur gardée visible.
+    const PARA: &str = "Nautilus Pacifique SARL, RIDET 1 234 567.001, dont le siège est situé \
+        14 rue des Frangipaniers, 98800 Nouméa (BP 1234, 98845 Nouméa Cedex), représentée par \
+        Jean Dupont, gérant.";
+
+    /// Bloc [`PARA`] et ses valeurs : (valeur, masquée, à décider).
+    fn para() -> (DocBlock, HashMap<usize, ValueInfo>) {
+        let found: [(&str, bool, bool); 7] = [
+            ("Nautilus Pacifique SARL", true, false),
+            ("1 234 567.001", true, false),
+            ("14 rue des Frangipaniers", true, false),
+            ("98800 Nouméa", true, false),
+            ("BP 1234", false, false),
+            ("Jean Dupont", true, false),
+            ("gérant", true, true),
+        ];
+        let mut values = HashMap::new();
+        let mut spans = Vec::new();
+        for (id, (v, masked, pending)) in found.into_iter().enumerate() {
+            let start = PARA.find(v).unwrap_or_else(|| panic!("valeur absente"));
+            spans.push(Span {
+                start,
+                end: start + v.len(),
+                candidate: id,
+                masked,
+            });
+            values.insert(
+                id,
+                ValueInfo {
+                    value: v.into(),
+                    kind: EntityKind::Autre,
+                    occurrences: 1,
+                    pending,
+                    replacement: None,
+                },
+            );
+        }
+        let mut b = block(PARA, BlockRole::Body, "word/document.xml");
+        b.spans = spans;
+        (b, values)
+    }
+
+    /// Met en page `job` avec les polices de l'application ; rend aussi la
+    /// hauteur de la police du texte.
+    fn layout(job: LayoutJob) -> (Arc<egui::Galley>, f32) {
+        let ctx = egui::Context::default();
+        crate::ui::theme::install(&ctx, crate::ui::theme::ThemeChoice::Light);
+        let mut got = None;
+        for _ in 0..2 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                got =
+                    Some(ui.fonts_mut(|f| (f.layout_job(job.clone()), f.row_height(&text_font()))));
+            });
+            // En debug, epaint refuse qu'on abandonne des textures non appliquées.
+            out.textures_delta.clear();
+        }
+        got.unwrap_or_else(|| panic!("aucune mise en page"))
+    }
+
+    #[test]
+    fn sections_carry_only_the_text_color() {
+        let (b, values) = para();
+        let job = job_for(&b, &values, 560.0);
+        assert_eq!(job.text, PARA, "le texte est repris en entier");
+        let p = palette();
+        let color_at = |v: &str| {
+            let at = PARA.find(v).unwrap_or_default();
+            job.sections
+                .iter()
+                .find(|s| s.byte_range.start.0 <= at && at < s.byte_range.end.0)
+                .map(|s| s.format.color)
+        };
+        assert_eq!(color_at("Nautilus"), Some(p.masked.ink));
+        assert_eq!(color_at("gérant"), Some(p.pending.ink));
+        assert_eq!(color_at("BP 1234"), Some(p.text), "valeur gardée");
+        assert_eq!(color_at("représentée"), Some(p.text));
+        // Fond et soulignement ne sont jamais confiés à epaint (débordement sur
+        // la ligne suivante avec un interligne).
+        for s in &job.sections {
+            assert_eq!(s.format.background, Color32::TRANSPARENT);
+            assert_eq!(s.format.underline, Stroke::NONE);
+        }
+    }
+
+    #[test]
+    fn highlights_stay_inside_their_line() {
+        let (b, values) = para();
+        let (galley, font_height) = layout(job_for(&b, &values, 560.0));
+        assert!(galley.rows.len() >= 3, "le paragraphe passe à la ligne");
+        assert!(
+            LINE_HEIGHT > font_height + 2.0 * crate::ui::widgets::field::MARK_PAD_Y,
+            "l'interligne laisse de la place"
+        );
+        let rects = highlight_rects(&b, &values, &galley, font_height);
+        // Six valeurs surlignées (la valeur gardée ne l'est pas), dont au moins
+        // une coupée en fin de ligne : plus de rectangles que de valeurs.
+        assert!(rects.len() > 6, "{} rectangles", rects.len());
+        assert_eq!(rects.iter().filter(|(_, l)| *l == Look::Pending).count(), 1);
+        assert!(rects.iter().all(|(_, l)| *l != Look::Kept));
+        for (r, _) in &rects {
+            let row = galley
+                .rows
+                .iter()
+                .find(|row| row.min_y() <= r.center().y && r.center().y <= row.max_y())
+                .unwrap_or_else(|| panic!("surlignage hors de toute ligne"));
+            // Dans la ligne, jamais sur la suivante ni la précédente.
+            assert!(r.min.y >= row.min_y() && r.max.y <= row.max_y());
+            // Centré sur le texte : la hauteur du texte plus la marge.
+            let glyph = row.glyphs.first().unwrap_or_else(|| panic!("ligne vide"));
+            let text_top = row.pos.y + glyph.pos.y - glyph.font_ascent;
+            let pad = crate::ui::widgets::field::MARK_PAD_Y;
+            assert!((r.min.y - (text_top - pad)).abs() <= 1.0, "{r:?}");
+            assert!(
+                (r.height() - (font_height + 2.0 * pad)).abs() <= 1.0,
+                "{r:?}"
+            );
+            assert!(r.width() > 0.0);
+        }
+        // La valeur gardée et la virgule entre deux valeurs voisines ne sont
+        // couvertes par aucun fond.
+        for gap in ["BP 1234", ", 98800"] {
+            let at = PARA.find(gap).unwrap_or_default();
+            let (a, z) = (char_index(PARA, at), char_index(PARA, at + 1));
+            for d in mark_rects(&galley, a, z, font_height) {
+                assert!(
+                    rects.iter().all(|(r, _)| !r.intersects(d.shrink(0.5))),
+                    "{gap}"
+                );
+            }
+        }
     }
 
     #[test]

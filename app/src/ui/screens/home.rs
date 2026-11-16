@@ -17,12 +17,15 @@ use egui::{RichText, Ui};
 /// Largeur maximale de l'accueil.
 const HOME_MAX_W: f32 = 960.0;
 /// Hauteur approximative du contenu, pour le centrer verticalement.
-const HOME_H: f32 = 500.0;
+const HOME_H: f32 = 508.0;
 /// Taille du titre de l'accueil.
 const TITLE_SIZE: f32 = 32.0;
 /// Hauteur de la zone de dépôt et de la bande de ses boutons.
-const DROP_H: f32 = 200.0;
-const DROP_FOOTER_H: f32 = 56.0;
+const DROP_H: f32 = 208.0;
+const DROP_FOOTER_H: f32 = 64.0;
+/// Marge sous la bande des boutons : avec des boutons de 32 points centrés
+/// dans le reste de la bande, ils restent à 24 points du bord en pointillés.
+const DROP_FOOTER_PAD: f32 = 16.0;
 /// Largeur à partir de laquelle les deux objectifs sont côte à côte.
 const TWO_COLUMNS: f32 = 640.0;
 
@@ -109,6 +112,7 @@ fn drop_zone(ui: &mut Ui, info: HomeInfo, fx: &mut Vec<Effect>) {
         .on_hover_text(with_shortcut("Choisir des fichiers", shortcuts::OPEN));
     let open = shortcuts::OPEN.label();
     let band = DropZone::footer_rect(zone.rect, DROP_FOOTER_H);
+    let band = band.with_max_y(band.max.y - DROP_FOOTER_PAD);
     let pick = PillButton::primary("Choisir des fichiers")
         .icon(Icon::FolderOpen)
         .small()
@@ -119,22 +123,20 @@ fn drop_zone(ui: &mut Ui, info: HomeInfo, fx: &mut Vec<Effect>) {
         .small()
         .kbd(&paste)
         .enabled(!info.busy);
-    // Les deux boutons, centrés dans la bande du bas de la zone.
+    // Les deux boutons, centrés dans la bande du bas de la zone. Un Ui enfant
+    // qui ne déplace pas le curseur du parent : la suite reste sous la zone
+    // entière, pas sous la bande (plus haute que le bas de la zone).
     let gap = p.space(3);
-    let row = ui.scope_builder(
+    let mut row = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(band)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        |ui| {
-            ui.spacing_mut().item_spacing.x = gap;
-            let w = pick.natural_width(ui) + gap + paste_btn.natural_width(ui);
-            ui.add_space(((band.width() - w) / 2.0).max(0.0));
-            let a = ui.add(pick);
-            let b = ui.add(paste_btn);
-            (a, b)
-        },
     );
-    let (pick_r, paste_r) = row.inner;
+    row.spacing_mut().item_spacing.x = gap;
+    let w = pick.natural_width(&row) + gap + paste_btn.natural_width(&row);
+    row.add_space(((band.width() - w) / 2.0).max(0.0));
+    let pick_r = row.add(pick);
+    let paste_r = row.add(paste_btn);
     if (zone.clicked() || pick_r.clicked()) && !info.busy {
         fx.push(Effect::PickDocuments);
     }

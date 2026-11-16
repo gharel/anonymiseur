@@ -4,6 +4,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+### Corrigé
+- **Accueil** : les boutons « Choisir des fichiers » et « Coller un texte » ne collent plus au bord en pointillés de la zone de dépôt (24 points de marge au lieu de 12).
+
 ## [2.0.0] - 2026-11-16
 
 Deuxième version : vérification dans le document, bilan des trois critères du CEPD avant envoi, deux objectifs (« Masquer pour l'IA », « Anonymiser définitivement ») et presse-papiers express.

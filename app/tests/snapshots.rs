@@ -1217,6 +1217,29 @@ fn assert_centered(screen: &str, name: &str, r: egui::Rect, first: &str, r0: egu
     );
 }
 
+/// Les boutons de la zone de dépôt gardent une marge au-dessus du bord en
+/// pointillés (ils n'en étaient qu'à 12 points), et ce qui suit la zone
+/// reste à distance de son bas.
+#[test]
+fn boutons_de_la_zone_de_depot_loin_du_bord() {
+    let _rendu = rendu();
+    let mut h = app(1280.0, 800.0, |_| {});
+    h.run();
+    let zone = h
+        .get_by_label(&platform_label(
+            "Déposez des fichiers, ou collez un texte (Ctrl+V). \
+             Word, Excel, PowerPoint, PDF, OpenDocument, images, texte",
+        ))
+        .rect();
+    for (name, r) in rects(&h, &["Choisir des fichiers", "Coller un texte"]) {
+        let marge = zone.max.y - r.max.y;
+        assert!(marge >= 20.0, "{name} : {marge} points du bas de la zone");
+    }
+    let objectif = h.get_by_label("OBJECTIF").rect();
+    let ecart = objectif.min.y - zone.max.y;
+    assert!(ecart >= 16.0, "« Objectif » à {ecart} points sous la zone");
+}
+
 #[test]
 fn controles_alignes_sur_chaque_ecran() {
     let _rendu = rendu();

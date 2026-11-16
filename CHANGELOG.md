@@ -4,6 +4,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+## [2.0.1] - 2026-11-16
+
 ### Corrigé
 - **Accueil** : les boutons « Choisir des fichiers » et « Coller un texte » ne collent plus au bord en pointillés de la zone de dépôt (24 points de marge au lieu de 12).
 

@@ -30,8 +30,8 @@ pub use analysis::{
 };
 pub use document::{DocBlock, DocumentView, Span};
 pub use engine::{
-    AnonymizeOptions, Anonymized, Engine, EngineBuilder, FaceFinder, FileReport, HandlerLookup,
-    InputFile, NoProgress, Progress, Restored, output_file_name,
+    AnonymizeOptions, Anonymized, Engine, EngineBuilder, FILE_NAME_PART, FaceFinder, FileReport,
+    HandlerLookup, InputFile, NoProgress, Progress, Restored, masked_file_name, output_file_name,
 };
 pub use error::{EngineError, Leak};
 pub use evaluation::{

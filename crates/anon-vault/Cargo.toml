@@ -19,6 +19,10 @@ keyring-core = "1.0.1"
 serde = "1.0.229"
 thiserror = "2.0.21"
 zeroize = "1.9.1"
+# Robustesse du mot de passe de la clé : dictionnaires et motifs (clavier,
+# dates, suites) hors ligne. MIT (dépendances MIT ou Apache-2.0), aucun réseau ;
+# sans la fonctionnalité `builder`.
+zxcvbn = { version = "3.1.1", default-features = false }
 
 [target."cfg(windows)".dependencies]
 windows-native-keyring-store = "1.1.0"

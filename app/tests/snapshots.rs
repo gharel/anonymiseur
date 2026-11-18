@@ -11,6 +11,7 @@
 use anon_core::{EntityKind, Goal, PixelRect, Session};
 use anon_engine::{Engine, NoProgress};
 use anonymiseur::moteur::IaStatus;
+use anonymiseur::ui::app::COPY_FAILED;
 use anonymiseur::ui::clipboard::MemoryClipboard;
 use anonymiseur::ui::gallery::{self, GalleryState};
 use anonymiseur::ui::hotkeys::{self, ScriptedHotkeys};
@@ -1646,6 +1647,51 @@ fn coller_et_restaurer_en_un_geste() {
             .texts()
             .contains(&"Réponse restaurée copiée")
     );
+}
+
+/// Vraies valeurs et phrase de passe : copiées par le presse-papiers du
+/// système en mode sensible (hors de l'historique Win+V et du presse-papiers
+/// en ligne), jamais par celui d'egui ; la consigne, elle, n'est pas sensible.
+#[test]
+fn copies_sensibles_hors_historique() {
+    let _rendu = rendu();
+    let (mut h, clip, _keys) = express_app(1280.0, 1600.0, |app| {
+        anonymize_all(app, out_dir("copie-sensible"));
+        app.workspace.enter(Step::Response);
+    });
+    h.run();
+    h.get_by_label("Coller").click();
+    h.run();
+    let reponse = std::fs::read_to_string(exemple("reponse-ia-exemple.md")).unwrap();
+    h.input_mut().events.push(egui::Event::Paste(reponse));
+    h.run();
+    let (text, _) = h.state().deanonymize.text_result.clone().unwrap();
+    h.get_by_label("Copier").click();
+    h.run();
+    assert_eq!(clip.writes(), [(text.clone(), true)]);
+    // Ctrl+Entrée à la dernière étape : même copie sensible.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    h.run();
+    assert_eq!(clip.writes().last(), Some(&(text, true)));
+    // Le système refuse : aucun repli vers un autre presse-papiers, l'utilisateur est prévenu.
+    clip.refuse_writes(true);
+    let writes = clip.writes().len();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    h.run();
+    assert_eq!(clip.writes().len(), writes);
+    assert!(h.state().toasts.texts().contains(&COPY_FAILED));
+
+    // Phrase de passe de la clé, à l'étape Envoyer.
+    let (mut h, clip, _keys) = express_app(1280.0, 1600.0, |app| {
+        analyze(app);
+        ready_to_send(app);
+        app.workspace.enter(Step::Send);
+    });
+    h.run();
+    h.get_by_label("Copier").click();
+    h.run();
+    assert_eq!(clip.writes(), [(PHRASE.to_owned(), true)]);
+    assert!(h.state().toasts.texts().contains(&"Phrase de passe copiée"));
 }
 
 #[test]

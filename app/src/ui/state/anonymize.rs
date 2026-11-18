@@ -231,7 +231,7 @@ impl PasswordIssue {
     pub fn message(self) -> &'static str {
         match self {
             PasswordIssue::TooWeak => {
-                "Mot de passe trop faible : au moins 12 caractères, en mêlant minuscules, majuscules, chiffres et symboles, ou une longue phrase."
+                "Mot de passe trop facile à deviner : évitez les mots de passe courants, les suites de clavier (azerty, 1234), les prénoms et les dates. Préférez une phrase de plusieurs mots, ou la phrase de passe proposée."
             }
             PasswordIssue::Mismatch => "Les deux mots de passe ne correspondent pas.",
         }
@@ -2021,6 +2021,14 @@ pub(super) mod tests {
         assert!(!p.can_proceed());
         p.password = "court".into();
         assert_eq!(p.password_issue(), Some(PasswordIssue::TooWeak));
+        // Dix caractères et deux sortes de caractères ne suffisent plus.
+        for weak in ["Motdepasse", "Azerty1234"] {
+            p.password = weak.into();
+            p.confirm = weak.into();
+            assert_eq!(p.password_issue(), Some(PasswordIssue::TooWeak), "{weak}");
+            assert!(!p.can_proceed(), "{weak}");
+        }
+        p.confirm.clear();
         p.password = "Cheval-Agrafe-Batterie-47".into();
         assert_eq!(p.password_issue(), None);
         p.confirm = "Cheval".into();

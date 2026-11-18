@@ -299,6 +299,7 @@ fn passphrase(ui: &mut Ui, st: &mut AnonymizeState, fx: &mut Vec<Effect>) {
             fx.push(Effect::Copy {
                 text: phrase.clone(),
                 toast: "Phrase de passe copiée",
+                sensitive: true,
             });
         }
         if ui
@@ -592,6 +593,7 @@ personnelles. L'IA doit les garder tels quels dans sa réponse.",
                     fx.push(Effect::Copy {
                         text: anon_engine::ai_instruction().to_owned(),
                         toast: "Consigne copiée",
+                        sensitive: false,
                     });
                 }
             });

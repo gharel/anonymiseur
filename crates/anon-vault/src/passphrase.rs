@@ -126,6 +126,11 @@ mod tests {
                 password_strength(&generate_passphrase(DEFAULT_PASSPHRASE_WORDS)),
                 PasswordStrength::Fort
             );
+            // Même la plus courte reste acceptée pour chiffrer une clé.
+            assert!(
+                password_strength(&generate_passphrase(MIN_PASSPHRASE_WORDS))
+                    >= PasswordStrength::Correct
+            );
         }
     }
 

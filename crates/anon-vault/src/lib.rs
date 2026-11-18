@@ -29,8 +29,13 @@ use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use anon_core::session::{FORMAT_VERSION, Session};
 use argon2::{Algorithm, Argon2, Params, Version};
+use std::collections::VecDeque;
+use std::collections::hash_map::RandomState;
+use std::hash::BuildHasher;
+use std::sync::{Mutex, OnceLock, PoisonError};
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
+use zxcvbn::Score;
 
 /// Magie en tête de fichier.
 const MAGIC: &[u8; 8] = b"ANONMAP\0";
@@ -52,14 +57,62 @@ const ARGON_MAX_MEMORY_KIB: u32 = 1024 * 1024;
 const ARGON_MAX_ITERATIONS: u32 = 20;
 const ARGON_MAX_PARALLELISM: u8 = 16;
 
-/// Seuils de l'heuristique de robustesse (en caractères).
+/// En dessous de cette longueur (caractères), un mot de passe est « trop court ».
 const STRENGTH_MIN_LEN: usize = 8;
-const STRENGTH_CORRECT_LEN: usize = 10;
-const STRENGTH_STRONG_LEN: usize = 14;
-const STRENGTH_PASSPHRASE_LEN: usize = 24;
-const STRENGTH_CORRECT_CLASSES: usize = 2;
-const STRENGTH_STRONG_CLASSES: usize = 3;
-const STRENGTH_MIN_DISTINCT: usize = 5;
+/// Score zxcvbn minimal d'un mot de passe « correct » : plus de 10^8 essais
+/// estimés pour le deviner, dictionnaires et motifs compris.
+const STRENGTH_CORRECT_SCORE: Score = Score::Three;
+/// Score zxcvbn d'un mot de passe « fort » : plus de 10^10 essais estimés.
+const STRENGTH_STRONG_SCORE: Score = Score::Four;
+/// Résultats gardés en mémoire : l'interface redemande la robustesse à chaque
+/// image, et une longue phrase coûte quelques millisecondes.
+const STRENGTH_CACHE_LEN: usize = 4;
+
+/// Mots de passe et mots français très courants, absents des dictionnaires
+/// (anglais) de zxcvbn, du plus au moins fréquent, puis les noms de l'outil :
+/// deviner l'un d'eux, même décoré (majuscule, chiffres, année), ne coûte
+/// que quelques essais.
+const COMMON_FRENCH: &[&str] = &[
+    "azerty",
+    "motdepasse",
+    "soleil",
+    "doudou",
+    "loulou",
+    "chouchou",
+    "jetaime",
+    "marseille",
+    "bonjour",
+    "coucou",
+    "chocolat",
+    "princesse",
+    "nicolas",
+    "camille",
+    "julien",
+    "celine",
+    "isabelle",
+    "nathalie",
+    "caroline",
+    "olivier",
+    "alexandre",
+    "amour",
+    "bisous",
+    "papillon",
+    "vacances",
+    "maison",
+    "liberte",
+    "france",
+    "paris",
+    "toulouse",
+    "bordeaux",
+    "bretagne",
+    "football",
+    "secret",
+    "confidentiel",
+    "bienvenue",
+    "anonymiseur",
+    "anonmap",
+    "skazy",
+];
 
 /// Erreurs du coffre. Aucun message ne contient de contenu utilisateur.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -128,36 +181,48 @@ impl KdfParams {
     }
 }
 
-/// Estime la robustesse d'un mot de passe (heuristique simple : longueur, variété).
+/// Derniers résultats de [`password_strength`], par empreinte du mot de passe
+/// (SipHash à clé tirée au hasard pour le processus) : jamais le mot de passe.
+static STRENGTH_CACHE: Mutex<VecDeque<(u64, PasswordStrength)>> = Mutex::new(VecDeque::new());
+static STRENGTH_HASHER: OnceLock<RandomState> = OnceLock::new();
+
+/// Estime la robustesse d'un mot de passe : nombre d'essais qu'il faudrait
+/// pour le deviner (zxcvbn, hors ligne : mots de passe et mots courants,
+/// prénoms, suites de clavier, dates, répétitions, substitutions comme
+/// `p@ssw0rd`). « Motdepasse » ou « Azerty1234 » sont faibles quelle que soit
+/// leur longueur ; une phrase de plusieurs mots est forte.
 pub fn password_strength(password: &str) -> PasswordStrength {
-    let len = password.chars().count();
-    if len < STRENGTH_MIN_LEN {
+    if password.chars().count() < STRENGTH_MIN_LEN {
         return PasswordStrength::TropCourt;
     }
-    let mut distinct: Vec<char> = password.chars().collect();
-    distinct.sort_unstable();
-    distinct.dedup();
-    if distinct.len() < STRENGTH_MIN_DISTINCT {
-        return PasswordStrength::Faible;
+    let print = STRENGTH_HASHER
+        .get_or_init(RandomState::new)
+        .hash_one(password);
+    let cached = STRENGTH_CACHE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .find(|(p, _)| *p == print)
+        .map(|(_, s)| *s);
+    if let Some(s) = cached {
+        return s;
     }
-    let classes = [
-        password.chars().any(char::is_lowercase),
-        password.chars().any(char::is_uppercase),
-        password.chars().any(char::is_numeric),
-        password.chars().any(|c| !c.is_alphanumeric()),
-    ]
-    .iter()
-    .filter(|b| **b)
-    .count();
-    if len >= STRENGTH_PASSPHRASE_LEN
-        || (len >= STRENGTH_STRONG_LEN && classes >= STRENGTH_STRONG_CLASSES)
-    {
+    let score = zxcvbn::zxcvbn(password, COMMON_FRENCH).score();
+    let strength = if score >= STRENGTH_STRONG_SCORE {
         PasswordStrength::Fort
-    } else if len >= STRENGTH_CORRECT_LEN && classes >= STRENGTH_CORRECT_CLASSES {
+    } else if score >= STRENGTH_CORRECT_SCORE {
         PasswordStrength::Correct
     } else {
         PasswordStrength::Faible
+    };
+    let mut cache = STRENGTH_CACHE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if cache.len() >= STRENGTH_CACHE_LEN {
+        cache.pop_front();
     }
+    cache.push_back((print, strength));
+    strength
 }
 
 /// Scelle la session dans un fichier `.anonmap` (sel et nonce aléatoires). Une
@@ -577,10 +642,53 @@ mod tests {
         assert_eq!(password_strength("abc123X"), TropCourt);
         assert_eq!(password_strength("aaaaaaaaaaaa"), Faible);
         assert_eq!(password_strength("motdepasse"), Faible);
-        assert_eq!(password_strength("motdepasse1"), Correct);
-        assert_eq!(password_strength("Motdepasse-2024!"), Fort);
+        assert_eq!(password_strength("Ab3$xY9!qW"), Correct);
+        assert_eq!(password_strength("Nw7#kd2!Lp4z"), Fort);
         assert_eq!(password_strength("un long mot de passe en phrase"), Fort);
+        assert_eq!(password_strength("Cheval-Agrafe-Batterie-47"), Fort);
         assert!(Faible < Correct && Correct < Fort);
+    }
+
+    /// Longs, avec majuscule et chiffres, mais devinés en quelques milliers
+    /// d'essais : mots de passe courants, suites de clavier, mot et année.
+    #[test]
+    fn common_passwords_are_weak_whatever_their_length() {
+        for p in [
+            "Motdepasse",
+            "motdepasse1",
+            "Azerty1234",
+            "azertyuiop",
+            "Azerty123456789",
+            "Soleil2024!",
+            "Marseille13!",
+            "P@ssw0rd2024!",
+            "Paris2024",
+            "123456789012",
+            "Anonymiseur2026",
+        ] {
+            assert!(
+                password_strength(p) < PasswordStrength::Correct,
+                "{p} : {:?}",
+                password_strength(p)
+            );
+        }
+    }
+
+    #[test]
+    fn strength_is_stable_across_calls() {
+        // Plus de mots de passe que de places en mémoire : chacun garde son niveau.
+        let words = [
+            "Azerty1234",
+            "Nw7#kd2!Lp4z",
+            "Ab3$xY9!qW",
+            "motdepasse",
+            "court",
+        ];
+        let first: Vec<_> = words.iter().map(|w| password_strength(w)).collect();
+        for _ in 0..3 {
+            let again: Vec<_> = words.iter().map(|w| password_strength(w)).collect();
+            assert_eq!(again, first);
+        }
     }
 
     // --- Stabilité du format --------------------------------------------------

@@ -96,10 +96,13 @@ pub enum Effect {
     /// Colle le presse-papiers dans la réponse et la restaure aussitôt.
     PasteAndRestore,
     OpenFolder(PathBuf),
-    /// Copie `text` et affiche la notification `toast`.
+    /// Copie `text` et affiche la notification `toast`. `sensitive` : vraies
+    /// valeurs ou phrase de passe, tenues hors de l'historique (Win+V) et du
+    /// presse-papiers en ligne du système.
     Copy {
         text: String,
         toast: &'static str,
+        sensitive: bool,
     },
     /// Message d'avertissement (action impossible).
     Notice(&'static str),
@@ -150,6 +153,10 @@ impl RestoredFormat {
 
 /// Nom proposé pour la réponse restaurée.
 pub const RESTORED_NAME: &str = "reponse-restauree";
+
+/// Copie sensible refusée par le presse-papiers du système.
+pub const COPY_FAILED: &str =
+    "Copie impossible : le presse-papiers du système est indisponible. Réessayez.";
 
 /// Destination du texte demandé au presse-papiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -887,6 +894,7 @@ impl AnonApp {
                     fx.push(Effect::Copy {
                         text: text.clone(),
                         toast: "Réponse restaurée copiée",
+                        sensitive: true,
                     });
                 }
             }
@@ -1284,8 +1292,22 @@ impl AnonApp {
                 self.request_paste(ui.ctx(), PasteTarget::Response);
             }
             Effect::OpenFolder(dir) => self.platform.open_folder(&dir),
-            Effect::Copy { text, toast } => {
-                ui.ctx().copy_text(text);
+            Effect::Copy {
+                text,
+                toast,
+                sensitive,
+            } => {
+                if sensitive {
+                    // Presse-papiers du système, comme le presse-papiers
+                    // express : `copy_text` d'egui ne sait pas exclure la
+                    // copie de l'historique. Jamais de repli sur lui.
+                    if !self.clipboard.write_text(&text, true) {
+                        self.toast(ToastKind::Error, COPY_FAILED);
+                        return;
+                    }
+                } else {
+                    ui.ctx().copy_text(text);
+                }
                 self.toast(ToastKind::Success, toast);
             }
             Effect::Notice(msg) => self.toast(ToastKind::Warning, msg),
@@ -1679,16 +1701,17 @@ impl AnonApp {
         }
     }
 
-    /// Nom proposé pour le texte masqué d'un fichier, en `.md`, au même
-    /// suffixe que les fichiers produits (`anon_engine::output_file_name`) :
-    /// `_anonyme` seulement si l'évaluation à jour conclut à l'anonymat.
+    /// Nom proposé pour le texte masqué d'un fichier, en `.md`, comme les
+    /// fichiers produits (`anon_engine::masked_file_name`) : valeurs validées
+    /// du nom remplacées par leurs balises, `_anonyme` seulement si
+    /// l'évaluation à jour conclut à l'anonymat.
     pub fn export_text_name(&self, name: &str) -> String {
         let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(name);
         let verdict = self
             .anonymize
             .assessment(&self.assess_settings())
             .map(|a| a.assessment.verdict);
-        anon_engine::output_file_name(&format!("{stem}.md"), self.session.goal, verdict)
+        anon_engine::masked_file_name(&format!("{stem}.md"), &self.session, verdict)
     }
 
     /// Texte masqué d'un fichier bloqué par la vérification finale, en `.md`.
@@ -2200,6 +2223,7 @@ impl AnonApp {
             A::CopyInstruction => fx.push(Effect::Copy {
                 text: anon_engine::ai_instruction().to_owned(),
                 toast: "Consigne copiée",
+                sensitive: false,
             }),
             A::Find => fx.push(Effect::Find),
             A::Shortcuts => fx.push(Effect::ShowShortcuts),

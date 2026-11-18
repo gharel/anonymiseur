@@ -239,11 +239,13 @@ pub fn show(ui: &mut Ui, st: &mut GalleryState) {
                     .width(240.0)
                     .show(b);
                 b.add(StrengthMeter::of(&st.password));
+                // Un exemple par niveau : à saisir, trop court, faible,
+                // correcte, forte.
                 for pw in [
                     "",
                     "court",
-                    "qmzrtxwpvk",
-                    "Qmzrtx-Wpvk7",
+                    "Azerty1234",
+                    "Ab3$xY9!qW",
                     "Cheval-Agrafe-Batterie-47",
                 ] {
                     b.add(StrengthMeter::of(pw));

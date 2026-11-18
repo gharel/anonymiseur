@@ -380,6 +380,7 @@ fn side_by_side(ui: &mut Ui, st: &mut DeanonymizeState, view_h: f32, fx: &mut Ve
                     Some(t) => fx.push(Effect::Copy {
                         text: t.clone(),
                         toast: "Réponse restaurée copiée",
+                        sensitive: true,
                     }),
                     None => fx.push(Effect::Notice("Collez d'abord la réponse de l'IA.")),
                 }

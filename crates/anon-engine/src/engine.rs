@@ -7,10 +7,11 @@ use crate::error::{EngineError, Leak, extension_of};
 use crate::evaluation::{self, FIX_ALL_MAX_ROUNDS, FixUndo};
 use crate::media::{LOW_OCR_CONFIDENCE, ManualMask, Masker, Unmasker, sha256_hex};
 use crate::structure::structural_counts;
+use anon_core::text::apply_replacements;
 use anon_core::{
     AssessInput, AssessSettings, Assessment, BlockContext, BlockRole, DetectOptions, Detection,
-    Detector, Fix, Goal, Handler, ImageProcessor, MediaTransform, PixelRect, Profile, Session, Tag,
-    TextBlock, TextTransform, TransformOptions, Verdict, Warning, WarningCode,
+    Detector, Fix, Goal, Handler, ImageProcessor, MediaTransform, PixelRect, Profile, Replacement,
+    Session, Tag, TextBlock, TextTransform, TransformOptions, Verdict, Warning, WarningCode,
 };
 use anon_detect::{ColumnDetector, ListDetector, QuasiDetector, RuleDetector, merge};
 use anon_dict::DictionaryDetector;
@@ -144,6 +145,12 @@ const RESTORED_SUFFIX: &str = "_restaure";
 /// Suffixes des fichiers produits retirés à la restauration, du plus long au
 /// plus court (`_anonymise` : fichiers de la V1).
 const PRODUCED_SUFFIXES: &[&str] = &["_masque_sans_cle", "_anonymise", "_anonyme", "_masque"];
+/// Emplacement signalé quand une valeur validée subsiste dans le nom du
+/// fichier produit (jamais le nom lui-même : il peut désigner une personne).
+pub const FILE_NAME_PART: &str = "nom du fichier";
+/// Caractères interdits dans un nom de fichier sous Windows ou macOS (dont les
+/// séparateurs de chemin) : remplacés par `_` dans le texte inséré dans un nom.
+const FILE_NAME_FORBIDDEN: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 
 /// Construction d'un [`Engine`] par injection.
 #[derive(Default)]
@@ -256,11 +263,51 @@ struct Loaded {
     warnings: Vec<Warning>,
 }
 
-fn output_name(name: &str, suffix: &str, strip: &[&str]) -> String {
-    let (stem, ext) = match name.rsplit_once('.') {
+/// Nom sans l'extension, et l'extension (sans le point).
+fn split_name(name: &str) -> (&str, Option<&str>) {
+    match name.rsplit_once('.') {
         Some((s, e)) if !s.is_empty() => (s, Some(e)),
         _ => (name, None),
-    };
+    }
+}
+
+/// Texte sûr dans un nom de fichier : ni séparateur de chemin, ni caractère
+/// interdit, ni caractère de contrôle.
+fn file_name_safe(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_control() || FILE_NAME_FORBIDDEN.contains(&c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// Nom de fichier dont la partie avant l'extension passe par `transform`
+/// (valeurs remplacées par leurs balises, ou balises restaurées) ; le texte
+/// inséré est rendu sûr pour un nom de fichier.
+fn transform_stem(name: &str, transform: &impl TextTransform) -> String {
+    let (stem, ext) = split_name(name);
+    let ctx = BlockContext::new(FILE_NAME_PART, BlockRole::Other);
+    let reps: Vec<Replacement> = transform
+        .replacements(stem, &ctx)
+        .into_iter()
+        .map(|r| Replacement {
+            with: file_name_safe(&r.with),
+            ..r
+        })
+        .collect();
+    let stem = apply_replacements(stem, &reps);
+    match ext {
+        Some(e) => format!("{stem}.{e}"),
+        None => stem.into_owned(),
+    }
+}
+
+fn output_name(name: &str, suffix: &str, strip: &[&str]) -> String {
+    let (stem, ext) = split_name(name);
     let stem = strip
         .iter()
         .find_map(|s| stem.strip_suffix(s))
@@ -278,6 +325,34 @@ fn output_name(name: &str, suffix: &str, strip: &[&str]) -> String {
 pub fn output_file_name(name: &str, goal: Goal, verdict: Option<Verdict>) -> String {
     let anonymous = verdict == Some(Verdict::Anonymous);
     output_name(name, goal.output_suffix(anonymous), &[])
+}
+
+/// Nom d'un fichier produit à partir du nom d'origine, sans ses valeurs
+/// validées : chacune est remplacée dans le nom comme dans le contenu, par la
+/// même balise (`CR_Mme_Dupont.docx` → `CR_Mme_[NOM_1]_masque.docx`), puis le
+/// suffixe de l'objectif est ajouté ([`output_file_name`]).
+pub fn masked_file_name(name: &str, session: &Session, verdict: Option<Verdict>) -> String {
+    masked_name_with(name, &Replacer::new(session), session.goal, verdict)
+}
+
+fn masked_name_with(
+    name: &str,
+    replacer: &Replacer,
+    goal: Goal,
+    verdict: Option<Verdict>,
+) -> String {
+    output_file_name(&transform_stem(name, replacer), goal, verdict)
+}
+
+/// Nom d'un fichier restauré : suffixe de production retiré, `_restaure`
+/// ajouté, balises du nom remises à leurs valeurs.
+fn restored_file_name(name: &str, session: &Session) -> String {
+    // Restaurateur à part : le nom n'entre pas dans le bilan du contenu.
+    let restorer = Restorer::new(session);
+    transform_stem(
+        &output_name(name, RESTORED_SUFFIX, PRODUCED_SUFFIXES),
+        &restorer,
+    )
 }
 
 fn text_blocks(text: &str) -> Vec<TextBlock> {
@@ -750,6 +825,16 @@ impl Engine {
                 leaks.push(leak);
             }
         };
+        // Le nom du fichier produit passe par le même remplacement que le
+        // contenu, puis par le même contrôle (hors extension : celle d'un
+        // format géré, jamais une donnée).
+        let name = masked_name_with(&file.name, &replacer, session.goal, verdict);
+        for m in replacer.matches(split_name(&name).0) {
+            push_leak(Leak {
+                tag: m.tag,
+                part: FILE_NAME_PART.to_owned(),
+            });
+        }
         let mut warnings: Vec<Warning> = analysis
             .file(&file.name)
             .map(|f| f.warnings.clone())
@@ -811,7 +896,7 @@ impl Engine {
             }
         }
         Ok(Anonymized {
-            name: output_file_name(&file.name, session.goal, verdict),
+            name,
             bytes: out.bytes,
             report: FileReport {
                 replacements: out.replacements.saturating_add(masked),
@@ -865,7 +950,7 @@ impl Engine {
         };
         let out = handler.transform(&file.bytes, &restorer, &opts)?;
         Ok(Restored {
-            name: output_name(&file.name, RESTORED_SUFFIX, PRODUCED_SUFFIXES),
+            name: restored_file_name(&file.name, session),
             bytes: out.bytes,
             report: restorer.report(),
         })
@@ -1020,6 +1105,7 @@ fn text_leaks(deep: &[TextBlock], replacer: &Replacer, bytes: &[u8]) -> Vec<Leak
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anon_core::Treatment;
 
     #[test]
     fn names() {
@@ -1058,6 +1144,121 @@ mod tests {
         }
         assert_eq!(output_name("notes", "_x", &[]), "notes_x");
         assert_eq!(output_name(".profile", "_x", &[]), ".profile_x");
+    }
+
+    fn name_session() -> Session {
+        use anon_core::{EntityKind, Source};
+        use anon_replace::SessionExt;
+        let mut s = Session::new();
+        s.intern(EntityKind::Personne, "Jeanne Dupont", Source::Manual);
+        s.intern(EntityKind::Nom, "Dupont", Source::Manual);
+        s.intern(EntityKind::Date, "12/03/1980", Source::Manual);
+        s
+    }
+
+    #[test]
+    fn produced_name_masks_validated_values() {
+        let s = name_session();
+        assert_eq!(
+            masked_file_name("CR_Mme_Dupont.docx", &s, None),
+            "CR_Mme_[NOM_1]_masque.docx"
+        );
+        assert_eq!(
+            masked_file_name("Jeanne Dupont - bilan.pdf", &s, None),
+            "[PERSONNE_1] - bilan_masque.pdf"
+        );
+        // Un mot qui contient la valeur n'est pas touché.
+        assert_eq!(
+            masked_file_name("Dupontel.txt", &s, None),
+            "Dupontel_masque.txt"
+        );
+        assert_eq!(masked_file_name("Dupont", &s, None), "[NOM_1]_masque");
+        assert_eq!(
+            masked_file_name("contrat.docx", &s, None),
+            "contrat_masque.docx"
+        );
+    }
+
+    #[test]
+    fn produced_name_never_gets_a_path_separator() {
+        use anon_replace::SessionExt;
+        let mut s = name_session();
+        let tag = s.tag_for(anon_core::EntityKind::Nom, "Dupont").unwrap();
+        assert!(s.set_treatment(tag, Treatment::Generalize("..\\a/b:c*?".into())));
+        assert_eq!(
+            masked_file_name("Mme Dupont.txt", &s, None),
+            "Mme .._a_b_c___masque.txt"
+        );
+    }
+
+    #[test]
+    fn restored_name_puts_values_back() {
+        let s = name_session();
+        assert_eq!(
+            restored_file_name("CR_Mme_[NOM_1]_masque.docx", &s),
+            "CR_Mme_Dupont_restaure.docx"
+        );
+        // Une vraie valeur ne devient jamais un séparateur de chemin.
+        assert_eq!(
+            restored_file_name("naissance [DATE_1]_masque.txt", &s),
+            "naissance 12_03_1980_restaure.txt"
+        );
+    }
+
+    #[test]
+    fn anonymize_masks_the_file_name() {
+        let engine = Engine::standard();
+        let file = InputFile::new("CR_Mme_Dupont.txt", b"Mme Dupont est venue.".to_vec());
+        let mut session = name_session();
+        let analysis = engine.analyze(
+            std::slice::from_ref(&file),
+            &AnalyzeOptions::default(),
+            &session,
+            &NoProgress,
+        );
+        let out = engine
+            .anonymize(&file, &analysis, &mut session, &AnonymizeOptions::default())
+            .unwrap();
+        assert_eq!(out.name, "CR_Mme_[NOM_1]_masque.txt");
+        let restored = engine
+            .restore(&InputFile::new(out.name, out.bytes), &session)
+            .unwrap();
+        assert_eq!(restored.name, "CR_Mme_Dupont_restaure.txt");
+        assert_eq!(restored.bytes, b"Mme Dupont est venue.");
+        // Le nom n'entre pas dans le bilan de la restauration du contenu.
+        assert_eq!(restored.report.restored, 1);
+    }
+
+    #[test]
+    fn leak_check_covers_the_file_name() {
+        use anon_core::{EntityKind, Source};
+        use anon_replace::SessionExt;
+        let engine = Engine::standard();
+        // « Martin » rendu moins précis en une autre valeur validée : le nom
+        // produit la contiendrait, le fichier n'est pas livré.
+        let mut session = Session::new();
+        let martin = session
+            .intern(EntityKind::Nom, "Martin", Source::Manual)
+            .unwrap();
+        session.intern(EntityKind::Nom, "Durand", Source::Manual);
+        session.set_treatment(martin, Treatment::Generalize("Durand".into()));
+        let file = InputFile::new("Martin.txt", b"Bonjour.".to_vec());
+        let analysis = engine.analyze(
+            std::slice::from_ref(&file),
+            &AnalyzeOptions::default(),
+            &session,
+            &NoProgress,
+        );
+        match engine.anonymize(&file, &analysis, &mut session, &AnonymizeOptions::default()) {
+            Err(EngineError::Leak { leaks }) => assert_eq!(
+                leaks,
+                [Leak {
+                    tag: Tag::new(EntityKind::Nom, 2),
+                    part: FILE_NAME_PART.to_owned(),
+                }]
+            ),
+            other => unreachable!("{:?}", other.map(|o| o.name)),
+        }
     }
 
     #[test]

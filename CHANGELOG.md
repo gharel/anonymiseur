@@ -4,6 +4,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+## [2.0.2] - 2026-11-18
+
 ### Sécurité
 - **Presse-papiers** : la réponse restaurée (« Copier », Ctrl+Entrée à l'étape Réponse) et la phrase de passe de la clé sont copiées comme par le presse-papiers express : hors de l'historique (Win+V) et de la synchronisation en ligne sous Windows, hors de l'historique sous macOS. Si le système refuse, rien n'est copié et un message le dit.
 - **Nom des fichiers produits** : une valeur validée présente dans le nom du fichier d'origine est remplacée par sa balise, comme dans le contenu (`CR_Mme_Dupont.docx` devient `CR_Mme_[NOM_1]_masque.docx`), et le contrôle de fuite vérifie aussi le nom. Le nom proposé pour le texte masqué suit la même règle ; à la restauration, les balises du nom retrouvent leurs valeurs. Un caractère interdit dans un nom de fichier (`/`, `\`, `:`…) apporté par un remplacement devient `_`.

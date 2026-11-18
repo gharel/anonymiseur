@@ -285,23 +285,41 @@ impl std::fmt::Debug for Protection {
 pub const RETENTION_CHOICES: [u32; 3] = [6, 12, 24];
 
 /// Date et heure locales, pour nommer une clé ou une fiche.
-pub fn local_now() -> chrono::NaiveDateTime {
-    chrono::Local::now().naive_local()
+///
+/// Fuseau du système (sous Windows, celui du Panneau de configuration, traduit
+/// en fuseau IANA par la base embarquée) ; UTC s'il est introuvable. Une horloge
+/// hors de la plage connue (années -9999 à 9999) donne une date nulle, jamais une
+/// panique.
+pub fn local_now() -> jiff::civil::DateTime {
+    jiff::Timestamp::try_from(std::time::SystemTime::now())
+        .map(|now| {
+            now.to_zoned_datetime(jiff::tz::TimeZone::system())
+                .datetime()
+        })
+        .unwrap_or_default()
 }
 
-/// `JJ-MM-AAAA-HHhMM`.
-fn stamp(at: &chrono::NaiveDateTime) -> String {
-    at.format("%d-%m-%Y-%Hh%M").to_string()
+/// `JJ-MM-AAAA-HHhMM` : jour, mois, heure et minute sur deux chiffres, année sur
+/// quatre, heure sur 24 heures.
+fn stamp(at: &jiff::civil::DateTime) -> String {
+    format!(
+        "{:02}-{:02}-{:04}-{:02}h{:02}",
+        at.day(),
+        at.month(),
+        at.year(),
+        at.hour(),
+        at.minute()
+    )
 }
 
 /// Nom d'une clé de restauration : `dossier-JJ-MM-AAAA-HHhMM.anonmap`.
-pub fn key_file_name(at: &chrono::NaiveDateTime) -> String {
+pub fn key_file_name(at: &jiff::civil::DateTime) -> String {
     format!("dossier-{}.anonmap", stamp(at))
 }
 
 /// Nom proposé pour la fiche d'évaluation : `fiche-evaluation-JJ-MM-AAAA-HHhMM.md`.
 /// Il ne dit rien du verdict : le mot « anonyme » n'y figure jamais (invariant 9).
-pub fn fiche_file_name(at: &chrono::NaiveDateTime) -> String {
+pub fn fiche_file_name(at: &jiff::civil::DateTime) -> String {
     format!("fiche-evaluation-{}.md", stamp(at))
 }
 
@@ -952,9 +970,7 @@ mod tests {
         let (inputs, analysis) = lettre(&engine);
         let d = temp_dir("dossier-des-cles");
         let keys = d.join("Anonymiseur").join("Clés");
-        let at = chrono::NaiveDate::from_ymd_opt(2026, 11, 16)
-            .and_then(|d| d.and_hms_opt(14, 5, 0))
-            .unwrap_or_default();
+        let at = jiff::civil::date(2026, 11, 16).at(14, 5, 0, 0);
         let key = KeyPlan {
             dir: keys.clone(),
             name: key_file_name(&at),
@@ -1049,9 +1065,7 @@ mod tests {
 
     #[test]
     fn names_of_keys_and_fiches() {
-        let at = chrono::NaiveDate::from_ymd_opt(2026, 1, 5)
-            .and_then(|d| d.and_hms_opt(9, 7, 0))
-            .unwrap_or_default();
+        let at = jiff::civil::date(2026, 1, 5).at(9, 7, 0, 0);
         assert_eq!(key_file_name(&at), "dossier-05-01-2026-09h07.anonmap");
         assert_eq!(fiche_file_name(&at), "fiche-evaluation-05-01-2026-09h07.md");
         assert!(!fiche_file_name(&at).contains("anonyme"));
@@ -1059,6 +1073,46 @@ mod tests {
             &key_file_name(&at)
         )));
         assert_eq!(RETENTION_CHOICES, [6, 12, 24]);
+    }
+
+    /// Le format `JJ-MM-AAAA-HHhMM` de chrono (`%d-%m-%Y-%Hh%M`) est conservé :
+    /// zéros de tête, heure sur 24 heures, secondes ignorées.
+    #[test]
+    fn stamp_keeps_the_chrono_format() {
+        let cases = [
+            (
+                jiff::civil::date(2026, 12, 31).at(23, 59, 59, 999),
+                "31-12-2026-23h59",
+            ),
+            (
+                jiff::civil::date(2027, 1, 1).at(0, 0, 0, 0),
+                "01-01-2027-00h00",
+            ),
+            (
+                jiff::civil::date(2026, 11, 16).at(14, 5, 30, 0),
+                "16-11-2026-14h05",
+            ),
+            (
+                jiff::civil::date(999, 2, 3).at(4, 6, 0, 0),
+                "03-02-0999-04h06",
+            ),
+        ];
+        for (at, expected) in cases {
+            assert_eq!(stamp(&at), expected);
+            assert_eq!(key_file_name(&at), format!("dossier-{expected}.anonmap"));
+        }
+    }
+
+    /// L'heure locale est une vraie heure : à moins d'un jour de l'heure UTC
+    /// (décalages de -12 à +14 heures), pas la date nulle de repli.
+    #[test]
+    fn local_now_is_close_to_utc() {
+        let utc = jiff::Timestamp::now()
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .datetime();
+        let gap = local_now().duration_since(utc).abs();
+        assert!(gap <= jiff::SignedDuration::from_hours(15), "écart {gap:?}");
+        assert!(local_now().year() >= 2026);
     }
 
     #[test]

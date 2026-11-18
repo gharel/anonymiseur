@@ -28,9 +28,6 @@ anon-vault = { version = "2.0.0", path = "../crates/anon-vault" }
 # fenêtre. Déjà présent par egui-winit (même version) : aucune bibliothèque de
 # plus. MIT ou Apache-2.0, aucun réseau.
 arboard = { version = "3.7", default-features = false }
-# Heure locale du nom de la clé de restauration (dossier-JJ-MM-AAAA-HHhMM.anonmap).
-# MIT ou Apache-2.0, aucun réseau ; sans les fonctionnalités par défaut.
-chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 # Dossiers Documents (exemples) et configuration (préférences) du système.
 # MIT ou Apache-2.0, aucun réseau ; sous Windows, API Known Folder.
 dirs = "7.0.0"
@@ -41,6 +38,11 @@ egui_extras = { version = "0.37", features = ["image", "svg"] }
 # sous Windows, Carbon sous macOS. tauri-apps, MIT ou Apache-2.0, aucun réseau.
 global-hotkey = "0.10"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp"] }
+# Heure locale du nom de la clé de restauration (dossier-JJ-MM-AAAA-HHhMM.anonmap),
+# à la place de chrono, non maintenu (RUSTSEC-2026-0543). Unlicense ou MIT, aucun
+# réseau. Fuseau du système : base IANA embarquée sous Windows seulement
+# (tzdb-bundle-platform), /usr/share/zoneinfo sous macOS (tzdb-zoneinfo).
+jiff = { version = "1.0.1", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform", "tzdb-zoneinfo"] }
 rfd = "0.18"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

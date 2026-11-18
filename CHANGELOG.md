@@ -9,6 +9,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 - **Nom des fichiers produits** : une valeur validée présente dans le nom du fichier d'origine est remplacée par sa balise, comme dans le contenu (`CR_Mme_Dupont.docx` devient `CR_Mme_[NOM_1]_masque.docx`), et le contrôle de fuite vérifie aussi le nom. Le nom proposé pour le texte masqué suit la même règle ; à la restauration, les balises du nom retrouvent leurs valeurs. Un caractère interdit dans un nom de fichier (`/`, `\`, `:`…) apporté par un remplacement devient `_`.
 - **Mot de passe de la clé** : sa robustesse est estimée par zxcvbn (hors ligne), complété d'une liste de mots de passe français courants ; « correcte » demande plus de 10^8 essais estimés pour le deviner. « Motdepasse », « Azerty1234 » ou « Soleil2024! » sont refusés ; les phrases de passe proposées restent fortes.
 
+### Modifié
+- **Dépendance** : `chrono`, déclaré non maintenu (RUSTSEC-2026-0543), est remplacé par `jiff` (Unlicense ou MIT, sans réseau, base des fuseaux embarquée sous Windows seulement) pour l'heure locale du nom des clés et des fiches. Le format `JJ-MM-AAAA-HHhMM` ne change pas. `chrono` reste tiré indirectement par `zxcvbn`.
+
 ## [2.0.1] - 2026-11-16
 
 ### Corrigé

@@ -9,6 +9,7 @@
 
 use crate::limits::{MAX_TABLE_CELLS, MAX_TOTAL_UNCOMPRESSED};
 use crate::ooxml::{check_odf_manifest, read_part, xlsx_read_env};
+use crate::opc::{dir_of, part_relationships, resolve_target, workbook_part};
 use crate::package::Package;
 use crate::part::XlsxEnv;
 use crate::xlsx::{serial_to_date, split_ref, x_decode};
@@ -193,44 +194,6 @@ fn workbook_sheets(xml: &str) -> Result<Vec<(String, String)>, FormatError> {
     Ok(out)
 }
 
-/// Relations du classeur : identifiant → (type, cible).
-fn relationships(xml: &str, part: &str) -> Result<HashMap<String, (String, String)>, FormatError> {
-    let mut out = HashMap::new();
-    let mut w = Walker::new(xml, part);
-    while let Some(item) = w.next_item()? {
-        if let Item::Start(t) | Item::Empty(t) = item
-            && t.name == "rel:Relationship"
-            && let (Some(id), Some(ty), Some(target)) = (
-                t.attr_value("Id"),
-                t.attr_value("Type"),
-                t.attr_value("Target"),
-            )
-        {
-            out.insert(id.to_string(), (ty.to_string(), target.to_string()));
-        }
-    }
-    Ok(out)
-}
-
-/// Chemin d'une partie désignée par une cible relative à `xl/`.
-fn resolve(target: &str) -> String {
-    let joined = match target.strip_prefix('/') {
-        Some(abs) => abs.to_string(),
-        None => format!("xl/{target}"),
-    };
-    let mut parts: Vec<&str> = Vec::new();
-    for seg in joined.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
-            }
-            s => parts.push(s),
-        }
-    }
-    parts.join("/")
-}
-
 /// Cellules d'une feuille Excel.
 fn xlsx_sheet(src: &str, part: &str, env: &XlsxEnv) -> Result<Grid, FormatError> {
     let mut w = Walker::new(src, part);
@@ -310,13 +273,15 @@ pub(crate) fn xlsx(input: &[u8]) -> Result<Vec<TableData>, FormatError> {
         }
     }
     let env = xlsx_read_env(&mut pkg, &mut budget)?;
-    let workbook = read_part(&mut pkg, "xl/workbook.xml", &mut budget)?
-        .ok_or_else(|| FormatError::corrupt("xl/workbook.xml", "partie manquante"))?;
-    let rels_part = "xl/_rels/workbook.xml.rels";
-    let rels = match read_part(&mut pkg, rels_part, &mut budget)? {
-        Some(s) => relationships(&s, rels_part)?,
-        None => HashMap::new(),
-    };
+    let missing = || FormatError::corrupt("xl/workbook.xml", "partie manquante");
+    let wb = workbook_part(&mut pkg, &mut budget)?.ok_or_else(missing)?;
+    let workbook = read_part(&mut pkg, &wb, &mut budget)?.ok_or_else(missing)?;
+    // Relations du classeur : identifiant → (type, cible).
+    let rels: HashMap<String, (String, String)> = part_relationships(&mut pkg, &wb, &mut budget)?
+        .into_iter()
+        .map(|r| (r.id, (r.ty, r.target)))
+        .collect();
+    let base = dir_of(&wb).to_string();
     let mut out = Vec::new();
     for (name, rid) in workbook_sheets(&workbook)? {
         let Some((ty, target)) = rels.get(&rid) else {
@@ -325,7 +290,7 @@ pub(crate) fn xlsx(input: &[u8]) -> Result<Vec<TableData>, FormatError> {
         if !ty.ends_with("/worksheet") {
             continue;
         }
-        let part = resolve(target);
+        let part = resolve_target(&base, target);
         let src = read_part(&mut pkg, &part, &mut budget)?
             .ok_or_else(|| FormatError::corrupt(part.clone(), "partie manquante"))?;
         let grid = xlsx_sheet(&src, &part, &env)?;
@@ -586,6 +551,7 @@ mod tests {
         assert_eq!(column_index("XFD"), Some(16383));
         assert_eq!(column_index("ABCD"), None);
         assert_eq!(column_index(""), None);
+        let resolve = |t: &str| resolve_target("xl/", t);
         assert_eq!(resolve("worksheets/sheet1.xml"), "xl/worksheets/sheet1.xml");
         assert_eq!(resolve("/xl/worksheets/s.xml"), "xl/worksheets/s.xml");
         assert_eq!(resolve("../xl/./worksheets/s.xml"), "xl/worksheets/s.xml");

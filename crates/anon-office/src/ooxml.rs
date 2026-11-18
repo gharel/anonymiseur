@@ -2,6 +2,7 @@
 //! Open XML) et OpenDocument (texte, classeur, présentation).
 
 use crate::limits::{DEEP_SCAN_CHUNK, MAX_EMBED_DEPTH, MAX_TOTAL_UNCOMPRESSED};
+use crate::opc::{PackageInfo, PartKind, find_part, shared_strings_part, workbook_part};
 use crate::package::{Action, Package, label};
 use crate::part::{Dialect, Op, PartCtx, PartOut, XlsxEnv, process};
 use crate::tables;
@@ -248,7 +249,7 @@ pub(crate) fn read_part(
     name: &str,
     budget: &mut u64,
 ) -> Result<Option<String>, FormatError> {
-    let Some(i) = pkg.index_of(name) else {
+    let Some(i) = find_part(pkg, name) else {
         return Ok(None);
     };
     let bytes = pkg.read(i, budget)?;
@@ -268,14 +269,23 @@ fn xlsx_env(
     if let Some(s) = read_part(pkg, "xl/styles.xml", budget)? {
         env.date_styles = date_styles(&s)?;
     }
-    if let Some(s) = read_part(pkg, "xl/workbook.xml", budget)? {
+    // Classeur et table des chaînes partagées désignés par les relations du
+    // paquet (noms par défaut en repli) : une table renommée ou déplacée reste lue.
+    let workbook = workbook_part(pkg, budget)?;
+    if let Some(wb) = &workbook
+        && let Some(s) = read_part(pkg, wb, budget)?
+    {
         env.date1904 = workbook_date1904(&s)?;
     }
-    if let Some(s) = read_part(pkg, "xl/sharedStrings.xml", budget)? {
+    if let Some(name) = shared_strings_part(pkg, workbook.as_deref(), budget)?
+        && let Some(s) = read_part(pkg, &name, budget)?
+    {
+        let index = pkg.index_of(&name).unwrap_or_default();
+        let shown = format!("{prefix}{}", label(&name, index));
         let tmp = XlsxEnv::default();
         let none = HashMap::new();
         let cx = PartCtx {
-            label: format!("{prefix}xl/sharedStrings.xml"),
+            label: shown.clone(),
             role: BlockRole::Cell,
             dialect: Dialect::Excel,
             xlsx: &tmp,
@@ -283,6 +293,7 @@ fn xlsx_env(
             op: Op::Extract,
         };
         env.shared = process(&s, &cx)?.shared;
+        env.shared_part = Some(shown);
     }
     if let Mode::Transform { tr, .. } = mode {
         let tables: Vec<String> = pkg
@@ -360,6 +371,44 @@ fn is_thumbnail(flavor: Flavor, lname: &str) -> bool {
     }
 }
 
+/// Logiciel qui sait réenregistrer le paquet sous une forme lisible.
+fn app_name(flavor: Flavor) -> &'static str {
+    match flavor {
+        Flavor::Word => "Word",
+        Flavor::Excel => "Excel",
+        Flavor::PowerPoint => "PowerPoint",
+        Flavor::Odf => "LibreOffice",
+    }
+}
+
+/// Refus : contenu importé (`w:altChunk`, relation `aFChunk`) que Word affiche
+/// dans le corps du document mais que l'on ne sait pas analyser.
+fn alt_chunk_error(shown: &str) -> FormatError {
+    FormatError::Unsupported(format!(
+        "contenu importé altChunk non analysable ({shown}) : enregistrez le document dans \
+         Word puis recommencez"
+    ))
+}
+
+/// Refus : partie texte (HTML, MHT, RTF…) ou de type inconnu, non analysable.
+fn unreadable_error(flavor: Flavor, shown: &str) -> FormatError {
+    FormatError::Unsupported(format!(
+        "partie non analysable ({shown}) : enregistrez le document dans {} puis recommencez",
+        app_name(flavor)
+    ))
+}
+
+/// Parties hors XML déjà prises en charge par `run` avant le classement par
+/// type de contenu : miniatures, images, macros, objets embarqués.
+fn handled_elsewhere(flavor: Flavor, lname: &str, ext: &str) -> bool {
+    is_thumbnail(flavor, lname)
+        || (is_media(flavor, lname)
+            && (RASTER_EXTENSIONS.contains(&ext) || VECTOR_EXTENSIONS.contains(&ext)))
+        || lname.ends_with("vbaproject.bin")
+        || lname.contains("/embeddings/")
+        || lname.contains("/activex/")
+}
+
 /// Lecture ou réécriture d'un paquet, fichiers embarqués compris.
 fn run(
     input: &[u8],
@@ -370,15 +419,17 @@ fn run(
     budget: &mut u64,
 ) -> Result<RunOut, FormatError> {
     let mut pkg = Package::open(input)?;
-    if flavor == Flavor::Odf {
+    let info = if flavor == Flavor::Odf {
         check_odf_manifest(&mut pkg, budget)?;
+        None
     } else {
         for required in ["[Content_Types].xml", "_rels/.rels"] {
             if pkg.index_of(required).is_none() {
                 return Err(FormatError::corrupt(required, "partie manquante"));
             }
         }
-    }
+        Some(PackageInfo::read(&mut pkg, budget)?)
+    };
     let env = if flavor == Flavor::Excel {
         xlsx_env(&mut pkg, mode, prefix, budget)?
     } else {
@@ -397,6 +448,13 @@ fn run(
         if entry.is_dir || name == "mimetype" {
             actions.push(Action::Keep);
             continue;
+        }
+        if let Some(info) = &info
+            && info.is_alt_chunk(name)
+        {
+            // Contenu importé (HTML, MHT, RTF, texte…) que Word affiche dans le
+            // corps du document : jamais recopié sans analyse.
+            return Err(alt_chunk_error(&shown));
         }
         if is_thumbnail(flavor, &lname) {
             actions.push(if scrub { Action::Remove } else { Action::Keep });
@@ -480,8 +538,15 @@ fn run(
         }
         let vml = flavor != Flavor::Odf && ext == "vml";
         if !is_xml_part(name) && !vml {
-            actions.push(Action::Keep);
-            continue;
+            match info.as_ref().map(|inf| inf.classify(name, &ext)) {
+                // Déclarée comme XML sous une autre extension : analysée.
+                Some(PartKind::Xml) => {}
+                Some(PartKind::Unreadable) => return Err(unreadable_error(flavor, &shown)),
+                Some(PartKind::Binary) | None => {
+                    actions.push(Action::Keep);
+                    continue;
+                }
+            }
         }
         let bytes = pkg.read(i, budget)?;
         let parsed = part_text(&bytes, &shown).and_then(|(src, bom)| {
@@ -524,8 +589,9 @@ fn run(
             }
         }
     }
-    if matches!(mode, Mode::Extract) {
-        let part = format!("{prefix}xl/sharedStrings.xml");
+    if matches!(mode, Mode::Extract)
+        && let Some(part) = &env.shared_part
+    {
         for (i, s) in env.shared.iter().enumerate() {
             if !used_shared.contains(&i) && !s.trim().is_empty() {
                 out.blocks.push(TextBlock {
@@ -617,6 +683,11 @@ fn deep(
     budget: &mut u64,
 ) -> Result<Vec<TextBlock>, FormatError> {
     let mut pkg = Package::open(input)?;
+    let info = if flavor == Flavor::Odf {
+        None
+    } else {
+        Some(PackageInfo::read(&mut pkg, budget)?)
+    };
     let mut blocks = Vec::new();
     let names: Vec<String> = pkg.entries.iter().map(|e| e.name.clone()).collect();
     push_chunks(
@@ -635,6 +706,11 @@ fn deep(
         let lname = name.to_ascii_lowercase();
         let ext = ext_of(name);
         let shown = format!("{prefix}{}", label(name, i));
+        if let Some(info) = &info
+            && info.is_alt_chunk(name)
+        {
+            return Err(alt_chunk_error(&shown));
+        }
         if lname.contains("/embeddings/")
             && let Some(f) = flavor_for(&ext)
         {
@@ -646,7 +722,15 @@ fn deep(
             continue;
         }
         if !matches!(ext.as_str(), "xml" | "rels" | "vml" | "rdf") {
-            continue;
+            // Mêmes règles qu'à la transformation : une partie déclarée XML est
+            // lue, une partie texte non analysable bloque le contrôle.
+            match info.as_ref().map(|inf| inf.classify(name, &ext)) {
+                Some(PartKind::Xml) => {}
+                Some(PartKind::Unreadable) if !handled_elsewhere(flavor, &lname, &ext) => {
+                    return Err(unreadable_error(flavor, &shown));
+                }
+                _ => continue,
+            }
         }
         let bytes = pkg.read(i, budget)?;
         let src =

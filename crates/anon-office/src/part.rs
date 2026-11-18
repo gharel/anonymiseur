@@ -44,6 +44,8 @@ pub(crate) struct XlsxEnv {
     pub date1904: bool,
     /// Chaînes partagées.
     pub shared: Vec<String>,
+    /// Emplacement affiché de la table des chaînes partagées.
+    pub shared_part: Option<String>,
     /// Noms de colonnes de tableaux renommés (ancien → nouveau), transformation.
     pub columns: HashMap<String, String>,
 }

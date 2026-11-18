@@ -10,6 +10,7 @@
 //!   remplacements sur les runs ;
 //! - `rules` : listes blanches de ce qui passe par `tr` ou est neutralisé ;
 //! - `part`, `ooxml`, `xlsx` : spécificités OOXML ;
+//! - `opc` : relations, types de contenu déclarés, parties non analysables ;
 //! - `textfile` : texte brut ;
 //! - `tables` : lecture des feuilles de calcul en tableaux (`Handler::tables`) ;
 //! - `newdoc` : document Word neuf, minimal (réponse restaurée en `.docx`).
@@ -18,6 +19,7 @@
 mod limits;
 mod newdoc;
 mod ooxml;
+mod opc;
 mod package;
 mod para;
 mod part;

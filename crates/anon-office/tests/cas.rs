@@ -358,3 +358,269 @@ fn date1904_flag() {
         .unwrap();
     assert_eq!(b2.text, "15/03/2029");
 }
+
+// ---------------------------------------------------------------------------
+// Chaînes partagées désignées par les relations du classeur.
+
+/// Relations du classeur : feuille, puis table des chaînes partagées à `target`.
+fn workbook_rels(target: &str) -> String {
+    format!(
+        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="{target}"/></Relationships>"#
+    )
+}
+
+/// Classeur dont la table des chaînes partagées est à `sst_path`, désignée (ou
+/// non) par les relations du classeur.
+fn workbook_with_shared_at(sst_path: &str, rels: Option<String>) -> Vec<u8> {
+    let mut parts: Vec<(&str, &str)> = vec![
+        ("[Content_Types].xml", CT),
+        ("_rels/.rels", RELS),
+        ("xl/workbook.xml", WORKBOOK),
+        ("xl/styles.xml", STYLES),
+        (sst_path, SHARED),
+        ("xl/worksheets/sheet1.xml", SHEET),
+    ];
+    if let Some(r) = rels.as_deref() {
+        parts.push(("xl/_rels/workbook.xml.rels", r));
+    }
+    make_zip(&parts)
+}
+
+#[test]
+fn shared_strings_found_through_workbook_relationships() {
+    let cases = [
+        // Cible relative avec `..`, dossier et nom non standard.
+        (
+            "xl/textes/Chaines.xml",
+            Some(workbook_rels("../xl/textes/Chaines.xml")),
+        ),
+        // Cible absolue, casse différente de l'entrée.
+        ("xl/SST.xml", Some(workbook_rels("/xl/sst.xml"))),
+        // Sans relation : nom par défaut, casse différente.
+        ("xl/SharedStrings.xml", None),
+    ];
+    for (path, rels) in cases {
+        let with_rels = rels.is_some();
+        let input = workbook_with_shared_at(path, rels);
+        let ex = XlsxHandler.extract(&input).unwrap();
+        let a2 = ex
+            .blocks
+            .iter()
+            .find(|b| b.ctx.part == "xl/worksheets/sheet1.xml!A2")
+            .unwrap_or_else(|| panic!("{path} : cellule A2 non lue"));
+        assert_eq!(a2.text, "Jean Dupont\rsuite", "{path}");
+        assert_eq!(a2.ctx.column_header.as_deref(), Some("Contact Dupont"));
+        if with_rels {
+            let t = XlsxHandler.tables(&input).unwrap();
+            assert_eq!(t[0].headers[0], "Contact Dupont", "{path}");
+            assert_eq!(t[0].rows[0][0], "Jean Dupont\rsuite", "{path}");
+        }
+        let session = session_of(&[(Personne, "Jean Dupont".to_string())]);
+        let r = Replacer::new(&session);
+        let out = XlsxHandler
+            .transform(&input, &r, &TransformOptions::anonymize())
+            .unwrap();
+        assert!(part(&out.bytes, path).contains("[PERSONNE_1]"), "{path}");
+        let left = leaks(&XlsxHandler.deep_scan(&out.bytes).unwrap(), &r);
+        assert!(left.is_empty(), "{path} : {left:?}");
+    }
+}
+
+#[test]
+fn shared_strings_of_embedded_workbook_are_resolved_too() {
+    let inner = workbook_with_shared_at(
+        "xl/textes/Chaines.xml",
+        Some(workbook_rels("textes/Chaines.xml")),
+    );
+    let body = docx_body("Rien ici.").replace(r#"<w:altChunk r:id="rIdA"/>"#, "");
+    let input = zip_bytes(&[
+        ("[Content_Types].xml", DOCX_CT.as_bytes()),
+        ("_rels/.rels", DOCX_RELS.as_bytes()),
+        ("word/document.xml", body.as_bytes()),
+        ("word/embeddings/Feuille.xlsx", &inner),
+    ]);
+    let ex = DocxHandler.extract(&input).unwrap();
+    let a2 = ex
+        .blocks
+        .iter()
+        .find(|b| b.ctx.part == "word/embeddings/Feuille.xlsx/xl/worksheets/sheet1.xml!A2")
+        .expect("cellule A2 du classeur embarqué");
+    assert_eq!(a2.text, "Jean Dupont\rsuite");
+}
+
+// ---------------------------------------------------------------------------
+// Parties hors XML : contenus importés (altChunk), parties texte, types déclarés.
+
+const W_NS: &str = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#;
+const DOCX_CT: &str = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="mht" ContentType="message/rfc822"/><Default Extension="htm" ContentType="text/html"/><Default Extension="txt" ContentType="text/plain"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/><Default Extension="wdp" ContentType="image/vnd.ms-photo"/><Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/chunk1.xml" ContentType="application/xhtml+xml"/></Types>"#;
+const DOCX_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#;
+const MHT: &str = "MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: text/html\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n<html><body><p>Patient : Jean Dupont</p></body></html>\r\n--b--\r\n";
+
+fn docx_body(text: &str) -> String {
+    format!(
+        r#"<w:document {W_NS}><w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p><w:altChunk r:id="rIdA"/></w:body></w:document>"#
+    )
+}
+
+fn alt_chunk_rels(target: &str) -> String {
+    format!(
+        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdA" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="{target}"/></Relationships>"#
+    )
+}
+
+/// Zip (Deflate) à partir de (nom, octets).
+fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write;
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (n, c) in entries {
+        w.start_file(
+            *n,
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated),
+        )
+        .unwrap();
+        w.write_all(c).unwrap();
+    }
+    w.finish().unwrap().into_inner()
+}
+
+/// Extraction, transformation et contrôle de fuite refusent tous le paquet,
+/// avec un message sans contenu utilisateur qui contient `expected`.
+fn assert_refused(h: &dyn Handler, input: &[u8], expected: &str, case: &str) {
+    let session = session_of(&[(Personne, "Jean Dupont".to_string())]);
+    let results = [
+        h.extract(input).map(|_| ()),
+        h.transform(
+            input,
+            &Replacer::new(&session),
+            &TransformOptions::anonymize(),
+        )
+        .map(|_| ()),
+        h.deep_scan(input).map(|_| ()),
+    ];
+    for r in results {
+        match r {
+            Err(anon_core::FormatError::Unsupported(m)) => {
+                assert!(m.contains(expected), "{case} : {m}");
+                assert!(!m.contains("Dupont"), "{case} : {m}");
+            }
+            other => panic!("{case} : refus attendu, obtenu {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn alt_chunk_is_refused() {
+    let xhtml = r#"<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Patient : Jean Dupont</p></body></html>"#;
+    // (cible de la relation, entrée du paquet, contenu)
+    let cases = [
+        ("afchunk.mht", "word/afchunk.mht", MHT),
+        // Contenu importé sous une extension `.xml` : lu comme du XML Word, il
+        // ne donnerait aucun texte.
+        ("/word/chunk1.xml", "word/chunk1.xml", xhtml),
+        // Cible relative avec `..`, casse différente de l'entrée.
+        ("../word/Import.HTM", "word/import.htm", xhtml),
+    ];
+    for (target, entry, content) in cases {
+        let rels = alt_chunk_rels(target);
+        let body = docx_body("Dossier de Jean Dupont.");
+        let input = zip_bytes(&[
+            ("[Content_Types].xml", DOCX_CT.as_bytes()),
+            ("_rels/.rels", DOCX_RELS.as_bytes()),
+            ("word/document.xml", body.as_bytes()),
+            ("word/_rels/document.xml.rels", rels.as_bytes()),
+            (entry, content.as_bytes()),
+        ]);
+        assert_refused(&DocxHandler, &input, "altChunk non analysable", target);
+        assert_refused(
+            &DocxHandler,
+            &input,
+            "enregistrez le document dans Word",
+            target,
+        );
+    }
+}
+
+#[test]
+fn text_and_unknown_parts_are_refused() {
+    let body = docx_body("Dossier.").replace(r#"<w:altChunk r:id="rIdA"/>"#, "");
+    for (entry, content) in [
+        // Type déclaré textuel (Default `txt` → text/plain).
+        ("word/notes.txt", "Patient : Jean Dupont"),
+        // Ni type déclaré ni extension connue.
+        ("word/donnees.xyz", "Patient : Jean Dupont"),
+    ] {
+        let input = zip_bytes(&[
+            ("[Content_Types].xml", DOCX_CT.as_bytes()),
+            ("_rels/.rels", DOCX_RELS.as_bytes()),
+            ("word/document.xml", body.as_bytes()),
+            (entry, content.as_bytes()),
+        ]);
+        assert_refused(&DocxHandler, &input, "partie non analysable", entry);
+    }
+}
+
+#[test]
+fn main_part_declared_as_xml_under_another_extension_is_analysed() {
+    let ct = DOCX_CT.replace("/word/document.xml", "/word/document.bin");
+    let rels = DOCX_RELS.replace("word/document.xml", "word/document.bin");
+    let body = docx_body("Dossier de Jean Dupont.").replace(r#"<w:altChunk r:id="rIdA"/>"#, "");
+    let input = zip_bytes(&[
+        ("[Content_Types].xml", ct.as_bytes()),
+        ("_rels/.rels", rels.as_bytes()),
+        ("word/document.bin", body.as_bytes()),
+    ]);
+    let ex = DocxHandler.extract(&input).unwrap();
+    assert!(
+        ex.blocks
+            .iter()
+            .any(|b| b.ctx.part == "word/document.bin" && b.text == "Dossier de Jean Dupont."),
+        "{:?}",
+        ex.blocks
+    );
+    let session = session_of(&[(Personne, "Jean Dupont".to_string())]);
+    let r = Replacer::new(&session);
+    let out = DocxHandler
+        .transform(&input, &r, &TransformOptions::anonymize())
+        .unwrap();
+    let doc = part(&out.bytes, "word/document.bin");
+    assert!(
+        doc.contains("[PERSONNE_1]") && !doc.contains("Dupont"),
+        "{doc}"
+    );
+    assert!(leaks(&DocxHandler.deep_scan(&out.bytes).unwrap(), &r).is_empty());
+}
+
+#[test]
+fn binary_parts_are_kept_as_is() {
+    let body = docx_body("Dossier de Jean Dupont.").replace(r#"<w:altChunk r:id="rIdA"/>"#, "");
+    let font: &[u8] = &[0x00, 0x01, 0x00, 0x00, 0xFF, 0x10];
+    let photo: &[u8] = &[0x49, 0x49, 0xBC, 0x01, 0x08];
+    let printer: &[u8] = &[0x50, 0x00, 0x72, 0x00];
+    let input = zip_bytes(&[
+        ("[Content_Types].xml", DOCX_CT.as_bytes()),
+        ("_rels/.rels", DOCX_RELS.as_bytes()),
+        ("word/document.xml", body.as_bytes()),
+        ("word/fonts/font1.odttf", font),
+        ("word/media/hdphoto1.wdp", photo),
+        ("word/printerSettings/printerSettings1.bin", printer),
+    ]);
+    let session = session_of(&[(Personne, "Jean Dupont".to_string())]);
+    let out = DocxHandler
+        .transform(
+            &input,
+            &Replacer::new(&session),
+            &TransformOptions::anonymize(),
+        )
+        .unwrap();
+    let entries = zip_entries(&out.bytes);
+    for (name, bytes) in [
+        ("word/fonts/font1.odttf", font),
+        ("word/media/hdphoto1.wdp", photo),
+        ("word/printerSettings/printerSettings1.bin", printer),
+    ] {
+        let e = entries.iter().find(|e| e.0 == name).unwrap();
+        assert_eq!(e.1, bytes, "{name}");
+    }
+    assert!(DocxHandler.deep_scan(&out.bytes).is_ok());
+}

@@ -3,10 +3,11 @@
 //! formulaires, contrôle de fuite. Enregistrement complet, jamais incrémental.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 use anon_core::{
-    BlockContext, BlockRole, Extraction, FormatError, Handler, MediaItem, Output, TextBlock,
-    TextTransform, TransformOptions, Warning, WarningCode,
+    BlockContext, BlockRole, Direction, Extraction, FormatError, Handler, MediaItem, Output,
+    TextBlock, TextTransform, TransformOptions, Warning, WarningCode,
 };
 use image::{DynamicImage, ImageFormat, RgbImage};
 use mupdf::pdf::{
@@ -49,6 +50,7 @@ pub const MAX_SCAN_OBJECTS: usize = 500_000;
 const METADATA_PART: &str = "métadonnées";
 const OUTLINE_PART: &str = "signets";
 const DOCUMENT_PART: &str = "document";
+const XFA_PART: &str = "formulaire XFA";
 
 /// Caviardage réel : texte retiré, pixels d'image effacés, dessins conservés.
 const REDACT: PdfRedactOptions = PdfRedactOptions {
@@ -714,10 +716,227 @@ fn page_side_blocks(page: &PdfPage, part: &str, blocks: &mut Vec<TextBlock>) {
     }
 }
 
-fn embedded_file_names(doc: &PdfDocument) -> Vec<String> {
-    doc.embedded_files()
-        .map(|v| v.into_iter().map(|f| f.name).collect())
-        .unwrap_or_default()
+// ---------------------------------------------------------------------------
+// Fichiers joints et formulaires XFA
+// ---------------------------------------------------------------------------
+
+/// Clés qui relient un objet à des fichiers joints : flux embarqués (`EF`),
+/// fichiers apparentés (`RF`), fichiers associés (`AF`, PDF/A-3, Factur-X).
+const ATTACHMENT_KEYS: &[&str] = &["EF", "RF", "AF"];
+
+/// Fichiers joints repérés dans un document.
+#[derive(Debug, Default)]
+struct Attachments {
+    /// Numéros des flux de fichier embarqué : cibles d'un `/EF` ou d'un `/RF`,
+    /// ou objets `/Type /EmbeddedFile`.
+    streams: BTreeSet<i32>,
+    /// Dictionnaires (spécifications de fichier) qui portent un `/EF` ou un `/RF`.
+    links: usize,
+}
+
+impl Attachments {
+    fn is_empty(&self) -> bool {
+        self.streams.is_empty() && self.links == 0
+    }
+}
+
+/// Références indirectes contenues dans un objet direct (sans les suivre).
+fn collect_refs(obj: &PdfObject, depth: usize, out: &mut BTreeSet<i32>) {
+    if depth > MAX_OBJECT_DEPTH {
+        return;
+    }
+    if obj.is_indirect().unwrap_or(false) {
+        if let Ok(n) = obj.as_indirect()
+            && n > 0
+        {
+            out.insert(n);
+        }
+        return;
+    }
+    if obj.is_array().unwrap_or(false) {
+        for i in 0..obj.len().unwrap_or(0) {
+            let Ok(idx) = i32::try_from(i) else { break };
+            if let Ok(Some(v)) = obj.get_array(idx) {
+                collect_refs(&v, depth + 1, out);
+            }
+        }
+    } else if obj.is_dict().unwrap_or(false) {
+        for i in 0..obj.dict_len().unwrap_or(0) {
+            let Ok(idx) = i32::try_from(i) else { break };
+            if let Ok(Some(v)) = obj.get_dict_val(idx) {
+                collect_refs(&v, depth + 1, out);
+            }
+        }
+    }
+}
+
+/// Appelle `f` sur l'objet et sur chacun de ses dictionnaires directs. Les
+/// références indirectes ne sont pas suivies : chaque objet est visité par son
+/// propre numéro.
+fn visit_dicts(
+    obj: &mut PdfObject,
+    depth: usize,
+    budget: &mut usize,
+    f: &mut dyn FnMut(&mut PdfObject),
+) {
+    if depth > MAX_OBJECT_DEPTH || *budget == 0 {
+        return;
+    }
+    *budget -= 1;
+    if obj.is_indirect().unwrap_or(true) {
+        return;
+    }
+    if obj.is_dict().unwrap_or(false) {
+        f(obj);
+        for i in 0..obj.dict_len().unwrap_or(0) {
+            let Ok(idx) = i32::try_from(i) else { break };
+            if let Ok(Some(mut v)) = obj.get_dict_val(idx) {
+                visit_dicts(&mut v, depth + 1, budget, f);
+            }
+        }
+    } else if obj.is_array().unwrap_or(false) {
+        for i in 0..obj.len().unwrap_or(0) {
+            let Ok(idx) = i32::try_from(i) else { break };
+            if let Ok(Some(mut v)) = obj.get_array(idx) {
+                visit_dicts(&mut v, depth + 1, budget, f);
+            }
+        }
+    }
+}
+
+/// Parcourt tous les objets du document à la recherche de fichiers joints,
+/// où qu'ils soient rattachés (arbre de noms plat ou à `/Kids`, `/AF` du
+/// catalogue, des pages ou des annotations, annotations `/FileAttachment`…).
+/// Avec `strip`, retire au passage les clés `/EF`, `/RF` et `/AF`.
+fn scan_attachments(doc: &PdfDocument, strip: bool) -> Attachments {
+    let mut found = Attachments::default();
+    let n = doc.xref_len().unwrap_or(0);
+    let mut budget = MAX_SCAN_OBJECTS;
+    for num in 1..n {
+        if budget == 0 {
+            break;
+        }
+        let Ok(num) = i32::try_from(num) else { break };
+        let Ok(Some(mut obj)) = doc.xref_object(num) else {
+            continue;
+        };
+        if is_name(&obj, "Type", b"EmbeddedFile") {
+            found.streams.insert(num);
+        }
+        visit_dicts(&mut obj, 0, &mut budget, &mut |d| {
+            for key in ATTACHMENT_KEYS {
+                let Ok(Some(v)) = d.get_dict(*key) else {
+                    continue;
+                };
+                if *key != "AF" {
+                    found.links += 1;
+                    collect_refs(&v, 0, &mut found.streams);
+                }
+                if strip {
+                    let _ = d.dict_delete(*key);
+                }
+            }
+        });
+    }
+    found
+}
+
+/// Retire tous les fichiers joints : arbre de noms `/EmbeddedFiles` (tableau
+/// plat ou `/Kids`), portfolio (`/Collection`), fichiers associés (`/AF`),
+/// liens `/EF` et `/RF` de toutes les spécifications de fichier, puis les flux
+/// eux-mêmes. Renvoie le nombre de flux retirés.
+fn remove_attachments(doc: &mut PdfDocument) -> Result<usize, FormatError> {
+    let err = mu(DOCUMENT_PART);
+    let mut catalog = doc.catalog().map_err(&err)?;
+    if let Some(mut names) = catalog.get_dict("Names").map_err(&err)?
+        && names.get_dict("EmbeddedFiles").map_err(&err)?.is_some()
+    {
+        names.dict_delete("EmbeddedFiles").map_err(&err)?;
+    }
+    if catalog.get_dict("Collection").map_err(&err)?.is_some() {
+        catalog.dict_delete("Collection").map_err(&err)?;
+    }
+    let found = scan_attachments(doc, true);
+    let mut removed = 0;
+    for num in found.streams {
+        if doc.delete_object(num).is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+/// Paquet XFA du formulaire (`/AcroForm /XFA`), s'il existe et n'est pas nul.
+fn xfa_object(doc: &PdfDocument) -> Option<PdfObject> {
+    let form = doc.catalog().ok()?.get_dict("AcroForm").ok()??;
+    let xfa = form.get_dict("XFA").ok()??;
+    (!xfa.is_null().unwrap_or(false)).then_some(xfa)
+}
+
+/// Retire le paquet XFA : ses données (`datasets`) gardent les valeurs
+/// d'origine des champs, que le caviardage du formulaire standard ne touche
+/// pas. Vrai s'il existait.
+fn remove_xfa(doc: &PdfDocument) -> Result<bool, FormatError> {
+    let err = mu(DOCUMENT_PART);
+    let mut catalog = doc.catalog().map_err(&err)?;
+    let Some(mut form) = catalog.get_dict("AcroForm").map_err(&err)? else {
+        return Ok(false);
+    };
+    if form.get_dict("XFA").map_err(&err)?.is_none() {
+        return Ok(false);
+    }
+    form.dict_delete("XFA").map_err(&err)?;
+    // Sans XFA, « à rendre par le lecteur » n'a plus de sens.
+    if catalog.get_dict("NeedsRendering").map_err(&err)?.is_some() {
+        catalog.dict_delete("NeedsRendering").map_err(&err)?;
+    }
+    Ok(true)
+}
+
+/// Texte des flux du paquet XFA (flux unique ou tableau nom/flux), pour le
+/// contrôle de fuite.
+fn xfa_texts(doc: &PdfDocument) -> Vec<String> {
+    let Some(xfa) = xfa_object(doc) else {
+        return Vec::new();
+    };
+    let mut streams = Vec::new();
+    if xfa.is_stream().unwrap_or(false) {
+        streams.push(xfa);
+    } else {
+        let arr = xfa.resolve().ok().flatten().unwrap_or(xfa);
+        for i in 0..arr.len().unwrap_or(0) {
+            let Ok(idx) = i32::try_from(i) else { break };
+            if let Ok(Some(v)) = arr.get_array(idx)
+                && v.is_stream().unwrap_or(false)
+            {
+                streams.push(v);
+            }
+        }
+    }
+    streams
+        .iter()
+        .filter_map(|s| s.read_stream().ok())
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .filter(|s| !s.trim().is_empty())
+        .collect()
+}
+
+/// Vérifie le PDF produit avant de le rendre : aucun fichier joint ni paquet
+/// XFA ne doit subsister (seuls les objets encore référencés restent après
+/// l'enregistrement complet). Sinon l'export est refusé.
+fn verify_removed(bytes: &[u8], attachments: bool, xfa: bool) -> Result<(), FormatError> {
+    let doc = PdfDocument::from_bytes(bytes).map_err(mu(DOCUMENT_PART))?;
+    if attachments && !scan_attachments(&doc, false).is_empty() {
+        return Err(FormatError::Other(
+            "fichier joint impossible à retirer du PDF : aucun fichier n'a été produit".into(),
+        ));
+    }
+    if xfa && xfa_object(&doc).is_some() {
+        return Err(FormatError::Other(
+            "formulaire XFA impossible à retirer du PDF : aucun fichier n'a été produit".into(),
+        ));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1118,11 +1337,19 @@ impl Handler for PdfHandler {
         for i in 0..n {
             Self::page_blocks(&doc, i, &mut ocr, false, &mut blocks, &mut media)?;
         }
-        if !embedded_file_names(&doc).is_empty() {
+        if !scan_attachments(&doc, false).is_empty() {
             warnings.push(Warning::new(
                 WarningCode::EmbeddedBinary,
                 DOCUMENT_PART,
                 "Fichiers joints non analysés ; ils seront retirés à l'anonymisation.",
+            ));
+        }
+        if xfa_object(&doc).is_some() {
+            warnings.push(Warning::new(
+                WarningCode::UnsupportedPart,
+                XFA_PART,
+                "Formulaire XFA non analysé ; il sera retiré à l'anonymisation (les champs du \
+                 formulaire standard sont conservés).",
             ));
         }
         Ok(Extraction {
@@ -1154,6 +1381,10 @@ impl Handler for PdfHandler {
             }));
         }
         blocks.extend(object_blocks(&doc));
+        blocks.extend(xfa_texts(&doc).into_iter().map(|t| TextBlock {
+            text: t,
+            ctx: BlockContext::new(XFA_PART, BlockRole::Other),
+        }));
         Ok(blocks)
     }
 
@@ -1354,15 +1585,10 @@ impl Handler for PdfHandler {
             }
             if let Ok(mut catalog) = doc.catalog() {
                 drop_metadata_key(&mut catalog);
-                // Pièces jointes au niveau du document.
-                for name in embedded_file_names(&doc) {
-                    match doc.delete_embedded_file(&name) {
-                        Ok(true) => removed_files += 1,
-                        Ok(false) => {}
-                        Err(_) => untouched += 1,
-                    }
-                }
             }
+            // Fichiers joints, où qu'ils soient rattachés ; le nombre annoncé est
+            // vérifié sur le fichier produit (`verify_removed`).
+            removed_files = removed_files.max(remove_attachments(&mut doc)?);
         } else if let Some(mut info) = info_dict(&doc) {
             for (key, value) in info_strings(&doc) {
                 let (new, k) = apply_text(
@@ -1386,6 +1612,16 @@ impl Handler for PdfHandler {
             }
         }
 
+        // Formulaire XFA : ses données gardent les valeurs d'origine des champs.
+        let anonymize = opts.direction == Direction::Anonymize;
+        if anonymize && remove_xfa(&doc)? {
+            warnings.push(Warning::new(
+                WarningCode::UnsupportedPart,
+                XFA_PART,
+                "Formulaire XFA retiré sans analyse : seuls les champs du formulaire standard \
+                 sont conservés.",
+            ));
+        }
         if removed_files > 0 {
             warnings.push(Warning::new(
                 WarningCode::EmbeddedBinary,
@@ -1402,6 +1638,7 @@ impl Handler for PdfHandler {
         }
         drop(ocr);
         let bytes = save(&doc)?;
+        verify_removed(&bytes, opts.scrub_metadata, anonymize)?;
         Ok(Output {
             bytes,
             replacements: count,
@@ -1475,5 +1712,50 @@ mod tests {
     fn en_tete_absent_ou_vide() {
         assert!(open(b"").is_err());
         assert!(open(b"pas un pdf").is_err());
+    }
+
+    fn bytes_of(doc: &PdfDocument) -> Vec<u8> {
+        let mut out = Vec::new();
+        doc.write_to(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn verification_refuse_un_fichier_joint_ou_un_xfa_restant() {
+        let mut doc = PdfDocument::new();
+        doc.new_page((200.0f32, 200.0f32)).unwrap();
+        let clean = bytes_of(&doc);
+        assert!(verify_removed(&clean, true, true).is_ok());
+
+        doc.add_embedded_file(
+            "a.txt",
+            b"contenu",
+            mupdf::pdf::EmbeddedFileOptions::new("a.txt"),
+        )
+        .unwrap();
+        let attached = bytes_of(&doc);
+        assert!(matches!(
+            verify_removed(&attached, true, false),
+            Err(FormatError::Other(_))
+        ));
+
+        let mut doc = PdfDocument::new();
+        doc.new_page((200.0f32, 200.0f32)).unwrap();
+        let stream = doc
+            .add_stream(
+                &mupdf::Buffer::from_bytes(b"<xfa:datasets/>").unwrap(),
+                None,
+                false,
+            )
+            .unwrap();
+        let mut form = doc.new_dict().unwrap();
+        form.dict_put("XFA", stream).unwrap();
+        doc.catalog().unwrap().dict_put("AcroForm", form).unwrap();
+        let with_xfa = bytes_of(&doc);
+        assert!(verify_removed(&with_xfa, true, false).is_ok());
+        assert!(matches!(
+            verify_removed(&with_xfa, false, true),
+            Err(FormatError::Other(_))
+        ));
     }
 }

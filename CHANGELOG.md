@@ -4,8 +4,13 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+## [2.0.3] - 2026-11-25
+
 ### Sécurité
 - **Dépendances** : `url` 2.5.9 (RUSTSEC-2026-0592, débordement de pile dans `Url::origin()` sur des URL `blob:` imbriquées ; utilisé par l'ouverture des liens dans le navigateur).
+
+### Dépendances
+- Mises à jour mineures : `zip` 9.8.1, `keyring-core` 1.1.0, `zeroize` 1.9.2, `regex` 1.13.2, `jiff` 1.0.2, `cc` 1.11.3.
 
 ### Construction
 - **Release Windows** : ONNX Runtime 1.31.0 statique (/MT) vient de la release du dépôt `ort-1.31.0`, vérifié par son empreinte SHA-256 (`tools/ort/SHA256SUMS`) ; la compilation depuis les sources ne sert plus que de repli, le dépôt `microsoft/onnxruntime` étant introuvable sur GitHub (échec de la release 2.0.2, construite hors de GitHub Actions).

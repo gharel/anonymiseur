@@ -21,3 +21,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.snap.new
+
+# Secrets locaux
+.env
+.env.*
+!.env.example

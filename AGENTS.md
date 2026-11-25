@@ -35,11 +35,14 @@ Exécutables livrés (Windows, CRT statique, aucune DLL hors système) :
 
 ```powershell
 .\tools\build-ort.ps1                      # ONNX Runtime 1.31 statique /MT, CPU seul, dans target-ort\ (30 à 60 min, une fois)
+gh release download ort-1.31.0 --dir target-ort; tar -xzf target-ort\onnxruntime-1.31.0-windows-x64-mt.tar.gz -C target-ort  # ou la récupérer déjà compilée (empreinte : tools\ort\SHA256SUMS)
 .\tools\build-release.ps1                  # dist\Anonymiseur.exe (complet) et dist\Anonymiseur-Lite.exe ; taille, SHA-256, DLL
 .\tools\build-release.ps1 -Edition Lite    # Lite seule : ni ONNX Runtime ni modèles
 ```
 
 `build-release.ps1` compile dans `target-dist\` (options d'édition de liens distinctes de `target\`). macOS : `packaging/macos/bundle.sh` (paquet `.app`), utilisé par `.github/workflows/release.yml` sur une étiquette `v*`.
+
+Le dépôt `microsoft/onnxruntime`, dont `build-ort.ps1` clone les sources, est introuvable sur GitHub depuis novembre 2026. La release du dépôt `ort-1.31.0` contient la bibliothèque déjà compilée par ce script (`target-ort\lib`, archivée en `.tar.gz`) ; `release.yml` la télécharge et vérifie son empreinte (`tools/ort/SHA256SUMS`), et ne compile qu'en repli. Changer `ORT_VERSION` ou les options de `build-ort.ps1` impose de publier une nouvelle archive et sa nouvelle empreinte. `release.yml` lancé à la main (`workflow_dispatch`) construit et teste les trois éditions sans rien publier.
 
 ## Architecture
 

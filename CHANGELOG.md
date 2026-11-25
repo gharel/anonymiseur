@@ -4,6 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions [sé
 
 ## Non publié
 
+### Construction
+- **Release Windows** : ONNX Runtime 1.31.0 statique (/MT) vient de la release du dépôt `ort-1.31.0`, vérifié par son empreinte SHA-256 (`tools/ort/SHA256SUMS`) ; la compilation depuis les sources ne sert plus que de repli, le dépôt `microsoft/onnxruntime` étant introuvable sur GitHub (échec de la release 2.0.2, construite hors de GitHub Actions).
+- **Release** : lancé à la main, le workflow construit et teste les trois éditions sans rien publier.
+
 ## [2.0.2] - 2026-11-18
 
 ### Sécurité

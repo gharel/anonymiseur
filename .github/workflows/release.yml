@@ -6,10 +6,15 @@ name: Release
 #   macOS Intel     : Anonymiseur Lite (pas de binaires ONNX Runtime précompilés pour x86_64-apple-darwin)
 # Les modèles .onnx viennent de la release « modeles-v1 » du dépôt et sont vérifiés contre
 # assets/ner/SHA256SUMS.
+# ONNX Runtime statique (/MT) vient de la release « ort-1.31.0 » du dépôt, vérifié contre
+# tools/ort/SHA256SUMS : le dépôt microsoft/onnxruntime, dont tools/build-ort.ps1 compile les
+# sources, est introuvable sur GitHub depuis novembre 2026. La compilation reste le repli.
+# Lancé à la main (workflow_dispatch), le workflow construit et teste tout sans rien publier.
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +27,8 @@ env:
   CARGO_TERM_COLOR: always
   MODELES_RELEASE: modeles-v1
   ORT_VERSION: "1.31.0"
+  ORT_RELEASE: ort-1.31.0
+  ORT_ARCHIVE: onnxruntime-1.31.0-windows-x64-mt.tar.gz
 
 jobs:
   windows:
@@ -62,8 +69,25 @@ jobs:
           path: target-ort/lib
           key: ort-${{ env.ORT_VERSION }}-windows-x64-mt-${{ hashFiles('tools/build-ort.ps1') }}
 
-      - name: Compiler ONNX Runtime
+      # Bibliothèque déjà compilée par tools/build-ort.ps1 (mêmes options), publiée dans la release
+      # du dépôt ; son empreinte est versionnée dans tools/ort/SHA256SUMS.
+      - name: Récupérer ONNX Runtime précompilé
+        id: ort-release
         if: steps.cache-ort.outputs.cache-hit != 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$ORT_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern "$ORT_ARCHIVE" --dir target-ort --clobber
+          (cd target-ort && sha256sum -c ../tools/ort/SHA256SUMS)
+          tar --force-local -xzf "target-ort/$ORT_ARCHIVE" -C target-ort
+          rm "target-ort/$ORT_ARCHIVE"
+          test "$(tr -d '\r\n ' < target-ort/lib/VERSION)" = "$ORT_VERSION"
+          ls -l target-ort/lib
+
+      - name: Compiler ONNX Runtime
+        if: steps.cache-ort.outputs.cache-hit != 'true' && steps.ort-release.outcome != 'success'
         shell: pwsh
         run: ./tools/build-ort.ps1 -Version $env:ORT_VERSION -Prune
 
@@ -126,10 +150,11 @@ jobs:
       - name: Tester l'IA
         run: cargo test -p anonymiseur --release --locked --test moteur
 
+      # Sur une étiquette, la version vient de l'étiquette ; lancé à la main, de Cargo.toml.
       - name: Paquet .app
         run: |
-          VERSION="${GITHUB_REF_NAME#v}" packaging/macos/bundle.sh \
-            target/release/anonymiseur dist Anonymiseur-macos-arm64
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
+          packaging/macos/bundle.sh target/release/anonymiseur dist Anonymiseur-macos-arm64
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -160,8 +185,8 @@ jobs:
 
       - name: Paquet .app
         run: |
-          VERSION="${GITHUB_REF_NAME#v}" packaging/macos/bundle.sh \
-            target/release/anonymiseur dist Anonymiseur-Lite-macos-x64 Lite
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
+          packaging/macos/bundle.sh target/release/anonymiseur dist Anonymiseur-Lite-macos-x64 Lite
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -172,6 +197,8 @@ jobs:
   publier:
     name: Publier la release
     needs: [windows, macos-arm64, macos-intel]
+    # Seulement sur une étiquette : lancé à la main, le workflow ne publie rien.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
